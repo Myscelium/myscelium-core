@@ -61,37 +61,6 @@ pub fn set_socket_host_log_level(log_level: String) {
     return;
 }
 
-// #[pyfunction]
-// fn registry_host_logs_handler(py: Python, commands: &PyList) -> PyResult<()> {
-//     let mut callback_pattern = HashMap::new();
-
-//     process_commands!(py, commands, callback_pattern);
-
-//     set_host_logs_handler_callback(callback_pattern);
-
-//     println!("set the log callback");
-
-//     Ok(())
-// }
-
-/// Registers a callback function for the socket host to trigger when a client sends a heartbeat message.
-///
-/// This function updates the global callback that will be called each time the socket host receives a heartbeat
-/// message from a client.
-///
-/// # Parameters
-///
-/// - `py`: The Python interpreter.
-/// - `commands`: A Python list of dictionaries containing the callback function and its expected arguments.
-///
-/// # Returns
-///
-/// Returns an empty result if successful, or a Python error if there's a problem with the provided list.
-///
-/// # Python Binding
-///
-/// This function is exposed to Python and can be called from a Python script.
-
 // pub fn registry_socket_host_client_heartbeat_contact_callback(commands: &PyList) -> PyResult<()> {
 //     let mut callback_pattern = HashMap::new();
 
@@ -110,82 +79,6 @@ fn stop_socket_host() {
 }
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
-// pub fn registry_socket_host_callbacks(py: Python, commands: &PyList) -> PyResult<()> {
-//     let mut host_node_handlers: Vec<NodeHandler> = Vec::new();
-
-//     let mut callbacks_patterns = HashMap::new();
-
-//     for command in commands.iter() {
-//         let command_dict: &PyDict = command.downcast().unwrap();
-//         let function: &PyAny = command_dict.get_item("function").unwrap();
-
-//         let args_item: &PyAny = command_dict.get_item("args").unwrap();
-
-//         // Check if args_item is a dict or a string with the value "None"
-//         let args_dict: Option<&PyDict>;
-
-//         if let Ok(args_as_dict) = args_item.downcast::<PyDict>() {
-//             args_dict = Some(args_as_dict);
-//         } else if let Ok(args_as_str) = args_item.extract::<String>() {
-//             if args_as_str == "None" {
-//                 args_dict = None;
-//             } else {
-//                 return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-//                     "args must be a dict or the string 'None'",
-//                 ));
-//             }
-//         } else {
-//             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-//                 "args must be a dict or the string 'None'",
-//             ));
-//         }
-
-//         // Extract the Python function name
-//         let function_name: &str = function.getattr("__name__")?.extract()?;
-
-//         // Extract the argument types
-//         let args_types_value;
-//         if let Some(args_dict) = args_dict {
-//             args_types_value = extract_arg_types(args_dict)?;
-//         } else {
-//             args_types_value = Value::Array(Vec::new()); // or whatever default value you want to use
-//         }
-
-//         // Store the function name and argument types in the command patterns
-//         let host_handler: NodeHandler = NodeHandler::new(
-//             function_name.to_string(),
-//             args_types_value.clone(),
-//             CommandType::ExternalFunction,
-//             HandlerStatus::NotTested,
-//             HashMap::new(),
-//             "".to_string(),
-//         );
-
-//         host_node_handlers.push(host_handler);
-
-//         let function = function.downcast::<PyFunction>()?.clone();
-
-//         let function: Py<PyFunction> = function.into_py(py); // convert &PyAny to Py<PyFunction>
-//         callbacks_patterns.insert(function_name.to_string(), (function, args_types_value));
-//     }
-
-//     // Now you can use the command_patterns
-//     set_socket_host_transposer_callbacks(callbacks_patterns);
-
-//     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
-//     let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
-//     let host_node: Node = Node::new(
-//         "host".to_string(),
-//         "host".to_string(),
-//         "".to_string(),
-//         node_version,
-//         host_node_handlers,
-//         NodeStatus::Online,
-//     );
-//     global_command_patterns.add_or_update_if_exists(host_node);
-
-//     Ok(())
-// }
 
 /// Initializes and starts the socket host.
 ///

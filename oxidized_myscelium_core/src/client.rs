@@ -24,7 +24,7 @@ use std::time::Duration;
 
 // -> Socket Client main-points:
 
-use crate::common::functions::python_functions::extract_arg_types;
+use crate::common::functions::callbacks::extract_arg_types;
 use crate::socket_client::scheduler::{self, schedule};
 use crate::socket_client::socket_client;
 use crate::socket_client::socket_client::get_available_handlers_registered;
@@ -170,7 +170,6 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
 /// # Behavior
 ///
 /// Updates the logging level of the client.
-
 pub fn set_socket_client_log_level(log_level: &String) {
     set_client_log_level(log_level.clone());
     return;
@@ -179,131 +178,6 @@ pub fn set_socket_client_log_level(log_level: &String) {
 pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
     get_available_handlers_registered()
 }
-
-// // TODO >>> MAKE A RUST BASED METHOD TO SET CALLBACKS IN A WAY THAT IT CAN BE DONE AUTOMATICALLY
-// pub fn registry_socket_client_callbacks(py: Python, commands: &PyList) -> PyResult<()> {
-//     // For this given data
-//     //
-//     // special_functions = [{
-//     //     "function": get_registered_commands,
-//     //     "response_type":"same_as_origin",
-//     //     "args": "None",
-//     // }, ]
-//     //
-
-//     let mut client_handlers: Vec<NodeHandler> = Vec::new();
-
-//     let mut callbacks_patterns = HashMap::new();
-
-//     for command in commands.iter() {
-//         let command_dict: &PyDict = command.downcast().unwrap();
-//         let function: &PyAny = command_dict.get_item("function").unwrap();
-
-//         let args_item: &PyAny = command_dict.get_item("args").unwrap();
-
-//         // Check if args_item is a dict or a string with the value "None"
-//         let args_dict: Option<&PyDict>;
-
-//         if let Ok(args_as_dict) = args_item.downcast::<PyDict>() {
-//             args_dict = Some(args_as_dict);
-//         } else if let Ok(args_as_str) = args_item.extract::<String>() {
-//             if args_as_str == "None" {
-//                 args_dict = None;
-//             } else {
-//                 return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-//                     "args must be a dict or the string 'None'",
-//                 ));
-//             }
-//         } else {
-//             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-//                 "args must be a dict or the string 'None'",
-//             ));
-//         }
-
-//         // Extract the Python function name
-//         let function_name: &str = function.getattr("__name__")?.extract()?;
-
-//         // Extract the argument types
-//         let args_types_value;
-//         if let Some(args_dict) = args_dict {
-//             args_types_value = extract_arg_types(args_dict)?;
-//         } else {
-//             args_types_value = Value::Array(Vec::new()); // or whatever default value you want to use
-//         }
-
-//         let handler: NodeHandler = NodeHandler::new(
-//             function_name.to_string(),
-//             args_types_value.clone(),
-//             CommandType::ExternalFunction,
-//             HandlerStatus::NotTested,
-//             HashMap::new(),
-//             "".to_string(),
-//         );
-//         client_handlers.push(handler);
-
-//         let function = function.downcast::<PyFunction>()?.clone();
-
-//         let function: Py<PyFunction> = function.into_py(py); // convert &PyAny to Py<PyFunction>
-//         callbacks_patterns.insert(function_name.to_string(), (function, args_types_value));
-//     }
-
-//     let client_name: String;
-
-//     {
-//         let name = CLIENT_NODE_NAME.lock();
-//         client_name = name.clone();
-//     }
-
-//     let client_key: String;
-
-//     {
-//         let mut key = CLIENT_NODE_KEY.lock();
-//         client_key = key.clone();
-//     }
-
-//     {
-//         println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
-//         let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
-//         println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
-
-//         let client_version: NodeVersion =
-//             NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
-//         let client_node = Node::new(
-//             client_name.clone(),
-//             client_key.clone(),
-//             "".to_string(),
-//             client_version,
-//             client_handlers,
-//             NodeStatus::NotSyncYet,
-//         );
-//         *command_patterns = client_node.clone();
-
-//         {
-//             let mut client_state = CLIENT_STATE_MANAGER.lock();
-//             client_state.clean_storage(); // remove any old state
-//             let new_client_state = ClientState::new(
-//                 client_name.clone(),
-//                 client_key.clone(),
-//                 NetworkMap::new(Vec::new()),
-//                 client_node.clone(),
-//                 true,
-//                 false,
-//                 false,
-//                 false,
-//             );
-//             new_client_state.save_in_storage();
-//             *client_state = new_client_state.clone();
-//         }
-
-//         println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
-//     }
-
-//     // TODO >>> Add the new mechanism of Network Commands here
-
-//     set_socket_client_transposer_callbacks(callbacks_patterns);
-
-//     Ok(())
-// }
 
 pub fn get_client_state() -> bool {
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
