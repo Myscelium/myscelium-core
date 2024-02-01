@@ -605,7 +605,7 @@ fn clear_old_data() {
     enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands();
 }
 
-pub fn initialize_socket_host_transposer(py: Python<'_>) {
+pub fn initialize_socket_host_transposer() {
     let logger = acquire_logger!("Transposer");
 
     let mut schedule: Vec<DownCommand> =

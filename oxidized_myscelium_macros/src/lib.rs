@@ -8,8 +8,16 @@ use syn::{parse_macro_input, ItemFn};
 
 // use host_entry_point::set_socket_client_transposer_callbacks;
 
+// TODO >>> client_callback proc macro
+
+macro_rules! initialize_dependencies {
+    () => {
+        use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
+    };
+}
+
 #[proc_macro]
-pub fn set_socket_callback(input: TokenStream) -> TokenStream {
+pub fn host_callback(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
     let fn_name = &input.sig.ident;
 
