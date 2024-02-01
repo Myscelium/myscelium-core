@@ -5,36 +5,20 @@ use crate::common::enhanced_buffer::utilities::{
     Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
     CommandType,
 };
-use crate::common::functions::callbacks::{
-    call_callback, client_call_callback, dict_to_kwargs, extract_pyobject,
-};
-use crate::common::functions::converters::convert_to_value_map;
+use crate::common::functions::callbacks::{call_callback, client_call_callback, extract_pyobject};
 use crate::common::structs::available_commands::NetworkMap;
-use crate::common::structs::results_structs::ResultType;
-
 use crate::socket_client::functions::direct_functions::handle_direct_function;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
 use lazy_static::lazy_static;
-use serde_json::{from_str, to_string, Value};
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::{mpsc, Arc};
-use std::thread;
-
-use serde::{Deserialize, Serialize};
-use std::fmt::{self, format};
-
-// use crate::socket_client::socket_client::is_client_registred;
-
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Condvar,
-};
-
-use std::time::Duration;
-
 use parking_lot::Mutex;
+use serde_json::Value;
+
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use crate::CLIENT_IS_RUNNING;
 
@@ -52,10 +36,7 @@ macro_rules! acquire_logger {
     }};
 }
 
-use crate::common::structs::available_commands::CommandPatterns;
 use crate::CLIENT_NODE_KEY;
-
-use crate::CLIENT_NODE_CONFIGS;
 
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
