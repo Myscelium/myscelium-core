@@ -1,0 +1,9 @@
+<<<<<<< HEAD
+*.pyc
+target/
+*.log
+build
+Logs/
+=======
+/target
+>>>>>>> 32e9d99f9affdc9df7245b97686e9aa36c3438de

@@ -1,0 +1,5 @@
+*.pyc
+target/
+*.log
+build
+Logs/
