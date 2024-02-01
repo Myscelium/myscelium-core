@@ -37,8 +37,9 @@ macro_rules! acquire_logger {
 
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 
+use crate::HOST_CALLBACK_PATTERNS;
+
 lazy_static! {
-    static ref CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
 
@@ -81,11 +82,11 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
 }
 
 pub fn set_socket_host_transposer_callbacks(key: &'static str, callback: CallbackClosure) {
-    println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-    let patterns = &CALLBACK_PATTERNS;
-    println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    println!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS");
+    let patterns = &HOST_CALLBACK_PATTERNS;
+    println!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS");
     patterns.insert(key, callback);
-    println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
+    println!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS");
 }
 
 // > Transposer:
@@ -396,7 +397,7 @@ fn process_response_and_schedule(
 ///
 /// # Notes
 ///
-/// The function heavily relies on global patterns (`HOST_COMMAND_PATTERNS` and `CALLBACK_PATTERNS`)
+/// The function heavily relies on global patterns (`HOST_COMMAND_PATTERNS` and `HOST_CALLBACK_PATTERNS`)
 /// which determine how commands are processed and which callbacks are executed.
 ///
 /// The function can handle various response types including maps, strings, integers, floats, and booleans.
@@ -510,7 +511,7 @@ fn process(down_command: DownCommand) {
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
-            let callback_patterns = CALLBACK_PATTERNS.clone();
+            let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
 
             response = match callback_patterns.call(
                 translated_command.command.clone().actf.as_str(),

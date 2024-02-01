@@ -18,7 +18,7 @@ pub struct MyCallbacks {
     pub map: Arc<Mutex<HashMap<&'static str, CallbackClosure>>>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub enum CallbackError {
     CallbackDoNotExist(String),
     UnsupportedArgument(String),

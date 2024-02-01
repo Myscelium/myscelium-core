@@ -1,6 +1,6 @@
 
 [workspace]
 members = [
-    "oxidized_myscelium_core",
+    "OxidizedMyscelium",
     "oxidized_myscelium_macros"
 ]

@@ -22,6 +22,8 @@ extern crate chrono;
 use crate::common::structs::available_commands::NetworkMap;
 use crate::socket_client::states_manager::manager::ClientState;
 
+use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
+
 lazy_static! {
 
     // CLIENT
@@ -33,6 +35,7 @@ lazy_static! {
     pub static ref CLIENT_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
     pub static ref CLIENT_NODE_CONFIGS: Arc<Mutex<Node>> = Arc::new(Mutex::new(Node::empty_node()));
     pub static ref CLIENT_STATE_MANAGER: Arc<Mutex<ClientState>> = Arc::new(Mutex::new(ClientState::empty()));
+    pub static ref CLIENT_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
 
     // HOST:
     pub static ref HOST_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
@@ -40,6 +43,8 @@ lazy_static! {
     pub static ref HOST_LOG_LEVEL: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
     pub static ref HOST_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
+    pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
+
 }
 
 fn main() {}

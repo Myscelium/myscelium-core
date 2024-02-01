@@ -37,18 +37,18 @@ lazy_static! {
         Arc::new(Mutex::new(Clients::new()));
 }
 
-pub fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
+fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
     set_socket_host_transposer_workers_num(n_workers);
     return;
 }
 
-pub fn set_socket_host_max_connections(n_max_conns: u32) {
+fn set_socket_host_max_connections(n_max_conns: u32) {
     set_host_clients_manager__pool_workers_num(n_max_conns.clone());
     set_max_conns(n_max_conns);
     return;
 }
 
-pub fn initialize_host_buffer_tables(path: String) {
+fn initialize_host_buffer_tables(path: String) {
     initialize_host_logs_database_dir(path.clone());
     initialize_host_buffer(path.clone());
     clients_manager_initialize_table(path.clone());
@@ -56,7 +56,7 @@ pub fn initialize_host_buffer_tables(path: String) {
     return;
 }
 
-pub fn set_socket_host_log_level(log_level: String) {
+fn set_socket_host_log_level(log_level: String) {
     set_host_log_level(log_level);
     return;
 }
@@ -71,6 +71,53 @@ pub fn set_socket_host_log_level(log_level: String) {
 //     Ok(())
 // }
 
+pub fn get_socket_host_available_commands() -> HashMap<String, Value> {
+    get_available_commands_registered()
+}
+
+// > --------------------------------------------------------------------------------------------------------
+// > Client Management
+
+// use crate::handle_client_error;
+
+pub fn add_allowed_clients(new_allowed_clients_list: Vec<Client>) {
+    for client_allowed in new_allowed_clients_list.iter() {
+        if !check_if_client_key_exists(client_allowed.client_key.clone()) {
+            client_allowed.save_into_db()
+        }
+
+        {
+            let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+            let _ = controller.add_new_client(client_allowed.client_key.clone().to_string(), 10);
+            println!("\nSet clients sync controler to:\n{:?}\n", controller);
+        }
+
+        println!(
+            "Successfully created client: {} of key: {}",
+            client_allowed.client_name, client_allowed.client_key
+        )
+    }
+}
+
+/// Removes all clients from the list of clients allowed to connect to the socket host.
+///
+/// This function clears the global list of clients that are permitted to connect to the socket host. After calling this function,
+/// no client will be able to connect until new clients are added using either `set_socket_host_allowed_clients` or `registry_new_allowed_clients`.
+///
+/// # Parameters
+///
+/// - `allowed_client_list`: A Python list of dictionaries, same structure as `set_socket_host_allowed_clients`.
+///
+/// # Python Binding
+/// This function is exposed to Python and can be called from a Python script.
+
+fn remove_all_allowed_clients() {
+    let _ = Client::delete_all();
+}
+
+// ->-------------------------------------------------------------------------------------------------------------------------------
+// -> HOST CONTROLLERS
+
 /// Stops the socket host.
 ///
 /// This function sets the global `HOST_IS_RUNNING` flag to false, indicating that the socket host should stop running.
@@ -79,6 +126,18 @@ fn stop_socket_host() {
 }
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
+
+pub fn setup_socket_host(
+    buffer_path: &String,
+    log_level: &String,
+    n_workers: &u32,
+    n_max_conns: &u32,
+) {
+    initialize_host_buffer_tables(buffer_path.clone());
+    set_socket_host_log_level(log_level.clone());
+    set_socket_host_transposer_num_of_workers(n_workers.clone());
+    set_socket_host_max_connections(n_max_conns.clone());
+}
 
 /// Initializes and starts the socket host.
 ///
@@ -146,68 +205,3 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
 
     println!("Socket transposer exited successfully!");
 }
-
-pub fn get_socket_host_available_commands() -> HashMap<String, Value> {
-    get_available_commands_registered()
-}
-
-// > --------------------------------------------------------------------------------------------------------
-// > Client Management
-
-use crate::handle_client_error;
-
-pub fn add_allowed_clients(new_allowed_clients_list: Vec<Client>) {
-    for client_allowed in new_allowed_clients_list.iter() {
-        if !check_if_client_key_exists(client_allowed.client_key.clone()) {
-            client_allowed.save_into_db()
-        }
-
-        {
-            let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-            let _ = controller.add_new_client(client_allowed.client_key.clone().to_string(), 10);
-            println!("\nSet clients sync controler to:\n{:?}\n", controller);
-        }
-
-        println!(
-            "Successfully created client: {} of key: {}",
-            client_allowed.client_name, client_allowed.client_key
-        )
-    }
-}
-
-/// Removes all clients from the list of clients allowed to connect to the socket host.
-///
-/// This function clears the global list of clients that are permitted to connect to the socket host. After calling this function,
-/// no client will be able to connect until new clients are added using either `set_socket_host_allowed_clients` or `registry_new_allowed_clients`.
-///
-/// # Parameters
-///
-/// - `allowed_client_list`: A Python list of dictionaries, same structure as `set_socket_host_allowed_clients`.
-///
-/// # Python Binding
-/// This function is exposed to Python and can be called from a Python script.
-
-fn remove_all_allowed_clients() {
-    let _ = Client::delete_all();
-}
-
-// fn set_socket_host_allowed_clients(allowed_clients_list: &PyList) -> PyResult<()> {
-//     for client_allowed in allowed_clients_list.iter() {
-//         let allowed_clients_dict: &PyDict = client_allowed.downcast().unwrap();
-
-//         let client_type: &PyAny = allowed_clients_dict.get_item("client_type").unwrap();
-//         let client_id: &PyAny = allowed_clients_dict.get_item("client_id").unwrap();
-
-//         if let Ok(extracted_client_type) = client_type.extract::<String>() {
-//             if let Ok(extracted_client_id) = client_id.extract::<String>() {
-//                 register_client(extracted_client_id, extracted_client_type);
-//             } else {
-//                 return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>("Error: client_id must be a String with 16 characters!"));
-//             }
-//         } else {
-//             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>("Error: client_type must be a String!"));
-//         }
-//     }
-
-//     Ok(())
-// }

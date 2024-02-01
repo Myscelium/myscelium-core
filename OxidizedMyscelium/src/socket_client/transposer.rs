@@ -45,10 +45,11 @@ type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 
+use crate::CLIENT_CALLBACK_PATTERNS;
+
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
         Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
-    static ref CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
 
@@ -84,11 +85,11 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
 pub fn set_socket_client_transposer_callbacks(key: &'static str, callback: Box<CallbackClosure>) {
-    println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-    let patterns = &CALLBACK_PATTERNS;
-    println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS");
+    let patterns = &CLIENT_CALLBACK_PATTERNS;
+    println!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS");
     patterns.insert(key, callback);
-    println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
+    println!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS");
 }
 
 // Transposer:
@@ -229,7 +230,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
-            let callback_patterns = CALLBACK_PATTERNS.clone();
+            let callback_patterns = CLIENT_CALLBACK_PATTERNS.clone();
             response = match callback_patterns.call(
                 translated_command.command.clone().actf.as_str(),
                 translated_command.command.kwargs.clone(),
@@ -440,11 +441,11 @@ pub fn initialize_socket_client_transposer() {
     // let callbacks_patterns;
 
     // {
-    //     println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-    //     let callback_patt = CALLBACK_PATTERNS.lock();
-    //     println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    //     println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS");
+    //     let callback_patt = CLIENT_CALLBACK_PATTERNS.lock();
+    //     println!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS");
     //     callbacks_patterns = callback_patt.clone();
-    //     println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
+    //     println!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS");
     //     drop(callback_patt)
     // }
 

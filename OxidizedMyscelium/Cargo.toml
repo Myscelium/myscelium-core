@@ -1,5 +1,5 @@
 [package]
-name = "oxidized_myscelium_core"
+name = "OxidizedMyscelium"
 version = "1.3.0"
 edition = "2021"
 description = "Core functionalities for the OxidizedMyscelium library."
