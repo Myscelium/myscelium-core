@@ -525,9 +525,8 @@ fn process(down_command: DownCommand) {
 
         // -> PROCESS CALLBACK RESPONSE:
         result = match response {
-            Ok(r) => {
-                let value: Value = extract_pyobject(py, r);
-
+            Ok(value) => {
+                // let value: Value = extract_pyobject(py, r);
                 println!("Value map extracted from callback response: {:?}", value);
 
                 // Check if the Value is an object and convert it to HashMap

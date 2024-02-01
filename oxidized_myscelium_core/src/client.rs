@@ -1,7 +1,6 @@
 // use socket_client;
 
 use crate::common::enhanced_buffer::utilities::{CommandInstructions, CommandType};
-use crate::common::functions::advanced_lockers::smart_lock;
 use crate::common::structs::available_commands::{
     HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier,
 };
@@ -24,7 +23,7 @@ use std::time::Duration;
 
 // -> Socket Client main-points:
 
-use crate::common::functions::callbacks::extract_arg_types;
+// use crate::common::functions::callbacks::extract_arg_types;
 use crate::socket_client::scheduler::{self, schedule};
 use crate::socket_client::socket_client;
 use crate::socket_client::socket_client::get_available_handlers_registered;

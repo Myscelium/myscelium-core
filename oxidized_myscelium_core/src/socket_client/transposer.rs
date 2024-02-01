@@ -11,7 +11,7 @@ use crate::socket_client::functions::direct_functions::handle_direct_function;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
 use lazy_static::lazy_static;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use serde_json::Value;
 
 use std::collections::HashMap;
@@ -158,9 +158,8 @@ pub enum ProcessError {
 fn process(
     down_command: &DownCommand,
     client_key: &String,
-    callbacks_patterns: std::collections::HashMap<
-        &'static str,
-        Box<dyn Fn() + Send + Sync + 'static>,
+    callbacks_patterns: MutexGuard<
+        HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>,
     >,
 ) -> Result<(), ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
@@ -265,15 +264,15 @@ fn process(
         // -> CALL PYTHON CALLBACK:
         let response;
 
-        response = client_call_callback(py, &translated_command, &callbacks_patterns);
+        response = call_callback(
+            translated_command.command.actf.as_str(),
+            translated_command.command.kwargs,
+            callbacks_patterns,
+        );
 
         // -> PROCESS CALLBACK RESPONSE:
         resp = match response {
-            Ok(r) => {
-                let value: Value = extract_pyobject(py, r);
-
-                println!("Value map extracted from callback response: {:?}", value);
-
+            Ok(value) => {
                 // Check if the Value is None
                 if value == Value::Null {
                     // Handle the None case

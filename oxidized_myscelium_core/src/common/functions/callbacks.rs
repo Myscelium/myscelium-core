@@ -38,7 +38,7 @@ fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
     }
 }
 
-fn call_callback(
+pub fn call_callback(
     key: &str,
     kwargs: HashMap<String, Value>,
     callback_patterns: MutexGuard<
