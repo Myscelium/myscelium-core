@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
+use super::host_logger;
+use super::host_logger::log_handler::Logger;
+use super::transposer_functions::handle_direct_function::ProcessResult;
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
@@ -14,17 +17,13 @@ use crate::common::enhanced_buffer::utilities::{
 use crate::common::functions::callbacks::call_callback;
 use crate::common::functions::converters::convert_to_value_map;
 use crate::common::structs::available_commands::{CommandPatterns, Node, NodeHandler, NodeVersion};
-use parking_lot::Mutex;
-use serde_json::to_string;
-
-use std::time::Duration;
-
-use super::host_logger;
-use super::host_logger::log_handler::Logger;
-use super::transposer_functions::handle_direct_function::ProcessResult;
-
 use crate::HOST_COMMAND_PATTERNS;
 use crate::HOST_LOG_LEVEL;
+use parking_lot::Mutex;
+use serde_json::to_string;
+use std::any::Any;
+use std::boxed::Box;
+use std::time::Duration;
 
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
@@ -36,16 +35,10 @@ macro_rules! acquire_logger {
     }};
 }
 
-use std::any::Any;
-use std::boxed::Box;
-
-type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
+use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 
 lazy_static! {
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
-        let m = HashMap::new();
-        Arc::new(Mutex::new(m))
-    };
+    static ref CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
 
@@ -87,9 +80,9 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
     enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
 }
 
-pub fn set_socket_host_transposer_callbacks(key: &'static str, callback: Box<Callback>) {
+pub fn set_socket_host_transposer_callbacks(key: &'static str, callback: CallbackClosure) {
     println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-    let mut patterns = CALLBACK_PATTERNS.lock();
+    let patterns = &CALLBACK_PATTERNS;
     println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
     patterns.insert(key, callback);
     println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
@@ -484,11 +477,11 @@ fn process(down_command: DownCommand) {
 
     let result: ProcessResult;
 
-    if direct_functions.contains(&translated_command.command.actf) {
+    if direct_functions.contains(&translated_command.command.actf.clone()) {
         // -> HANDLE DIRECT FUNCTIONS:
         result = handle_direct_function(
             &translated_command.client_key,
-            &translated_command.command.actf,
+            &translated_command.command.actf.clone(),
             translated_command.command.clone(),
             Some(command_id),
         );
@@ -514,69 +507,93 @@ fn process(down_command: DownCommand) {
         // -> EXTRACT CALLBACK FUNCTION
 
         let response;
-        let callback;
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
-            let callback_patterns = CALLBACK_PATTERNS.lock();
+            let callback_patterns = CALLBACK_PATTERNS.clone();
 
-            if let Some(c) = callback_patterns
-                .get(translated_command.command.actf.as_str())
-                .clone()
-            {
-                callback = c;
-            } else {
-                let result = ProcessResult::Error(format!(
-                    "Callback with key '{}' not found!",
-                    translated_command.command.actf
-                ));
-                let client_key = down_command.client_key.clone();
-                if let Some(c_id) = down_command.command_id {
-                    process_response_and_schedule(
-                        result,
-                        client_key,
-                        &down_command.parity_id,
-                        &down_command.priority,
-                        c_id,
+            response = match callback_patterns.call(
+                translated_command.command.clone().actf.as_str(),
+                translated_command.command.kwargs.clone(),
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    // Existing logic to handle the error
+                    logger.exception(format!("Callback error: {:?}", e));
+                    let result = ProcessResult::Error(format!("{:?}", e));
+                    let client_key = down_command.client_key.clone();
+                    if let Some(c_id) = down_command.command_id {
+                        process_response_and_schedule(
+                            result,
+                            client_key,
+                            &down_command.parity_id,
+                            &down_command.priority,
+                            c_id,
+                        );
+                    } else {
+                        logger.warn(
+                            "Can't process a command that doesn't have command id".to_string(),
+                        )
+                    }
+
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                        command_id.clone(),
                     );
-                } else {
-                    logger.warn("Can't process a command that doesn't have command id".to_string())
+
+                    return;
                 }
+            };
+
+            let result = ProcessResult::Error(format!(
+                "Callback with key '{}' not found!",
+                translated_command.command.actf.clone()
+            ));
+            let client_key = down_command.client_key.clone();
+            if let Some(c_id) = down_command.command_id {
+                process_response_and_schedule(
+                    result,
+                    client_key,
+                    &down_command.parity_id,
+                    &down_command.priority,
+                    c_id,
+                );
+            } else {
+                logger.warn("Can't process a command that doesn't have command id".to_string())
             }
         }
 
         // -> CALL CALLBACK FUNCTION
 
-        response = match call_callback(
-            translated_command.command.actf.as_str(),
-            translated_command.command.kwargs,
-            callback,
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                // Existing logic to handle the error
-                logger.exception(format!("Callback error: {:?}", e));
-                let result = ProcessResult::Error(format!("{:?}", e));
-                let client_key = down_command.client_key.clone();
-                if let Some(c_id) = down_command.command_id {
-                    process_response_and_schedule(
-                        result,
-                        client_key,
-                        &down_command.parity_id,
-                        &down_command.priority,
-                        c_id,
-                    );
-                } else {
-                    logger.warn("Can't process a command that doesn't have command id".to_string())
-                }
+        // response = match call_callback(
+        //     translated_command.command.actf.as_str(),
+        //     translated_command.command.kwargs,
+        //     callback,
+        // ) {
+        //     Ok(r) => r,
+        //     Err(e) => {
+        //         // Existing logic to handle the error
+        //         logger.exception(format!("Callback error: {:?}", e));
+        //         let result = ProcessResult::Error(format!("{:?}", e));
+        //         let client_key = down_command.client_key.clone();
+        //         if let Some(c_id) = down_command.command_id {
+        //             process_response_and_schedule(
+        //                 result,
+        //                 client_key,
+        //                 &down_command.parity_id,
+        //                 &down_command.priority,
+        //                 c_id,
+        //             );
+        //         } else {
+        //             logger.warn("Can't process a command that doesn't have command id".to_string())
+        //         }
 
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                    command_id.clone(),
-                );
+        //         enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+        //             command_id.clone(),
+        //         );
 
-                return;
-            }
-        };
+        //         return;
+        //     }
+        // };
 
         // -> PROCESS CALLBACK RESPONSE
 
