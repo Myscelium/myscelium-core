@@ -41,27 +41,21 @@ fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
 pub fn call_callback(
     key: &str,
     kwargs: HashMap<String, Value>,
-    callback_patterns: MutexGuard<
-        HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>,
-    >,
+    callback: &Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>,
 ) -> Result<Box<dyn Any>, String> {
-    if let Some(callback) = callback_patterns.get(key) {
-        let mut args: Vec<Box<dyn Any>> = Vec::new();
-        for (_key, value) in kwargs {
-            if let Some(any) = convert_json_value_to_any(&value) {
-                args.push(any);
-            } else {
-                return Err(format!("Unsupported argument type for key: {}", _key));
-            }
+    let mut args: Vec<Box<dyn Any>> = Vec::new();
+    for (_key, value) in kwargs {
+        if let Some(any) = convert_json_value_to_any(&value) {
+            args.push(any);
+        } else {
+            return Err(format!("Unsupported argument type for key: {}", _key));
         }
-
-        // Convert Box<dyn Any> to &[&dyn Any] for callback
-        let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
-
-        Ok(callback(&args_refs))
-    } else {
-        Err(format!("Callback with key '{}' not found!", key))
     }
+
+    // Convert Box<dyn Any> to &[&dyn Any] for callback
+    let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
+
+    Ok(callback(&args_refs))
 }
 
 // pub fn call_callback(

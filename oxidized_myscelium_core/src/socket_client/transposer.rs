@@ -5,7 +5,7 @@ use crate::common::enhanced_buffer::utilities::{
     Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
     CommandType,
 };
-use crate::common::functions::callbacks::{call_callback, client_call_callback, extract_pyobject};
+use crate::common::functions::callbacks::call_callback;
 use crate::common::structs::available_commands::NetworkMap;
 use crate::socket_client::functions::direct_functions::handle_direct_function;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
@@ -46,7 +46,7 @@ type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
         Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<Callback>>>> = {
+    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
         let m = HashMap::new();
         Arc::new(Mutex::new(m))
     };
@@ -155,13 +155,7 @@ pub enum ProcessError {
 /// # Returns
 /// - `Ok(())` if the command was processed successfully.
 /// - `Err(ProcessError)` if an error occurred during processing.
-fn process(
-    down_command: &DownCommand,
-    client_key: &String,
-    callbacks_patterns: MutexGuard<
-        HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>,
-    >,
-) -> Result<(), ProcessError> {
+fn process(down_command: &DownCommand, client_key: &String) -> Result<(), ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
 
     logger.info(format!("Initializing processing!"));
@@ -235,7 +229,7 @@ fn process(
             let callback_patterns = CALLBACK_PATTERNS.lock();
             println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
 
-            if !callback_patterns.contains_key(&translated_command.command.actf) {
+            if !&callback_patterns.contains_key(&translated_command.command.actf.as_str()) {
                 // If the command is not in the patterns, remove it from the schedule and return an error
                 logger.warn(format!("Command isn't registered in the patterns"));
                 enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
@@ -261,21 +255,48 @@ fn process(
         logger.debug(format!("Calling the callback!\n"));
         // Execute the associated Python callback for the command
 
-        // -> CALL PYTHON CALLBACK:
-        let response;
+        // -> EXTRACT CALLBACK FUNCTION
 
-        response = match call_callback(
-            translated_command.command.actf.as_str(),
-            translated_command.command.kwargs,
-            callbacks_patterns,
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                // Existing logic to handle the error
-                logger.exception(format!("Callback error: {:?}", e));
-                return Err(ProcessError::Error(format!("{:?}", e)));
+        let response;
+        let callback;
+
+        {
+            // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
+            let callback_patterns = CALLBACK_PATTERNS.lock();
+
+            if let Some(c) = callback_patterns
+                .get(translated_command.command.actf.as_str())
+                .clone()
+            {
+                callback = c;
+            } else {
+                return Err(ProcessError::Error(format!(
+                    "can't extract callback: {:?}, maybe he doesn't exist",
+                    translated_command.command.actf
+                )));
             }
-        };
+        }
+
+        {
+            println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
+            let callbacks_patterns = CALLBACK_PATTERNS.lock();
+            println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+
+            response = match call_callback(
+                translated_command.command.actf.as_str(),
+                translated_command.command.kwargs,
+                callback,
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    // Existing logic to handle the error
+                    logger.exception(format!("Callback error: {:?}", e));
+                    return Err(ProcessError::Error(format!("{:?}", e)));
+                }
+            };
+
+            println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
+        }
 
         // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
         fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
@@ -465,16 +486,16 @@ pub fn initialize_socket_client_transposer() {
     }
     println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY");
 
-    let callbacks_patterns;
+    // let callbacks_patterns;
 
-    {
-        println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-        let callback_patt = CALLBACK_PATTERNS.lock().clone();
-        println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
-        callbacks_patterns = callback_patt.clone();
-        println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
-        drop(callback_patt)
-    }
+    // {
+    //     println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
+    //     let callback_patt = CALLBACK_PATTERNS.lock();
+    //     println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    //     callbacks_patterns = callback_patt.clone();
+    //     println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
+    //     drop(callback_patt)
+    // }
 
     // Process each scheduled command
     for dow_command in schedule {
@@ -482,43 +503,37 @@ pub fn initialize_socket_client_transposer() {
 
         logger.info(format!("Get a pool worker in transposer!"));
 
-        let py;
-
         {
-            let getting_py = unsafe { Python::assume_gil_acquired() };
-            let gil_pool = unsafe { getting_py.clone().new_pool() };
-            py = gil_pool.python();
             logger.debug(format!("Acquired Python in a process task!"));
 
             // Process the command and handle potential errors
-            let result =
-                process(py, &dow_command, &client_key, &callbacks_patterns).map_err(|e| match e {
-                    ProcessError::CommandAlreadyProcessed(m) => {
-                        format!("Command: {:?} already processed! So skipping", m)
-                    }
-                    ProcessError::CommandNotRegistered(m) => {
-                        format!(
-                            "Command function {:?} not registered in the callbacks! So skipping",
-                            m
-                        )
-                    }
-                    ProcessError::MissingResponseKey(m) => {
-                        format!("Command: {:?}, missing command response key", m)
-                    }
-                    ProcessError::MissingKwargsKey(m) => {
-                        format!("Command: {:?}, missing command kwargs key", m)
-                    }
-                    ProcessError::MissingCommandFunction(m) => {
-                        format!("Command: {:?}, missing command function", m)
-                    }
-                    ProcessError::InvalidCallbackResponse(m, r) => {
-                        format!("Callback function: {:?} invalid response: {:?}", m, r)
-                    }
-                    ProcessError::Error(e) => {
-                        format!("An error occurred while processing command: {:?}", e)
-                    }
-                    ProcessError::UnknownCommandType => "Unknown Command type".to_string(),
-                });
+            let result = process(&dow_command, &client_key).map_err(|e| match e {
+                ProcessError::CommandAlreadyProcessed(m) => {
+                    format!("Command: {:?} already processed! So skipping", m)
+                }
+                ProcessError::CommandNotRegistered(m) => {
+                    format!(
+                        "Command function {:?} not registered in the callbacks! So skipping",
+                        m
+                    )
+                }
+                ProcessError::MissingResponseKey(m) => {
+                    format!("Command: {:?}, missing command response key", m)
+                }
+                ProcessError::MissingKwargsKey(m) => {
+                    format!("Command: {:?}, missing command kwargs key", m)
+                }
+                ProcessError::MissingCommandFunction(m) => {
+                    format!("Command: {:?}, missing command function", m)
+                }
+                ProcessError::InvalidCallbackResponse(m, r) => {
+                    format!("Callback function: {:?} invalid response: {:?}", m, r)
+                }
+                ProcessError::Error(e) => {
+                    format!("An error occurred while processing command: {:?}", e)
+                }
+                ProcessError::UnknownCommandType => "Unknown Command type".to_string(),
+            });
 
             match result {
                 Ok(()) => {

@@ -511,44 +511,74 @@ fn process(down_command: DownCommand) {
             }
         }
 
-        // -> CALL PYTHON CALLBACK:
+        // -> EXTRACT CALLBACK FUNCTION
+
         let response;
+        let callback;
 
         {
+            // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = CALLBACK_PATTERNS.lock();
-            response = match call_callback(
-                translated_command.command.actf.as_str(),
-                translated_command.command.kwargs,
-                callback_patterns,
-            ) {
-                Ok(r) => r,
-                Err(e) => {
-                    // Existing logic to handle the error
-                    logger.exception(format!("Callback error: {:?}", e));
-                    let result = ProcessResult::Error(format!("{:?}", e));
-                    let client_key = down_command.client_key.clone();
-                    if let Some(c_id) = down_command.command_id {
-                        process_response_and_schedule(
-                            result,
-                            client_key,
-                            &down_command.parity_id,
-                            &down_command.priority,
-                            c_id,
-                        );
-                    } else {
-                        logger.warn(
-                            "Can't process a command that doesn't have command id".to_string(),
-                        )
-                    }
 
-                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                        command_id.clone(),
+            if let Some(c) = callback_patterns
+                .get(translated_command.command.actf.as_str())
+                .clone()
+            {
+                callback = c;
+            } else {
+                let result = ProcessResult::Error(format!(
+                    "Callback with key '{}' not found!",
+                    translated_command.command.actf
+                ));
+                let client_key = down_command.client_key.clone();
+                if let Some(c_id) = down_command.command_id {
+                    process_response_and_schedule(
+                        result,
+                        client_key,
+                        &down_command.parity_id,
+                        &down_command.priority,
+                        c_id,
                     );
-
-                    return;
+                } else {
+                    logger.warn("Can't process a command that doesn't have command id".to_string())
                 }
-            };
+            }
         }
+
+        // -> CALL CALLBACK FUNCTION
+
+        response = match call_callback(
+            translated_command.command.actf.as_str(),
+            translated_command.command.kwargs,
+            callback,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                // Existing logic to handle the error
+                logger.exception(format!("Callback error: {:?}", e));
+                let result = ProcessResult::Error(format!("{:?}", e));
+                let client_key = down_command.client_key.clone();
+                if let Some(c_id) = down_command.command_id {
+                    process_response_and_schedule(
+                        result,
+                        client_key,
+                        &down_command.parity_id,
+                        &down_command.priority,
+                        c_id,
+                    );
+                } else {
+                    logger.warn("Can't process a command that doesn't have command id".to_string())
+                }
+
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                    command_id.clone(),
+                );
+
+                return;
+            }
+        };
+
+        // -> PROCESS CALLBACK RESPONSE
 
         // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
         fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
