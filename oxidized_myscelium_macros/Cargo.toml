@@ -12,7 +12,6 @@ opt-level = 3
 proc-macro = true
 
 [dependencies]
-oxidized_myscelium_core = { path = "../oxidized_myscelium_core" }
 proc-macro2 = "1.0"
 syn = { version = "1.0", features = ["full"] }
 quote = "1.0"

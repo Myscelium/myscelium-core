@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, ItemFn};
 
-use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
+// use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
 
 // use host_entry_point::set_socket_client_transposer_callbacks;
 
