@@ -43,8 +43,6 @@ use chrono::Duration;
 use crate::HOST_IS_RUNNING;
 use std::sync::atomic::Ordering;
 
-use pyo3::types::PyFunction;
-
 use super::host_logger;
 use super::host_logger::log_handler::Logger;
 use crate::HOST_LOG_LEVEL;
@@ -60,10 +58,9 @@ use crate::HOST_COMMAND_PATTERNS;
 lazy_static! {
     static ref MAX_CONS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
     static ref CLIENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(' '.to_string()));
-    // static ref CLIENTS_ALLOWED: Arc<Mutex<HashMap<String, Client>>> = Arc::new(Mutex::new(HashMap::new()));
-    static ref HEARTBEAT_CALLBACK: Arc<Mutex<HashMap<String, (Py<PyFunction>, Value)>>> = {
-        let command_patterns: HashMap<String, (Py<PyFunction>, Value)> = HashMap::new();
-        Arc::new(Mutex::new(command_patterns))
+    static ref HEARTBEAT_CALLBACK: Arc<Mutex<std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>>> = {
+        let m = std::collections::HashMap::new();
+        Arc::new(Mutex::new(m))
     };
     static ref CONNECTION_HANDLER_POOL: Arc<Mutex<UnifiedThreadPool>> = {
         let max_connections;
@@ -286,7 +283,9 @@ macro_rules! send_error_response {
     };
 }
 
-pub fn set_heartbeat_callback(callback_pattern: HashMap<String, (Py<PyFunction>, Value)>) {
+pub fn set_heartbeat_callback(
+    callback_pattern: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>,
+) {
     {
         let mut heart_beat_callback = HEARTBEAT_CALLBACK.lock().unwrap();
         *heart_beat_callback = callback_pattern;

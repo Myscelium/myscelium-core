@@ -12,7 +12,7 @@ use crate::common::enhanced_buffer::utilities::{
     CommandType,
 };
 use crate::common::functions::converters::convert_to_value_map;
-use crate::common::functions::python_functions::{call_callback, extract_pyobject};
+// use crate::common::functions::python_functions::{call_callback, extract_pyobject};
 use crate::common::structs::available_commands::VersionIndentifier;
 use crate::common::structs::available_commands::{CommandPatterns, Node, NodeHandler, NodeVersion};
 use crate::common::structs::results_structs::ResultType;
@@ -41,9 +41,9 @@ macro_rules! acquire_logger {
 }
 
 lazy_static! {
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<String, (Py<PyFunction>, Value)>>> = {
-        let command_patterns: HashMap<String, (Py<PyFunction>, Value)> = HashMap::new();
-        Arc::new(Mutex::new(command_patterns))
+    static ref CALLBACK_PATTERNS: Arc<Mutex<std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>>> = {
+        let m = std::collections::HashMap::new();
+        Arc::new(Mutex::new(m))
     };
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
@@ -86,37 +86,8 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
     enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
 }
 
-/// Sets the command patterns and callback patterns for the socket host transposer.
-///
-/// This function updates the global patterns used by the transposer to handle incoming commands
-/// and their associated callbacks. By setting these patterns, the behavior of the transposer
-/// in response to specific commands can be defined or modified.
-///
-/// # Parameters
-///
-/// - `commands_patterns`: A `HashMap` that maps command names (as `String`s) to their associated
-///   patterns (as `Value`s). These patterns determine how specific commands are processed.
-/// - `callbacks_patterns`: A `HashMap` that maps command names (as `String`s) to their associated
-///   Python callbacks and patterns. The callback (of type `Py<PyFunction>`) is executed when the
-///   corresponding command is received, and the pattern (as `Value`) determines the expected structure
-///   or behavior of the callback.
-///
-/// # Usage
-///
-/// This function is typically called during the initialization phase of the socket host transposer or
-/// when there's a need to update or modify the behavior of command processing.
-///
-/// # Examples
-///
-/// ```rust
-/// let commands_patterns = ...; // Initialize command patterns
-/// let callbacks_patterns = ...; // Initialize callback patterns
-///
-/// set_socket_host_transposer_callbacks(commands_patterns, callbacks_patterns);
-/// ```
-///
 pub fn set_socket_host_transposer_callbacks(
-    callbacks_patterns: HashMap<String, (Py<PyFunction>, Value)>,
+    callbacks_patterns: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>,
 ) {
     let mut callback_patterns = CALLBACK_PATTERNS.lock().unwrap();
     *callback_patterns = callbacks_patterns;
@@ -450,7 +421,7 @@ fn process_response_and_schedule(
 /// process(py, down_command);
 /// ```
 ///
-fn process(py: Python, down_command: DownCommand) {
+fn process(down_command: DownCommand) {
     let logger = acquire_logger!("Transposer - Process");
 
     logger.debug(format!("Initializing processing!"));

@@ -259,9 +259,11 @@ pub fn extract_pyobject(py: Python, obj: PyObject) -> serde_json::Value {
 }
 
 pub fn call_callback(
-    py: Python<'_>,
     command: Command,
-    callback_patterns: MutexGuard<'_, HashMap<String, (Py<PyFunction>, Value)>>,
+    callback_patterns: MutexGuard<
+        '_,
+        std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>,
+    >,
 ) -> PyResult<PyObject> {
     println!("Command to call a callback: {:?}", command);
 
@@ -315,9 +317,11 @@ pub fn call_callback(
 }
 
 pub fn client_call_callback(
-    py: Python<'_>,
     command: &Command,
-    callback_patterns: &HashMap<std::string::String, (pyo3::Py<PyFunction>, serde_json::Value)>,
+    callback_patterns: std::collections::HashMap<
+        &'static str,
+        Box<dyn Fn() + Send + Sync + 'static>,
+    >,
 ) -> PyResult<PyObject> {
     println!("Command to call a callback: {:?}", command);
 
