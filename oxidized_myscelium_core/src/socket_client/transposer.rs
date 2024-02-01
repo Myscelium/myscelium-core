@@ -43,13 +43,12 @@ use std::boxed::Box;
 
 type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
+use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
+
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
         Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
-        let m = HashMap::new();
-        Arc::new(Mutex::new(m))
-    };
+    static ref CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
 
@@ -84,9 +83,9 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// # Arguments
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
-pub fn set_socket_client_transposer_callbacks(key: &'static str, callback: Box<Callback>) {
+pub fn set_socket_client_transposer_callbacks(key: &'static str, callback: Box<CallbackClosure>) {
     println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-    let mut patterns = CALLBACK_PATTERNS.lock();
+    let patterns = &CALLBACK_PATTERNS;
     println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
     patterns.insert(key, callback);
     println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
@@ -222,79 +221,32 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     } else {
         println!("Command isn't a direct function");
 
-        {
-            // logger.debug("Try lock in command patterns".to_string());
-
-            println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-            let callback_patterns = CALLBACK_PATTERNS.lock();
-            println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
-
-            if !&callback_patterns.contains_key(&translated_command.command.actf.as_str()) {
-                // If the command is not in the patterns, remove it from the schedule and return an error
-                logger.warn(format!("Command isn't registered in the patterns"));
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                    command_id.clone(),
-                );
-                logger.info(format!("command skipped and removed from schedule"));
-                return Err(ProcessError::CommandNotRegistered(
-                    translated_command.command.actf.clone(),
-                ));
-            }
-
-            drop(callback_patterns);
-            println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
-            // logger.debug("release command patterns".to_string());
-        }
-
-        println!("Command exists!");
-
-        logger.info(format!(
-            "Command function: {} is a valid function!",
-            translated_command.command.actf
-        ));
         logger.debug(format!("Calling the callback!\n"));
         // Execute the associated Python callback for the command
 
-        // -> EXTRACT CALLBACK FUNCTION
-
+        // -> EXTRACT CALLBACK FUNCTION AND CALL IT
         let response;
-        let callback;
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
-            let callback_patterns = CALLBACK_PATTERNS.lock();
-            if let Some(c) = callback_patterns
-                .get(translated_command.command.actf.as_str())
-                .clone()
-            {
-                callback = c.clone();
-            } else {
-                return Err(ProcessError::Error(format!(
-                    "can't extract callback: {:?}, maybe he doesn't exist",
-                    translated_command.command.actf
-                )));
-            }
-        }
-
-        {
-            println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-            let callbacks_patterns = CALLBACK_PATTERNS.lock();
-            println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
-
-            response = match call_callback(
-                translated_command.command.actf.as_str(),
-                translated_command.command.kwargs,
-                callback,
+            let callback_patterns = CALLBACK_PATTERNS.clone();
+            response = match callback_patterns.call(
+                translated_command.command.clone().actf.as_str(),
+                translated_command.command.kwargs.clone(),
             ) {
-                Ok(r) => r,
+                Ok(r) => {
+                    logger.info(format!(
+                        "External function: {} is a valid function!",
+                        translated_command.command.actf.clone()
+                    ));
+                    r
+                }
                 Err(e) => {
                     // Existing logic to handle the error
                     logger.exception(format!("Callback error: {:?}", e));
                     return Err(ProcessError::Error(format!("{:?}", e)));
                 }
             };
-
-            println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
         }
 
         // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
