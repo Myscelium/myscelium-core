@@ -38,11 +38,16 @@ macro_rules! acquire_logger {
 
 use crate::CLIENT_NODE_KEY;
 
+use std::any::Any;
+use std::boxed::Box;
+
+type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
+
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
         Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
-    static ref CALLBACK_PATTERNS: Arc<Mutex<std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>>> = {
-        let m = std::collections::HashMap::new();
+    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<Callback>>>> = {
+        let m = HashMap::new();
         Arc::new(Mutex::new(m))
     };
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
@@ -79,23 +84,12 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// # Arguments
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
-pub fn set_socket_client_transposer_callbacks(
-    callbacks_patterns: HashMap<String, (Py<PyFunction>, Value)>,
-) {
-    {
-        println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY");
-        let client_name = CLIENT_NODE_KEY.lock().clone();
-        println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY");
-
-        {
-            println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
-            let mut callback_patterns = CALLBACK_PATTERNS.lock();
-            println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
-            *callback_patterns = callbacks_patterns;
-            println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
-        }
-    }
-    println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY");
+pub fn set_socket_client_transposer_callbacks(key: &'static str, callback: Box<Callback>) {
+    println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
+    let mut patterns = CALLBACK_PATTERNS.lock();
+    println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    patterns.insert(key, callback);
+    println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
 }
 
 // Transposer:

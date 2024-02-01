@@ -40,9 +40,14 @@ macro_rules! acquire_logger {
     }};
 }
 
+use std::any::Any;
+use std::boxed::Box;
+
+type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
+
 lazy_static! {
-    static ref CALLBACK_PATTERNS: Arc<Mutex<std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>>> = {
-        let m = std::collections::HashMap::new();
+    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<Callback>>>> = {
+        let m = HashMap::new();
         Arc::new(Mutex::new(m))
     };
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
@@ -86,11 +91,12 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
     enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
 }
 
-pub fn set_socket_host_transposer_callbacks(
-    callbacks_patterns: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>,
-) {
-    let mut callback_patterns = CALLBACK_PATTERNS.lock().unwrap();
-    *callback_patterns = callbacks_patterns;
+pub fn set_socket_host_transposer_callbacks(key: &'static str, callback: Box<Callback>) {
+    println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
+    let mut patterns = CALLBACK_PATTERNS.lock();
+    println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
+    patterns.insert(key, callback);
+    println!("[CLIENT][GLOBAL][Release] - CALLBACK_PATTERNS");
 }
 
 // > Transposer:
