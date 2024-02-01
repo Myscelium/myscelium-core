@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -18,9 +19,9 @@ use crate::socket_client::client_logger::register::register_manager;
 
 lazy_static! {
     static ref CALLBACK_SET: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    static ref LOGS_HANDLER_CALLBACK: Arc<Mutex<HashMap<String, (Py<PyFunction>, Value)>>> = {
-        let command_patterns: HashMap<String, (Py<PyFunction>, Value)> = HashMap::new();
-        Arc::new(Mutex::new(command_patterns))
+    static ref LOGS_HANDLER_CALLBACK: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
+        let m = HashMap::new();
+        Arc::new(Mutex::new(m))
     };
 }
 

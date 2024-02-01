@@ -43,10 +43,32 @@ use std::boxed::Box;
 
 type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
+// Define a trait for closures
+trait MyFn: Send + Sync + 'static {
+    fn call(&self, args: &[&dyn Any]) -> Box<dyn Any>;
+}
+
+impl<F> MyFn for F
+where
+    F: Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync + 'static,
+{
+    fn call(&self, args: &[&dyn Any]) -> Box<dyn Any> {
+        self(args)
+    }
+}
+
+// Function to clone CALLBACK_PATTERNS
+fn clone_callback_patterns() -> Arc<Mutex<HashMap<&'static str, Box<dyn MyFn>>>> {
+    let patterns = CALLBACK_PATTERNS.lock();
+    let cloned_patterns: HashMap<&'static str, Box<dyn MyFn>> =
+        patterns.iter().map(|(&k, v)| (k, v.clone())).collect();
+    Arc::new(Mutex::new(cloned_patterns))
+}
+
 lazy_static! {
     pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
         Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
+    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn MyFn>>>> = {
         let m = HashMap::new();
         Arc::new(Mutex::new(m))
     };
@@ -84,7 +106,10 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// # Arguments
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
-pub fn set_socket_client_transposer_callbacks(key: &'static str, callback: Box<Callback>) {
+pub fn set_socket_client_transposer_callbacks(
+    key: &'static str,
+    callback: Box<dyn MyFn + 'static>,
+) {
     println!("[CLIENT][GLOBAL][Try Lock] - CALLBACK_PATTERNS");
     let mut patterns = CALLBACK_PATTERNS.lock();
     println!("[CLIENT][GLOBAL][Lock] - CALLBACK_PATTERNS");
@@ -262,13 +287,9 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
-            let callback_patterns = CALLBACK_PATTERNS.lock();
-
-            if let Some(c) = callback_patterns
-                .get(translated_command.command.actf.as_str())
-                .clone()
-            {
-                callback = c;
+            let callback_patterns = CALLBACK_PATTERNS.lock().clone();
+            if let Some(c) = callback_patterns.get(translated_command.command.actf.as_str()) {
+                callback = c.clone();
             } else {
                 return Err(ProcessError::Error(format!(
                     "can't extract callback: {:?}, maybe he doesn't exist",
