@@ -42,7 +42,7 @@ use std::boxed::Box;
 type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
 lazy_static! {
-    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<Callback>>>> = {
+    static ref CALLBACK_PATTERNS: Arc<Mutex<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>> = {
         let m = HashMap::new();
         Arc::new(Mutex::new(m))
     };
@@ -516,15 +516,50 @@ fn process(down_command: DownCommand) {
 
         {
             let callback_patterns = CALLBACK_PATTERNS.lock();
-            response = call_callback(
-                translated_command.command.actf.clone().as_str(),
+            response = match call_callback(
+                translated_command.command.actf.as_str(),
                 translated_command.command.kwargs,
                 callback_patterns,
-            );
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    // Existing logic to handle the error
+                    logger.exception(format!("Callback error: {:?}", e));
+                    let result = ProcessResult::Error(format!("{:?}", e));
+                    let client_key = down_command.client_key.clone();
+                    if let Some(c_id) = down_command.command_id {
+                        process_response_and_schedule(
+                            result,
+                            client_key,
+                            &down_command.parity_id,
+                            &down_command.priority,
+                            c_id,
+                        );
+                    } else {
+                        logger.warn(
+                            "Can't process a command that doesn't have command id".to_string(),
+                        )
+                    }
+
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                        command_id.clone(),
+                    );
+
+                    return;
+                }
+            };
+        }
+
+        // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
+        fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
+            result
+                .downcast::<Value>()
+                .map(|boxed_value| *boxed_value) // Extract the Value from the Box
+                .map_err(|_| "Returned value is not a serde_json::Value".to_string())
         }
 
         // -> PROCESS CALLBACK RESPONSE:
-        result = match response {
+        result = match extract_json_value(response) {
             Ok(value) => {
                 // let value: Value = extract_pyobject(py, r);
                 println!("Value map extracted from callback response: {:?}", value);
@@ -602,20 +637,10 @@ pub fn initialize_socket_host_transposer() {
 
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");
-
         logger.info(format!("get a pool worker in transposer!"));
-
-        let py;
-
         {
-            let getting_py = unsafe { Python::assume_gil_acquired() };
-
-            let gil_pool = unsafe { getting_py.clone().new_pool() };
-
-            py = gil_pool.python();
-
-            logger.debug(format!("Aquired python in a process task!"));
-            process(py, dow_command);
+            logger.debug(format!("Start to process task!"));
+            process(dow_command);
             logger.debug(format!("Finalize a process task!"));
         }
     }

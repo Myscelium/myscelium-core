@@ -264,14 +264,29 @@ fn process(
         // -> CALL PYTHON CALLBACK:
         let response;
 
-        response = call_callback(
+        response = match call_callback(
             translated_command.command.actf.as_str(),
             translated_command.command.kwargs,
             callbacks_patterns,
-        );
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                // Existing logic to handle the error
+                logger.exception(format!("Callback error: {:?}", e));
+                return Err(ProcessError::Error(format!("{:?}", e)));
+            }
+        };
+
+        // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
+        fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
+            result
+                .downcast::<Value>()
+                .map(|boxed_value| *boxed_value) // Extract the Value from the Box
+                .map_err(|_| "Returned value is not a serde_json::Value".to_string())
+        }
 
         // -> PROCESS CALLBACK RESPONSE:
-        resp = match response {
+        resp = match extract_json_value(response) {
             Ok(value) => {
                 // Check if the Value is None
                 if value == Value::Null {
@@ -297,7 +312,10 @@ fn process(
             }
             Err(e) => {
                 // Existing logic to handle the error
-                logger.exception(format!("Python error: {:?}", e));
+                logger.exception(format!(
+                    "Response isn't compatible with json, error: {:?}",
+                    e
+                ));
                 return Err(ProcessError::Error(format!("{:?}", e)));
             }
         };
