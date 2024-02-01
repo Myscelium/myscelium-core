@@ -13,15 +13,66 @@ use std::collections::HashMap;
 use std::result;
 use std::sync::Arc;
 
+trait JsonToAny {
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl JsonToAny for i64 {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl JsonToAny for String {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
+    match value {
+        Value::String(s) => Some(Box::new(s.clone()) as Box<dyn Any>),
+        Value::Number(n) if n.is_i64() => n.as_i64().map(|i| Box::new(i) as Box<dyn Any>),
+        // Handle other types as needed
+        _ => None,
+    }
+}
+
 fn call_callback(
     key: &str,
-    args: &[&dyn Any],
-    callback_patterns: Arc<
-        MutexGuard<HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>>,
+    kwargs: HashMap<String, Value>,
+    callback_patterns: MutexGuard<
+        HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>,
     >,
-) -> Option<Box<dyn Any>> {
-    callback_patterns.get(key).map(|callback| callback(args))
+) -> Result<Box<dyn Any>, String> {
+    if let Some(callback) = callback_patterns.get(key) {
+        let mut args: Vec<Box<dyn Any>> = Vec::new();
+        for (_key, value) in kwargs {
+            if let Some(any) = convert_json_value_to_any(&value) {
+                args.push(any);
+            } else {
+                return Err(format!("Unsupported argument type for key: {}", _key));
+            }
+        }
+
+        // Convert Box<dyn Any> to &[&dyn Any] for callback
+        let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
+
+        Ok(callback(&args_refs))
+    } else {
+        Err(format!("Callback with key '{}' not found!", key))
+    }
 }
+
+// pub fn call_callback(
+//     key: &str,
+//     args: &[&dyn Any],
+//     callback_patterns: MutexGuard<
+//         HashMap<&'static str, Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>>,
+//     >,
+// ) -> Option<Box<dyn Any>> {
+//     callback_patterns.get(key).map(|callback| callback(args))
+// }
 
 // pub fn call_callback(command: Command) -> Option<HashMap<String, Value>> {
 //     if let Some(callback) = callback_patterns.get(&command.command.actf) {

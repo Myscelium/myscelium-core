@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use crate::common::enhanced_buffer;
@@ -11,24 +11,20 @@ use crate::common::enhanced_buffer::utilities::{
     Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
     CommandType,
 };
+use crate::common::functions::callbacks::call_callback;
 use crate::common::functions::converters::convert_to_value_map;
-// use crate::common::functions::python_functions::{call_callback, extract_pyobject};
-use crate::common::structs::available_commands::VersionIndentifier;
 use crate::common::structs::available_commands::{CommandPatterns, Node, NodeHandler, NodeVersion};
-use crate::common::structs::results_structs::ResultType;
+use parking_lot::Mutex;
 use serde_json::to_string;
-use serde_json::Error;
 
 use std::time::Duration;
 
 use super::host_logger;
 use super::host_logger::log_handler::Logger;
 use super::transposer_functions::handle_direct_function::ProcessResult;
-use crate::HOST_LOG_LEVEL;
-
-use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
 
 use crate::HOST_COMMAND_PATTERNS;
+use crate::HOST_LOG_LEVEL;
 
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
@@ -83,7 +79,7 @@ lazy_static! {
 ///
 pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
     host_logger::register::register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
-    let mut default_num_of_workers = NUM_WORKERS.lock().unwrap();
+    let mut default_num_of_workers = NUM_WORKERS.lock();
 
     *default_num_of_workers = n_workers;
 
@@ -519,8 +515,12 @@ fn process(down_command: DownCommand) {
         let response;
 
         {
-            let callback_patterns = CALLBACK_PATTERNS.lock().unwrap();
-            response = call_callback(py, translated_command.clone(), callback_patterns);
+            let callback_patterns = CALLBACK_PATTERNS.lock();
+            response = call_callback(
+                translated_command.command.actf.clone().as_str(),
+                translated_command.command.kwargs,
+                callback_patterns,
+            );
         }
 
         // -> PROCESS CALLBACK RESPONSE:
