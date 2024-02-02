@@ -18,10 +18,13 @@ extern crate chrono;
 
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 
+pub use crate::common::enhanced_buffer::utilities::Command;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
-pub use common::structs::available_commands::NetworkMap;
-pub use common::structs::available_commands::Node;
-pub use socket_client::states_manager::manager::ClientState;
+pub use common::enhanced_buffer::utilities::CommandInstructions;
+pub use common::enhanced_buffer::utilities::CommandType;
+pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
+pub use common::structs::results_structs::ResultType;
+pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
 
 lazy_static! {
 
@@ -51,12 +54,10 @@ fn main() {}
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-use crate::common::enhanced_buffer::utilities::{CommandInstructions, CommandType};
-use crate::common::structs::available_commands::{HandlerStatus, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
 use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
-use crate::socket_client::states_manager::manager::{inialize_client_status_table_table, StateManagerError};
+use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
-use std::process::Command;
+
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
@@ -92,12 +93,12 @@ pub fn initialize_client_buffer_tables(path: &String) {
     return;
 }
 
-#[derive(Debug, Clone)]
-enum ResultType {
-    Empty,
-    Map(HashMap<String, String>),
-    Error(String),
-}
+// #[derive(Debug, Clone)]
+// pub enum ResultType {
+//     Empty,
+//     Map(HashMap<String, String>),
+//     Error(String),
+// }
 
 pub fn is_target_ready(node_key: String) -> bool {
     let client_status = match ClientState::load_from_storage() {
@@ -378,7 +379,7 @@ pub fn initialize_socket_client(ip: String, port: i32, client_key: String, clien
 
 // use crate::common::enhanced_buffer::utilities::CommandType;
 // use crate::common::functions::callbacks::extract_arg_types;
-// use crate::common::functions::callbacks::translate_value_to_py;
+
 use crate::socket_host::client_manager::manager::Client;
 use crate::socket_host::client_manager::manager::{check_if_client_key_exists, clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
 use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
