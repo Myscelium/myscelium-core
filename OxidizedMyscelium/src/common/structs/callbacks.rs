@@ -15,7 +15,7 @@ pub type CallbackClosure = Box<dyn Fn(Vec<Box<dyn Any + 'static>>) -> Box<dyn An
 
 #[derive(Clone)]
 pub struct MyCallbacks {
-    pub map: Arc<Mutex<HashMap<&'static str, CallbackClosure>>>,
+    pub map: Arc<Mutex<HashMap<String, CallbackClosure>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,20 +36,15 @@ fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
 
 impl MyCallbacks {
     pub fn new() -> Self {
-        MyCallbacks {
-            map: Arc::new(Mutex::new(HashMap::new())),
-        }
+        MyCallbacks { map: Arc::new(Mutex::new(HashMap::new())) }
     }
 
-    pub fn insert(&self, key: &'static str, closure: CallbackClosure) {
-        self.map.lock().insert(key, closure);
+    pub fn insert(&self, key: String, closure: CallbackClosure) {
+        let mut map = self.map.lock();
+        map.insert(key, closure);
     }
 
-    pub fn call(
-        &self,
-        key: &str,
-        kwargs: HashMap<String, Value>,
-    ) -> Result<Box<dyn Any>, CallbackError> {
+    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>) -> Result<Box<dyn Any>, CallbackError> {
         let map = self.map.lock();
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------

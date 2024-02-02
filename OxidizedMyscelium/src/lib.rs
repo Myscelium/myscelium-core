@@ -235,6 +235,22 @@ pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
     get_available_handlers_registered()
 }
 
+pub fn set_client_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
+    for (key, callback) in callbacks {
+        set_socket_client_transposer_callbacks(key, callback)
+    }
+}
+
+// fn concatenate_strings(args: Vec<Box<dyn Any + 'static>>) -> Box<dyn Any> {
+//     let mut result = String::new();
+//     for arg in args {
+//         if let Some(string_arg) = arg.downcast_ref::<String>() {
+//             result.push_str(string_arg);
+//         }
+//     }
+//     Box::new(result) as Box<dyn Any>
+// }
+
 pub fn get_client_state() -> bool {
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         true
