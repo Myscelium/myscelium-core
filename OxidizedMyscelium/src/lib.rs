@@ -16,15 +16,18 @@ use parking_lot::Mutex;
 extern crate chrono;
 // use crate::socket_client::states_manager::manager::ClientState;
 
-use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
-
 pub use crate::common::enhanced_buffer::utilities::Command;
+use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
 pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
 pub use common::structs::results_structs::ResultType;
 pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
+
+// -> HOST
+pub use crate::socket_host::client_manager::manager::Client;
+pub use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
 
 lazy_static! {
 
@@ -380,12 +383,10 @@ pub fn initialize_socket_client(ip: String, port: i32, client_key: String, clien
 // use crate::common::enhanced_buffer::utilities::CommandType;
 // use crate::common::functions::callbacks::extract_arg_types;
 
-use crate::socket_host::client_manager::manager::Client;
 use crate::socket_host::client_manager::manager::{check_if_client_key_exists, clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
 use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
 use crate::socket_host::socket_host::{get_available_commands_registered, initialize_host};
 use crate::socket_host::socket_host::{initialize_host_buffer, set_heartbeat_callback, set_max_conns};
-use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
 use crate::socket_host::transposer::{initialize_socket_host_transposer, set_socket_host_transposer_callbacks, set_socket_host_transposer_workers_num};
 
 lazy_static! {
