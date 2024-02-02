@@ -5,11 +5,7 @@ mod common;
 mod socket_client;
 mod socket_host;
 
-mod host;
 use common::structs::available_commands::Node;
-use host::*;
-
-mod client;
 
 use lazy_static::lazy_static;
 use serde_json::Value;
@@ -177,13 +173,36 @@ pub enum ClientError {
     NotAbleToReadClientStates,
 }
 
+pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
+    if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+        println!("Error, client isn't running, pls run the client before try to send something!");
+        return Err(ClientError::ClientIsNotRunning);
+    }
+
+    let command_instructions = CommandInstructions::from_string_hashmap(command).unwrap();
+
+    let _ = match schedule(command_instructions, priority) {
+        Ok(o) => o,
+        Err(e) => match e {
+            scheduler::SchedulingError::CantReadStates => {
+                return Err(ClientError::NotAbleToReadClientStates);
+            },
+            scheduler::SchedulingError::ClientIsntFullyInitialized => {
+                return Err(ClientError::ClientNotFullyInitialized);
+            },
+        },
+    };
+
+    Ok(())
+}
+
 pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), ClientError> {
     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
     }
 
-    let outcome = match schedule(command, priority) {
+    let _ = match schedule(command, priority) {
         Ok(o) => o,
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
