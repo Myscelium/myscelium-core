@@ -5,8 +5,6 @@ mod common;
 mod socket_client;
 mod socket_host;
 
-use common::structs::available_commands::Node;
-
 use lazy_static::lazy_static;
 use serde_json::Value;
 
@@ -16,10 +14,14 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 extern crate chrono;
-use crate::common::structs::available_commands::NetworkMap;
-use crate::socket_client::states_manager::manager::ClientState;
+// use crate::socket_client::states_manager::manager::ClientState;
 
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
+
+pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
+pub use common::structs::available_commands::NetworkMap;
+pub use common::structs::available_commands::Node;
+pub use socket_client::states_manager::manager::ClientState;
 
 lazy_static! {
 
