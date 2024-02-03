@@ -1,37 +1,26 @@
-use serde_json::Value;
-use std::collections::HashMap;
-use std::hash::Hash;
-
+use crate::chrono::TimeZone;
+use crate::common::client_manager::manager::get_all_clients;
+use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::functions::converters::{convert_json_map_to_hash_map, convert_value_map_to_resulttype_map, ConversionError};
 use crate::common::structs::available_commands::NodeStatus;
 use crate::common::structs::available_commands::{CommandPatterns, Node};
 use crate::common::structs::results_structs::ResultType;
+use crate::handle_manager_client_error;
 use crate::socket_client::transposer::ProcessError;
-
-use serde::{Deserialize, Serialize};
-
-use crate::HOST_COMMAND_PATTERNS;
-
-use crate::socket_host::client_manager::manager::get_all_clients;
-
 use crate::socket_host::host_logger::log_handler::Logger;
-use crate::HOST_LOG_LEVEL;
-
-use crate::socket_host::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
-
-use crate::common::functions::converters::{convert_json_map_to_hash_map, convert_value_map_to_resulttype_map, ConversionError};
-
-use crate::CLIENTS_SYNC_CONTROLLER;
-
-use crate::handle_client_error;
+use crate::socket_host::sync_controller::controller::Clients;
 use crate::socket_host::transposer_functions::helpers::cast_new_client;
-
-use crate::chrono::TimeZone;
+use crate::CLIENTS_SYNC_CONTROLLER;
+use crate::HOST_COMMAND_PATTERNS;
+use crate::HOST_LOG_LEVEL;
 use chrono::Duration;
 use chrono::Utc;
-
-use crate::socket_host::sync_controller::controller::Clients;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
@@ -374,7 +363,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 },
             };
 
-            let old_client = handle_client_error!(Client::get_by_key(&actual_client_key.to_string()));
+            let old_client = handle_manager_client_error!(Client::get_by_key(&actual_client_key.to_string()));
 
             // TODO >>> Maybe implement a fast result-ype to client if needed
 
@@ -430,7 +419,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
             let client_key: String = command.kwargs.get("client_key").unwrap().as_str().map(|s| s.to_string()).unwrap();
 
-            let client = handle_client_error!(Client::get_by_key(&client_key));
+            let client = handle_manager_client_error!(Client::get_by_key(&client_key));
 
             let result = client.delete();
 

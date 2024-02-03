@@ -1,3 +1,4 @@
+use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
@@ -5,7 +6,6 @@ use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, Co
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
 use crate::common::structs::results_structs::ResultType;
-use crate::socket_host::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use serde_json::to_string;
 
 use lazy_static::lazy_static;

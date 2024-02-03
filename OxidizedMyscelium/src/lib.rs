@@ -16,6 +16,7 @@ use parking_lot::Mutex;
 extern crate chrono;
 // use crate::socket_client::states_manager::manager::ClientState;
 
+pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
@@ -26,8 +27,10 @@ pub use common::structs::results_structs::ResultType;
 pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
 
 // -> HOST
-pub use crate::socket_host::client_manager::manager::Client;
+pub use crate::common::client_manager::manager::check_if_client_key_exists;
+pub use crate::common::client_manager::manager::Client;
 pub use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
+pub use socket_host::socket_host::set_heartbeat_callback;
 
 lazy_static! {
 
@@ -173,11 +176,11 @@ pub fn is_client_ready() -> bool {
     return true;
 }
 
-pub enum ClientError {
-    ClientIsNotRunning,
-    ClientNotFullyInitialized,
-    NotAbleToReadClientStates,
-}
+// pub enum ClientError {
+//     ClientIsNotRunning,
+//     ClientNotFullyInitialized,
+//     NotAbleToReadClientStates,
+// }
 
 pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
@@ -383,11 +386,13 @@ pub fn initialize_socket_client(ip: String, port: i32, client_key: String, clien
 // use crate::common::enhanced_buffer::utilities::CommandType;
 // use crate::common::functions::callbacks::extract_arg_types;
 
-use crate::socket_host::client_manager::manager::{check_if_client_key_exists, clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
+use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
 use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
-use crate::socket_host::socket_host::{get_available_commands_registered, initialize_host};
-use crate::socket_host::socket_host::{initialize_host_buffer, set_heartbeat_callback, set_max_conns};
-use crate::socket_host::transposer::{initialize_socket_host_transposer, set_socket_host_transposer_callbacks, set_socket_host_transposer_workers_num};
+use crate::socket_host::socket_host::get_available_commands_registered;
+use crate::socket_host::socket_host::initialize_host;
+use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
+use crate::socket_host::transposer::set_socket_host_transposer_callbacks;
+use crate::socket_host::transposer::{initialize_socket_host_transposer, set_socket_host_transposer_workers_num};
 
 lazy_static! {
     pub static ref CLIENTS_SYNC_CONTROLLER: Arc<Mutex<Clients>> = Arc::new(Mutex::new(Clients::new()));
@@ -415,6 +420,12 @@ fn initialize_host_buffer_tables(path: String) {
 fn set_socket_host_log_level(log_level: String) {
     set_host_log_level(log_level);
     return;
+}
+
+pub fn set_host_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
+    for (key, callback) in callbacks {
+        set_socket_host_transposer_callbacks(key, callback)
+    }
 }
 
 // pub fn registry_socket_host_client_heartbeat_contact_callback(commands: &PyList) -> PyResult<()> {

@@ -13,7 +13,7 @@ use serde_json::{from_str, Value};
 
 use rusqlite::{Connection, Result};
 
-use crate::socket_host::client_manager::manager::{Client, ClientError};
+use crate::common::client_manager::manager::{Client, ClientError};
 
 use rusqlite::Row;
 use rusqlite::Statement;

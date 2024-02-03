@@ -3,11 +3,11 @@ use std::collections::HashMap;
 
 use crate::common::functions::verifiers::{fast_json_comparator, ComparatorError};
 
+use crate::common::client_manager::manager::{Client, ClientError};
 use crate::common::enhanced_buffer::utilities::{CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
-use crate::socket_host::client_manager::manager::{Client, ClientError};
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
-use crate::handle_client_error;
+use crate::handle_manager_client_error;
 
 macro_rules! create_error_response_and_return {
     ($error:expr) => {{
@@ -100,7 +100,7 @@ pub fn cast_new_client(new_client: &HashMap<String, Value>) -> Result<Client, Pr
     let client_handlers: Vec<HashMap<String, Value>> = Vec::new();
 
     // TODO >>> Create a better mechanism to unpack these kwargs from json and return errors when need!
-    let new_client = handle_client_error!(Client::new(
+    let new_client = handle_manager_client_error!(Client::new(
         verified_client_value.get("client_name").unwrap().as_str().map(|s| s.to_string()).unwrap(),
         client_key.clone(),
         verified_client_value.get("client_type").unwrap().as_str().map(|s| s.to_string()).unwrap(),
