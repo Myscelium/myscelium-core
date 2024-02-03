@@ -412,14 +412,7 @@ impl NetworkMap {
         }
 
         // -> CREATE NEW NODE:
-        self.nodes.push(Node::new(
-            new_node.name.unwrap(),
-            new_node.key.unwrap(),
-            new_node.description.unwrap(),
-            new_node.version.unwrap(),
-            new_node.handlers.unwrap(),
-            new_node.status.unwrap(),
-        ))
+        self.nodes.push(new_node)
     }
 }
 
