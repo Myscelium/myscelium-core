@@ -499,7 +499,6 @@ pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
     set_socket_host_max_connections(n_max_conns.clone());
-    load_allowed_clients();
 }
 
 /// Initializes and starts the socket host.
@@ -540,6 +539,8 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
             }
         }
     });
+
+    load_allowed_clients();
 
     let address = format!("{}:{}", ip, port);
 
