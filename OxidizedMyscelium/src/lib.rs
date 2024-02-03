@@ -446,8 +446,11 @@ pub fn get_socket_host_available_commands() -> HashMap<String, Value> {
 // > Client Management
 
 // use crate::handle_client_error;
+use crate::common::client_manager::manager::get_all_clients;
 
-pub fn add_allowed_clients(new_allowed_clients_list: Vec<Client>) {
+pub fn load_allowed_clients() {
+    let new_allowed_clients_list: Vec<Client> = get_all_clients().unwrap();
+
     for client_allowed in new_allowed_clients_list.iter() {
         if !check_if_client_key_exists(client_allowed.client_key.clone()) {
             client_allowed.save_into_db()
@@ -496,6 +499,7 @@ pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
     set_socket_host_max_connections(n_max_conns.clone());
+    load_allowed_clients();
 }
 
 /// Initializes and starts the socket host.

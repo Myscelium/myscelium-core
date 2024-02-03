@@ -194,9 +194,7 @@ impl Client {
 
         {
             let registered_ids = get_registered_ids();
-
             let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
-
             client_id = id_generator.gen();
         }
 
@@ -289,13 +287,13 @@ impl Client {
                     eprintln!("An error occurred while inserting the Client in the table Clients: {}", e);
                 },
             };
-        });
+        })
     }
 
     pub fn update_to(&self, new_client: &Client) -> Result<Self, ClientError> {
         let serialized_owned_sub_channels_keys = serde_json::to_string(&new_client.owned_sub_channels_keys).expect("Failed to serialize to JSON");
 
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+        let _ = with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
             // let now = Utc::now();
             // let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
@@ -428,7 +426,7 @@ impl Client {
     }
 
     pub fn delete_all() -> Result<(), ClientError> {
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+        let _ = with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
             let result = conn.execute("DELETE FROM Clients", params![]);
 
             match result {
@@ -449,7 +447,7 @@ impl Client {
             return Err(ClientError::ClientDoesNotExist(self.client_key.clone()));
         }
 
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+        let _ = with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
             let result = conn.execute("DELETE from Clients WHERE ClientKey = ?", params![self.client_key]);
 
             match result {
