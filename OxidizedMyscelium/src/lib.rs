@@ -300,7 +300,7 @@ pub fn set_client_key(client_key: String) {
 /// # Python Binding
 ///
 /// This function is exposed to Python and can be called from a Python script.
-pub fn initialize_socket_client(ip: String, port: i32, client_key: String, client_name: String) {
+pub fn initialize_socket_client(ip: String, port: i32) {
     // Spawn a thread to periodically check for deadlocks
     thread::spawn(|| {
         loop {
@@ -323,22 +323,15 @@ pub fn initialize_socket_client(ip: String, port: i32, client_key: String, clien
 
     // -> SET CLIENT NAME IN CLIENT STATE MANAGER MEMORY SO WHEN THE CALLBACKS BE REGISTRED IT CAN
     // BE APLIED
-    {
-        let mut name = CLIENT_NODE_NAME.lock();
-        *name = client_name.clone();
-        let mut client_states = ClientState::load_from_storage().unwrap();
-        client_states.name = Some(name.clone());
-        client_states.update_schedule_with_this().unwrap();
-    }
+    // {
+    //     let mut name = CLIENT_NODE_NAME.lock();
+    //     *name = client_name.clone();
+    //     let mut client_states = ClientState::load_from_storage().unwrap();
+    //     client_states.name = Some(name.clone());
+    //     client_states.update_schedule_with_this().unwrap();
+    // }
 
     CLIENT_IS_RUNNING.store(true, Ordering::SeqCst);
-
-    // let mut client_key: String = "".to_string();
-
-    {
-        let mut key = CLIENT_NODE_KEY.lock();
-        *key = client_key.clone();
-    }
 
     // let client_key_storage = CLIENT_ID;
     // smart_lock(&*client_key_storage, |key: &mut String| {
