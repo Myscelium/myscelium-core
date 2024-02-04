@@ -761,6 +761,8 @@ fn handle_connection(stream: &mut TcpStream) {
         {
             let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
 
+            println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
+
             println!("\nCommand.Command: {:?}", command.command);
             println!("\nCommand.Command.function: {:?}", command.command.actf);
             logger.debug(format!("Command function: {}", command.command.actf));
