@@ -495,33 +495,49 @@ fn process(down_command: DownCommand) {
                 .map_err(|_| "Returned value is not a serde_json::Value".to_string())
         }
 
-        // -> PROCESS CALLBACK RESPONSE:
-        result = match extract_json_value(response) {
-            Ok(value) => {
-                // let value: Value = extract_pyobject(py, r);
-                println!("Value map extracted from callback response: {:?}", value);
+        // Attempt to convert it back to CommandInstructions
 
-                // Check if the Value is an object and convert it to HashMap
-                if let Some(obj) = value.as_object() {
-                    match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
-                        Ok(c) => ProcessResult::CommandInstructions(c),
-                        Err(e) => {
-                            // TODO >>> Handle this error case
-                            ProcessResult::Error("callback return a non valid response!".to_string())
-                        },
-                    }
-                } else {
-                    // TODO >>> Handle this error case
-                    ProcessResult::Error("The value is not a JSON object!".to_string())
-                }
+        // -> PROCESS CALLBACK RESPONSE:
+        result = match response.downcast::<CommandInstructions>() {
+            Ok(instructions_box) => {
+                // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
+                println!("Successfully downcasted!");
+                // You can now use instructions_box as Box<CommandInstructions>
+                let instruction = *instructions_box;
+                ProcessResult::CommandInstructions(instruction)
             },
-            Err(e) => {
-                // Handle the error or log it
-                logger.exception(format!("Python error: {:?}", e));
-                // You can return a default value or propagate the error further
-                ProcessResult::Error(format!("{:?}", e))
+            Err(_) => {
+                // The downcast operation failed
+                ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
+
+        // result = match extract_json_value(response) {
+        //     Ok(value) => {
+        //         // let value: Value = extract_pyobject(py, r);
+        //         println!("Value map extracted from callback response: {:?}", value);
+
+        //         // Check if the Value is an object and convert it to HashMap
+        //         if let Some(obj) = value.as_object() {
+        //             match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
+        //                 Ok(c) => ProcessResult::CommandInstructions(c),
+        //                 Err(e) => {
+        //                     // TODO >>> Handle this error case
+        //                     ProcessResult::Error("callback return a non valid response!".to_string())
+        //                 },
+        //             }
+        //         } else {
+        //             // TODO >>> Handle this error case
+        //             ProcessResult::Error("The value is not a JSON object!".to_string())
+        //         }
+        //     },
+        //     Err(e) => {
+        //         // Handle the error or log it
+        //         logger.exception(format!("Python error: {:?}", e));
+        //         // You can return a default value or propagate the error further
+        //         ProcessResult::Error(format!("{:?}", e))
+        //     },
+        // };
     }
 
     logger.debug(format!("Callback call response converted to rust: {:?}", result));
