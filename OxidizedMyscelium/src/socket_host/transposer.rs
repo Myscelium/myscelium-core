@@ -434,7 +434,14 @@ fn process(down_command: DownCommand) {
                     if let Some(c_id) = down_command.command_id {
                         process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                     } else {
-                        logger.warn("Can't process a command that doesn't have command id".to_string())
+                        logger.warn("Can't process a command that doesn't have command id".to_string());
+                        let result = ProcessResult::Error(format!("Callback with key '{}' not found!", translated_command.command.actf.clone()));
+                        let client_key = down_command.client_key.clone();
+                        if let Some(c_id) = down_command.command_id {
+                            process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        } else {
+                            logger.warn("Can't process a command that doesn't have command id".to_string())
+                        }
                     }
 
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
@@ -442,14 +449,6 @@ fn process(down_command: DownCommand) {
                     return;
                 },
             };
-
-            let result = ProcessResult::Error(format!("Callback with key '{}' not found!", translated_command.command.actf.clone()));
-            let client_key = down_command.client_key.clone();
-            if let Some(c_id) = down_command.command_id {
-                process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
-            } else {
-                logger.warn("Can't process a command that doesn't have command id".to_string())
-            }
         }
 
         // -> CALL CALLBACK FUNCTION
@@ -488,12 +487,12 @@ fn process(down_command: DownCommand) {
         // -> PROCESS CALLBACK RESPONSE
 
         // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
-        fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
-            result
-                .downcast::<Value>()
-                .map(|boxed_value| *boxed_value) // Extract the Value from the Box
-                .map_err(|_| "Returned value is not a serde_json::Value".to_string())
-        }
+        // fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
+        //     result
+        //         .downcast::<Value>()
+        //         .map(|boxed_value| *boxed_value) // Extract the Value from the Box
+        //         .map_err(|_| "Returned value is not a serde_json::Value".to_string())
+        // }
 
         // Attempt to convert it back to CommandInstructions
 
