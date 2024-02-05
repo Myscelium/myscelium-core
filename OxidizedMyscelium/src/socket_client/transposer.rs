@@ -234,38 +234,52 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         }
 
         // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
-        fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
-            result
-                .downcast::<Value>()
-                .map(|boxed_value| *boxed_value) // Extract the Value from the Box
-                .map_err(|_| "Returned value is not a serde_json::Value".to_string())
-        }
+        // fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
+        //     result
+        //         .downcast::<Value>()
+        //         .map(|boxed_value| *boxed_value) // Extract the Value from the Box
+        //         .map_err(|_| "Returned value is not a serde_json::Value".to_string())
+        // }
 
         // -> PROCESS CALLBACK RESPONSE:
-        resp = match extract_json_value(response) {
-            Ok(value) => {
-                // Check if the Value is None
-                if value == Value::Null {
-                    // Handle the None case
-                    ProcessResult::Empty
-                } else if let Some(obj) = value.as_object() {
-                    // Existing logic to handle the object
-                    match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
-                        Ok(c) => ProcessResult::CommandInstructions(c.clone()),
-                        Err(_) => {
-                            println!("Callback returned a non-valid response!");
-                            return Err(ProcessError::Error("callback returned a non-valid response!".to_string()));
-                        },
-                    }
-                } else {
-                    println!("The value is not a JSON object!");
-                    return Err(ProcessError::Error("The value is not a JSON object!".to_string()));
-                }
+        // resp = match extract_json_value(response) {
+        //     Ok(value) => {
+        //         // Check if the Value is None
+        //         if value == Value::Null {
+        //             // Handle the None case
+        //             ProcessResult::Empty
+        //         } else if let Some(obj) = value.as_object() {
+        //             // Existing logic to handle the object
+        //             match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
+        //                 Ok(c) => ProcessResult::CommandInstructions(c.clone()),
+        //                 Err(_) => {
+        //                     println!("Callback returned a non-valid response!");
+        //                     return Err(ProcessError::Error("callback returned a non-valid response!".to_string()));
+        //                 },
+        //             }
+        //         } else {
+        //             println!("The value is not a JSON object!");
+        //             return Err(ProcessError::Error("The value is not a JSON object!".to_string()));
+        //         }
+        //     },
+        //     Err(e) => {
+        //         // Existing logic to handle the error
+        //         logger.exception(format!("Response isn't compatible with json, error: {:?}", e));
+        //         return Err(ProcessError::Error(format!("{:?}", e)));
+        //     },
+        // };
+
+        resp = match response.downcast::<CommandInstructions>() {
+            Ok(instructions_box) => {
+                // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
+                println!("Successfully downcasted!");
+                // You can now use instructions_box as Box<CommandInstructions>
+                let instruction = *instructions_box;
+                ProcessResult::CommandInstructions(instruction)
             },
-            Err(e) => {
-                // Existing logic to handle the error
-                logger.exception(format!("Response isn't compatible with json, error: {:?}", e));
-                return Err(ProcessError::Error(format!("{:?}", e)));
+            Err(_) => {
+                // The downcast operation failed
+                ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
     }
