@@ -22,7 +22,9 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
-pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
+pub use common::structs::available_commands::{
+    HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier,
+};
 pub use common::structs::results_structs::ResultType;
 pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
 
@@ -45,6 +47,9 @@ lazy_static! {
     pub static ref CLIENT_NODE_CONFIGS: Arc<Mutex<Node>> = Arc::new(Mutex::new(Node::empty_node()));
     pub static ref CLIENT_STATE_MANAGER: Arc<Mutex<ClientState>> = Arc::new(Mutex::new(ClientState::empty()));
     pub static ref CLIENT_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
+    pub static ref CLIENT_IS_CONNECTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    pub static ref MEDIAN_CON_RESP_TIME: Arc<Mutex<Vec<f64>>> = Arc::new(Mutex::new(vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
+
 
     // HOST:
     pub static ref HOST_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
@@ -60,7 +65,9 @@ fn main() {}
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
+use crate::socket_client::client_logger::log_handler::{
+    initialize_client_logs_database_dir, set_client_log_level,
+};
 use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
 
@@ -74,7 +81,10 @@ use std::time::Duration;
 use crate::socket_client::scheduler::{self, schedule};
 use crate::socket_client::socket_client::get_available_handlers_registered;
 use crate::socket_client::socket_client::{initialize_client, initialize_client_buffer};
-use crate::socket_client::transposer::{initialize_socket_client_transposer, set_socket_client_transposer_callbacks, set_socket_client_transposer_workers_num};
+use crate::socket_client::transposer::{
+    initialize_socket_client_transposer, set_socket_client_transposer_callbacks,
+    set_socket_client_transposer_workers_num,
+};
 
 pub fn set_socket_client_transposer_num_of_workers(n_workers: u32) {
     set_socket_client_transposer_workers_num(n_workers);
@@ -111,7 +121,7 @@ pub fn is_target_ready(node_key: String) -> bool {
         Ok(c) => c,
         Err(_) => {
             return false;
-        },
+        }
     };
 
     if let Some(net_map) = client_status.network_map {
@@ -122,10 +132,10 @@ pub fn is_target_ready(node_key: String) -> bool {
                     if !reachable {
                         return false;
                     }
-                },
+                }
                 Err(_) => {
                     return false;
-                },
+                }
             };
         }
         {
@@ -134,10 +144,10 @@ pub fn is_target_ready(node_key: String) -> bool {
                     if !redy {
                         return false;
                     }
-                },
+                }
                 Err(_) => {
                     return false;
-                },
+                }
             };
         }
     } else {
@@ -182,7 +192,10 @@ pub fn is_client_ready() -> bool {
 //     NotAbleToReadClientStates,
 // }
 
-pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
+pub fn client_send_hashmap(
+    command: HashMap<String, String>,
+    priority: u8,
+) -> Result<(), ClientError> {
     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
@@ -195,10 +208,10 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
-            },
+            }
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
-            },
+            }
         },
     };
 
@@ -216,10 +229,10 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
-            },
+            }
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
-            },
+            }
         },
     };
 
@@ -360,7 +373,10 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     // scheduler::request_host_available_commands();
 
     loop {
-        println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
+        println!(
+            "➡️ Client status: {}",
+            CLIENT_IS_RUNNING.load(Ordering::SeqCst)
+        );
 
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
             println!("Stop the core!");
@@ -379,16 +395,23 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 // use crate::common::enhanced_buffer::utilities::CommandType;
 // use crate::common::functions::callbacks::extract_arg_types;
 
-use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
-use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
+use crate::common::client_manager::manager::{
+    clients_manager_initialize_table, set_host_clients_manager__pool_workers_num,
+};
+use crate::socket_host::host_logger::log_handler::{
+    initialize_host_logs_database_dir, set_host_log_level,
+};
 use crate::socket_host::socket_host::get_available_commands_registered;
 use crate::socket_host::socket_host::initialize_host;
 use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
 use crate::socket_host::transposer::set_socket_host_transposer_callbacks;
-use crate::socket_host::transposer::{initialize_socket_host_transposer, set_socket_host_transposer_workers_num};
+use crate::socket_host::transposer::{
+    initialize_socket_host_transposer, set_socket_host_transposer_workers_num,
+};
 
 lazy_static! {
-    pub static ref CLIENTS_SYNC_CONTROLLER: Arc<Mutex<Clients>> = Arc::new(Mutex::new(Clients::new()));
+    pub static ref CLIENTS_SYNC_CONTROLLER: Arc<Mutex<Clients>> =
+        Arc::new(Mutex::new(Clients::new()));
 }
 
 fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
@@ -455,7 +478,10 @@ pub fn load_allowed_clients() {
             println!("\nSet clients sync controler to:\n{:?}\n", controller);
         }
 
-        println!("Successfully created client: {} of key: {}", client_allowed.client_name, client_allowed.client_key)
+        println!(
+            "Successfully created client: {} of key: {}",
+            client_allowed.client_name, client_allowed.client_key
+        )
     }
 }
 
@@ -487,7 +513,12 @@ fn stop_socket_host() {
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
 
-pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
+pub fn setup_socket_host(
+    buffer_path: &String,
+    log_level: &String,
+    n_workers: &u32,
+    n_max_conns: &u32,
+) {
     initialize_host_buffer_tables(buffer_path.clone());
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
