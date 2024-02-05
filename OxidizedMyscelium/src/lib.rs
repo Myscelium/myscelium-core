@@ -120,7 +120,7 @@ pub fn set_socket_client_transposer_num_of_workers(n_workers: u32) {
 ///
 /// Sets the global `CLIENT_IS_RUNNING` atomic flag to `false`.
 ///
-fn stop_socket_client() {
+pub fn stop_socket_client() {
     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
 }
 
@@ -297,6 +297,7 @@ pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
 // }
 
 pub fn get_client_state() -> bool {
+    thread::sleep(Duration::from_secs(1));
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         true
     } else {
@@ -378,13 +379,13 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     thread::spawn(|| {
         // ctrlc::set_handler(move || {
-        //     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-        //         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
-        //         println!("\nreceived Ctrl+C!\n");
-        //         stop_socket_client();
-        //     }
+        // if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+        //     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+        //     println!("\nreceived Ctrl+C!\n");
+        //     stop_socket_client();
+        // }
         // })
-        // .expect("Error setting Ctrl-C handler");
+        // .expect("Error setting Ctrl-C handler")
 
         initialize_client(address);
 
@@ -393,22 +394,23 @@ pub fn initialize_socket_client(ip: String, port: i32) {
         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
     });
 
-    // scheduler::request_host_available_commands();
+    if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+        loop {
+            println!(
+                "➡️ Client status: {}",
+                CLIENT_IS_RUNNING.load(Ordering::SeqCst)
+            );
 
-    loop {
-        println!(
-            "➡️ Client status: {}",
-            CLIENT_IS_RUNNING.load(Ordering::SeqCst)
-        );
+            if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                println!("Stop the core!");
+                break;
+            }
 
-        if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-            println!("Stop the core!");
-            break;
+            std::thread::sleep(Duration::from_secs(1));
+
+            initialize_socket_client_transposer();
+            println!("Socket transposer working!!");
         }
-
-        std::thread::sleep(Duration::from_secs(1));
-
-        initialize_socket_client_transposer();
     }
 
     println!("Socket transposer exited successfully!");

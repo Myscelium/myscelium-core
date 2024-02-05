@@ -743,11 +743,6 @@ pub fn initialize_client(address: String) -> Option<String> {
     }
 
     loop {
-        println!(
-            "Client status: {:?}",
-            CLIENT_IS_RUNNING.load(Ordering::SeqCst)
-        );
-
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
             logger.info(format!(
