@@ -170,28 +170,6 @@ fn get_registred_ids(conn: &Connection) -> Vec<u32> {
 use std::thread;
 use std::time::Duration;
 
-/// Drops a specified table from the database.
-///
-/// # Arguments
-///
-/// * `table_name` - The name of the table to drop.
-pub fn buffer_up_drop_table() {
-    with_connection!(BUFFER_POOL, |conn: &Connection| {
-        let sql = format!("DROP TABLE IF EXISTS ClientCommandsTosend");
-        match conn.execute(&sql, params![]) {
-            Ok(_) => {
-                println!("Successfully dropped table ClientCommandsTosend");
-            }
-            Err(e) => {
-                eprintln!(
-                    "An error occurred while dropping the table ClientCommandsTosend: {}",
-                    e
-                );
-            }
-        };
-    });
-}
-
 pub fn buffer_up_initialize_table(buffer_path: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);
@@ -220,6 +198,18 @@ pub fn buffer_up_initialize_table(buffer_path: String) {
     set_new_path_to_buffer_db!(BUFFER_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME);
 
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
+        let sql = format!("DROP TABLE IF EXISTS ClientCommandsTosend");
+        match conn.execute(&sql, params![]) {
+            Ok(_) => {
+                println!("Successfully dropped table ClientCommandsTosend");
+            }
+            Err(e) => {
+                eprintln!(
+                    "An error occurred while dropping the table ClientCommandsTosend: {}",
+                    e
+                );
+            }
+        };
         let result = conn.execute(
             "CREATE TABLE IF NOT EXISTS ClientCommandsTosend (ID INT PRIMARY KEY, ClientKey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CreatedTime NUMBER)",
             params![],

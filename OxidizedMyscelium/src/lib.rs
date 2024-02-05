@@ -32,6 +32,7 @@ use serde_json::Value;
 #[deny(non_snake_case)]
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::thread::Thread;
 
 use parking_lot::Mutex;
 
@@ -404,6 +405,8 @@ pub fn initialize_socket_client(ip: String, port: i32) {
             println!("Stop the core!");
             break;
         }
+
+        std::thread::sleep(Duration::from_secs(1));
 
         initialize_socket_client_transposer();
     }
