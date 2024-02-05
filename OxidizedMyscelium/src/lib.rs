@@ -377,14 +377,14 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     let address = format!("{}:{}", ip, port);
 
     thread::spawn(|| {
-        ctrlc::set_handler(move || {
-            if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
-                println!("\nreceived Ctrl+C!\n");
-                stop_socket_client();
-            }
-        })
-        .expect("Error setting Ctrl-C handler");
+        // ctrlc::set_handler(move || {
+        //     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+        //         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+        //         println!("\nreceived Ctrl+C!\n");
+        //         stop_socket_client();
+        //     }
+        // })
+        // .expect("Error setting Ctrl-C handler");
 
         initialize_client(address);
 
