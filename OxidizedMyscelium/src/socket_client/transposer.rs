@@ -218,6 +218,8 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let mut kwargs: HashMap<String, Value> = HashMap::new();
             kwargs.insert("data".to_string(), Value::Object(serde_json::Map::from_iter(translated_command.command_to_hashmap().unwrap())));
 
+            println!("kwargs to pass to external function: {:?}", kwargs);
+
             response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs) {
                 Ok(r) => {
                     logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
