@@ -441,6 +441,8 @@ pub fn get_available_commands_registered() -> HashMap<String, Value> {
 }
 
 pub fn handle_client_disconnect(client_key: String) {
+    let logger = acquire_logger!("Core");
+    logger.info(format!("Client: {} disconnected!", client_key));
     let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
     client_sync_manager.update_client_sync_status(&client_key, false);
 }
