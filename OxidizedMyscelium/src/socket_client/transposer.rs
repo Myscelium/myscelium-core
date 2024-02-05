@@ -216,7 +216,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let callback_patterns = CLIENT_CALLBACK_PATTERNS.clone();
 
             let mut kwargs: HashMap<String, Value> = HashMap::new();
-            kwargs.insert("data".to_string(), Value::Object(serde_json::Map::from_iter(translated_command.command_to_hashmap().unwrap())));
+            kwargs.insert("data".to_string(), translated_command.command.to_value_map());
 
             println!("kwargs to pass to external function: {:?}", kwargs);
 

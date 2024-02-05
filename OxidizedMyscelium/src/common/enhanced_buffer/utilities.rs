@@ -420,9 +420,9 @@ impl Command {
         let mut map = Map::new();
 
         // Serialize simple fields directly
-        map.insert("client_key".to_owned(), serde_json::to_value(&self.client_key).unwrap());
-        map.insert("parity_id".to_owned(), serde_json::to_value(&self.parity_id).unwrap());
-        map.insert("priority".to_owned(), serde_json::to_value(&self.priority).unwrap());
+        map.insert("client_key".to_owned(), serde_json::Value::from(self.client_key.clone()));
+        map.insert("parity_id".to_owned(), serde_json::Value::from(self.parity_id.clone()));
+        map.insert("priority".to_owned(), serde_json::Value::from(serde_json::Number::from_f64(self.priority as f64).unwrap()));
 
         // For the command field, use its to_string_value method
         let command_map = &self.command.to_value_map();
