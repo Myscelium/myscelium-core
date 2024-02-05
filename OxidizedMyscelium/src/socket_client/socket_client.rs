@@ -7,7 +7,7 @@ use crate::common::enhanced_buffer::utilities::{
 
 use super::client_logger::log_handler::Logger;
 
-use crate::{CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
+use crate::{CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
 use serde_json::json;
 use serde_json::{from_str, Value};
@@ -738,9 +738,9 @@ pub fn initialize_client(address: String) -> Option<String> {
     }
     println!("[CLIENT][GLOBAL][Release] - CLIENT_ID");
 
-    // if verify_connection(&mut stream, &client_key) {
-    //     CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
-    // }
+    if verify_connection(&mut stream, &client_key) {
+        CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+    }
 
     loop {
         println!(
@@ -749,6 +749,7 @@ pub fn initialize_client(address: String) -> Option<String> {
         );
 
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+            CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
             logger.info(format!(
                 "running is set to false, shutdown socket client main process!"
             ));
@@ -768,6 +769,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                         println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                         CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         break;
                     }
                     StreamError::WriteError(e) => {
@@ -775,6 +777,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                         println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                         CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         break;
                     }
                     StreamError::WriteSizeError(e) => {
@@ -782,6 +785,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                         println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                         CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         break;
                     }
                     StreamError::ReadSizeError(e) => {
@@ -789,6 +793,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                         println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                         CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         break;
                     }
                     StreamError::ReadDataError(e) => {
@@ -796,6 +801,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                         println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                         CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         break;
                     }
                 },
@@ -825,6 +831,7 @@ pub fn initialize_client(address: String) -> Option<String> {
             println!("processing command: {}", index);
 
             if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                 logger.info(format!(
                     "running is set to false, shutdown socket client main process!"
                 ));
@@ -865,6 +872,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                             StreamError::WriteError(e) => {
@@ -872,6 +880,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                             StreamError::WriteSizeError(e) => {
@@ -879,6 +888,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                             StreamError::ReadSizeError(e) => {
@@ -886,6 +896,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                             StreamError::ReadDataError(e) => {
@@ -893,6 +904,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 println!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                         },
@@ -934,6 +946,7 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&c.client_key, &c.parity_id);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
+                                CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
                             }
                             CommandStatus::Success => {}

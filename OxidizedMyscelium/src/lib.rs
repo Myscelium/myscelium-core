@@ -378,7 +378,6 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     thread::spawn(|| {
         ctrlc::set_handler(move || {
             if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                 println!("\nreceived Ctrl+C!\n");
                 stop_socket_client();
