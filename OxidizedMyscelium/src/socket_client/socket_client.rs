@@ -7,7 +7,7 @@ use crate::common::enhanced_buffer::utilities::{
 
 use super::client_logger::log_handler::Logger;
 
-use crate::CLIENT_NODE_CONFIGS;
+use crate::{CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
 use serde_json::json;
 use serde_json::{from_str, Value};
@@ -19,7 +19,7 @@ use std::net::TcpStream;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::CLIENT_IS_CONNECTED;
 use crate::CLIENT_IS_RUNNING;
@@ -473,7 +473,27 @@ pub fn send_ping(
 
     println!("Create C206 ping request: {:?}", command_to_request);
 
-    let received: Response = send(stream, &command_to_request)?;
+    // Send command and measure time
+    let start = Instant::now();
+    let received = send(stream, &command_to_request).unwrap();
+    let duration = start.elapsed();
+
+    // Retry mechanism for lock acquisition
+    loop {
+        match MEDIAN_CON_RESP_TIME.try_lock() {
+            Some(mut guard) => {
+                if guard.len() >= 10 {
+                    guard.remove(0);
+                }
+                guard.push(duration.as_nanos() as f64);
+                break; // Exit loop after successful lock and update
+            }
+            None => {
+                // If lock can't be acquired, sleep for a short duration
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
 
     println!("Received response: {:?}", received);
 
