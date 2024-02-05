@@ -216,7 +216,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let callback_patterns = CLIENT_CALLBACK_PATTERNS.clone();
 
             let mut kwargs: HashMap<String, Value> = HashMap::new();
-            kwargs.insert("data".to_string(), serde_json::Value::from_iter(serde_json::Map::from_iter(translated_command.command_to_hashmap().unwrap())));
+            kwargs.insert("data".to_string(), Value::Object(serde_json::Map::from_iter(translated_command.command_to_hashmap().unwrap())));
 
             response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs) {
                 Ok(r) => {
