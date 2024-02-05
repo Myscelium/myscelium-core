@@ -13,8 +13,8 @@ use serde_json::json;
 use serde_json::{from_str, Value};
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::io::Write;
+use std::io::{ErrorKind, Read};
 use std::net::TcpStream;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -679,7 +679,7 @@ pub fn set_client_uid(client_key: String) {
 /// - The client sends a ping to the server when there are no commands in the schedule.
 /// - The client will wait for 200 milliseconds between retries if a command's response is not received.
 /// - The client will continue to check for scheduled commands as long as `CLIENT_IS_RUNNING` is true.
-pub fn initialize_client(address: String) {
+pub fn initialize_client(address: String) -> Option<String> {
     // Create a global Mutex for demonstration
 
     // Spawn a thread to periodically check for deadlocks
@@ -704,7 +704,20 @@ pub fn initialize_client(address: String) {
 
     let logger = acquire_logger!("Core");
 
-    let mut stream = TcpStream::connect(&address).unwrap();
+    let mut stream = match TcpStream::connect(address.clone()) {
+        Ok(s) => s,
+        Err(e) => match e.kind() {
+            ErrorKind::ConnectionRefused => {
+                println!("Can't connect in host!");
+                return Some("Can't connect in host!".to_string());
+            }
+            _ => {
+                println!("Unhandled error: {}", e);
+                panic!("Unhandled error: {}", e)
+            }
+        },
+    };
+
     stream.set_read_timeout(Some(Duration::new(15, 0))).unwrap();
 
     // Here need to send the new handlers to host
@@ -725,9 +738,9 @@ pub fn initialize_client(address: String) {
     }
     println!("[CLIENT][GLOBAL][Release] - CLIENT_ID");
 
-    if verify_connection(&mut stream, &client_key) {
-        CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
-    }
+    // if verify_connection(&mut stream, &client_key) {
+    //     CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+    // }
 
     loop {
         println!(
@@ -811,6 +824,13 @@ pub fn initialize_client(address: String) {
         for up_command in up_schedule {
             println!("processing command: {}", index);
 
+            if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                logger.info(format!(
+                    "running is set to false, shutdown socket client main process!"
+                ));
+                break;
+            }
+
             let command_to_request = match Command::from_up_command(&up_command) {
                 Ok(c) => c,
                 Err(error) => {
@@ -829,6 +849,13 @@ pub fn initialize_client(address: String) {
                 println!("Sending to host: {:?}", &command_to_request);
 
                 let received: Response;
+
+                if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                    logger.info(format!(
+                        "running is set to false, shutdown socket client main process!"
+                    ));
+                    break;
+                }
 
                 {
                     received = match send(&mut stream, &command_to_request) {
@@ -974,4 +1001,6 @@ pub fn initialize_client(address: String) {
 
         continue;
     }
+
+    return None;
 }
