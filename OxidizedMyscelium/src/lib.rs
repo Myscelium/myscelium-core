@@ -1,13 +1,35 @@
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
+#[allow(warnings)]
+#[allow(dead_code, unused_variables)]
+#[allow(unused_results)]
+#[allow(unused_variables)]
 mod common;
-
+#[allow(unused_imports)]
+#[allow(unused_extern_crates)]
+#[allow(warnings)]
+#[allow(dead_code, unused_variables)]
+#[allow(unused_results)]
+#[allow(unused_variables)]
 mod socket_client;
+#[allow(unused_imports)]
+#[allow(unused_extern_crates)]
+#[allow(warnings)]
+#[allow(dead_code, unused_variables)]
+#[allow(unused_results)]
+#[allow(unused_variables)]
 mod socket_host;
 
+#[allow(unused_imports)]
+#[allow(unused_extern_crates)]
+#[deny(warnings)]
+#[allow(dead_code, unused_variables)]
+#[allow(unused_results)]
+#[allow(unused_variables)]
 use lazy_static::lazy_static;
 use serde_json::Value;
 
+#[deny(non_snake_case)]
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -60,7 +82,7 @@ lazy_static! {
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
 }
 
-fn main() {}
+// fn main() {}
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
@@ -497,9 +519,9 @@ pub fn load_allowed_clients() {
 /// # Python Binding
 /// This function is exposed to Python and can be called from a Python script.
 
-fn remove_all_allowed_clients() {
-    let _ = Client::delete_all();
-}
+// fn remove_all_allowed_clients() {
+//     let _ = Client::delete_all();
+// }
 
 // ->-------------------------------------------------------------------------------------------------------------------------------
 // -> HOST CONTROLLERS
@@ -541,8 +563,8 @@ pub fn setup_socket_host(
 /// This function is exposed to Python and can be called from a Python script.
 pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
     // Create a global Mutex for demonstration
-    let mutex1 = Mutex::new(0);
-    let mutex2 = Mutex::new(0);
+    let _ = Mutex::new(0);
+    let _ = Mutex::new(0);
 
     // Spawn a thread to periodically check for deadlocks
     thread::spawn(|| {

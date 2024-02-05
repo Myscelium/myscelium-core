@@ -9,11 +9,11 @@ use syn::{parse_macro_input, ItemFn};
 
 // TODO >>> client_callback proc macro
 
-macro_rules! initialize_dependencies {
-    () => {
-        use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
-    };
-}
+// macro_rules! initialize_dependencies {
+//     () => {
+//         use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
+//     };
+// }
 
 // #[proc_macro]
 // pub fn host_callback(input: TokenStream) -> TokenStream {

@@ -8,6 +8,9 @@ authors = ["Cristian Camargo Filho <ccf@cdone.com.br>"]
 [profile.release]
 opt-level = 3
 
+[build]
+rustflags = ["-A", "warnings"]
+
 [dependencies]
 oxidized_myscelium_macros = { path = "../oxidized_myscelium_macros" }
 proc-macro2 = "1.0"
