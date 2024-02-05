@@ -444,7 +444,7 @@ pub fn handle_client_disconnect(client_key: String) {
     let logger = acquire_logger!("Core");
     logger.info(format!("Client: {} disconnected!", client_key));
     let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
-    client_sync_manager.update_client_sync_status(&client_key, false);
+    client_sync_manager.reset_sync_for_client(&client_key);
 }
 
 // > Socket main structure:

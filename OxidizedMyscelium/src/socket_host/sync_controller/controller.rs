@@ -58,12 +58,20 @@ impl Client {
         self.last_sync_request = now.timestamp_millis();
 
         if self.sync_attempts + 1 > self.max_sync_attempts {
-            return Err(ClientStatusPoolError::MaxSyncAttemptsReached(self.get_key()));
+            return Err(ClientStatusPoolError::MaxSyncAttemptsReached(
+                self.get_key(),
+            ));
         } else {
             self.sync_attempts += 1;
         }
 
         return Ok(());
+    }
+
+    pub fn reset_sync(&mut self) {
+        self.sync_status = false;
+        self.last_sync_request = -1;
+        self.sync_attempts = 0;
     }
 
     pub fn get_last_sync_attempt(&mut self) -> i64 {
@@ -102,12 +110,19 @@ impl Clients {
         Self { clients }
     }
 
-    pub fn get_remaining_sync_attempts(&mut self, client_key: &String) -> Result<u32, ClientStatusPoolError> {
+    pub fn get_remaining_sync_attempts(
+        &mut self,
+        client_key: &String,
+    ) -> Result<u32, ClientStatusPoolError> {
         let client = self.get_client(client_key)?;
         return Ok(client.get_max_sync_attempts() - client.get_sync_attempts());
     }
 
-    pub fn add_new_client(&mut self, client_key: String, max_sync_attempts: u32) -> Result<(), ClientStatusPoolError> {
+    pub fn add_new_client(
+        &mut self,
+        client_key: String,
+        max_sync_attempts: u32,
+    ) -> Result<(), ClientStatusPoolError> {
         {
             for client in &self.clients {
                 if client.get_key() == client_key {
@@ -120,15 +135,23 @@ impl Clients {
         self.clients.push(client);
         Ok(())
     }
-    pub fn get_client(&mut self, client_key: &String) -> Result<&mut Client, ClientStatusPoolError> {
+    pub fn get_client(
+        &mut self,
+        client_key: &String,
+    ) -> Result<&mut Client, ClientStatusPoolError> {
         for client in &mut self.clients {
             if &client.get_key() == client_key {
                 return Ok(client);
             }
         }
-        return Err(ClientStatusPoolError::ClientDoesNotExist(client_key.clone()));
+        return Err(ClientStatusPoolError::ClientDoesNotExist(
+            client_key.clone(),
+        ));
     }
-    pub fn update_client_sync_attempt(&mut self, client_key: &String) -> Result<(), ClientStatusPoolError> {
+    pub fn update_client_sync_attempt(
+        &mut self,
+        client_key: &String,
+    ) -> Result<(), ClientStatusPoolError> {
         let client = self.get_client(client_key)?;
 
         if !client.get_sync_status() {
@@ -138,16 +161,33 @@ impl Clients {
 
         return Err(ClientStatusPoolError::ClientAlreadySync(client_key.clone()));
     }
-    pub fn update_client_sync_status(&mut self, client_key: &String, new_status: bool) -> Result<(), ClientStatusPoolError> {
+    pub fn update_client_sync_status(
+        &mut self,
+        client_key: &String,
+        new_status: bool,
+    ) -> Result<(), ClientStatusPoolError> {
         let mut client = self.get_client(client_key)?;
         client.update_sync_status(new_status);
         return Ok(());
     }
 
-    pub fn update_sync_status_for_clients(&mut self, client_keys: Vec<String>, new_status: bool) -> Result<(), ClientStatusPoolError> {
+    pub fn update_sync_status_for_clients(
+        &mut self,
+        client_keys: Vec<String>,
+        new_status: bool,
+    ) -> Result<(), ClientStatusPoolError> {
         for client_key in client_keys {
             self.update_client_sync_status(&client_key, new_status)?;
         }
+        Ok(())
+    }
+
+    pub fn reset_sync_for_client(
+        &mut self,
+        client_key: &String,
+    ) -> Result<(), ClientStatusPoolError> {
+        let client: &mut Client = self.get_client(client_key)?;
+        client.reset_sync();
         Ok(())
     }
 
@@ -156,8 +196,13 @@ impl Clients {
         Ok(client.get_sync_status())
     }
 
-    pub fn get_last_sync(&mut self, client_key: &String) -> Result<DateTime<Utc>, ClientStatusPoolError> {
+    pub fn get_last_sync(
+        &mut self,
+        client_key: &String,
+    ) -> Result<DateTime<Utc>, ClientStatusPoolError> {
         let client: &mut Client = self.get_client(client_key)?;
-        Ok(Utc.timestamp_millis_opt(client.get_last_sync_attempt()).unwrap())
+        Ok(Utc
+            .timestamp_millis_opt(client.get_last_sync_attempt())
+            .unwrap())
     }
 }
