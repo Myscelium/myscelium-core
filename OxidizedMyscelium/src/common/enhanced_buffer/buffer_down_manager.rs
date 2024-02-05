@@ -185,6 +185,28 @@ fn get_registred_ids(conn: &Connection) -> Vec<u32> {
     ids.clone()
 }
 
+/// Drops a specified table from the database.
+///
+/// # Arguments
+///
+/// * `table_name` - The name of the table to drop.
+pub fn buffer_down_drop_table() {
+    with_connection!(BUFFER_POOL, |conn: &Connection| {
+        let sql = format!("DROP TABLE IF EXISTS ClientCommandsReceived");
+        match conn.execute(&sql, params![]) {
+            Ok(_) => {
+                println!("Successfully dropped table ClientCommandsReceived");
+            }
+            Err(e) => {
+                eprintln!(
+                    "An error occurred while dropping the table ClientCommandsReceived: {}",
+                    e
+                );
+            }
+        };
+    });
+}
+
 pub fn buffer_down_initialize_table(buffer_path: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);

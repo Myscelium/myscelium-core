@@ -275,14 +275,14 @@ pub fn set_socket_client_log_level(log_level: &String) {
     return;
 }
 
-pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
-    get_available_handlers_registered()
-}
-
 pub fn set_client_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
     for (key, callback) in callbacks {
         set_socket_client_transposer_callbacks(key, callback)
     }
+}
+
+pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
+    get_available_handlers_registered()
 }
 
 // fn concatenate_strings(args: Vec<Box<dyn Any + 'static>>) -> Box<dyn Any> {

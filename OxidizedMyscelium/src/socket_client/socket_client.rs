@@ -97,8 +97,12 @@ pub fn initialize_client_buffer(buffer_location: String) {
 
     initialize_buffer_history(&buffer_location);
 
-    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone());
+    // -> DROP TABLES FOR CLEANING PREVIOUS COMMANDS:
+    enhanced_buffer::buffer_down_manager::buffer_down_drop_table();
+    enhanced_buffer::buffer_up_manager::buffer_up_drop_table();
 
+    // -> INITIALIZE TABLES
+    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone());
     enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone());
 
     println!("All buffer initialized successfully!");

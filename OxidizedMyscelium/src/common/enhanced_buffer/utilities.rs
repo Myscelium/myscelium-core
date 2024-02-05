@@ -101,7 +101,16 @@ pub enum CommandError {
 }
 
 impl CommandInstructions {
-    pub fn new(mode: CommandMode, command_type: CommandType, target: CommandTarget, status: CommandStatus, origin: CommandOrigin, actf: String, kwargs: HashMap<String, serde_json::Value>, message: String) -> Self {
+    pub fn new(
+        mode: CommandMode,
+        command_type: CommandType,
+        target: CommandTarget,
+        status: CommandStatus,
+        origin: CommandOrigin,
+        actf: String,
+        kwargs: HashMap<String, serde_json::Value>,
+        message: String,
+    ) -> Self {
         Self {
             mode,
             command_type,
@@ -129,11 +138,26 @@ impl CommandInstructions {
     pub fn convert_to_hashmap_string_value(&self) -> HashMap<String, Value> {
         let mut map = HashMap::new();
 
-        map.insert("mode".to_string(), serde_json::to_value(self.mode.clone()).unwrap());
-        map.insert("type".to_string(), serde_json::to_value(self.command_type.clone()).unwrap());
-        map.insert("target".to_string(), serde_json::to_value(self.target.clone()).unwrap());
-        map.insert("status".to_string(), serde_json::to_value(self.status.clone()).unwrap());
-        map.insert("origin".to_string(), serde_json::to_value(self.origin.clone()).unwrap());
+        map.insert(
+            "mode".to_string(),
+            serde_json::to_value(self.mode.clone()).unwrap(),
+        );
+        map.insert(
+            "type".to_string(),
+            serde_json::to_value(self.command_type.clone()).unwrap(),
+        );
+        map.insert(
+            "target".to_string(),
+            serde_json::to_value(self.target.clone()).unwrap(),
+        );
+        map.insert(
+            "status".to_string(),
+            serde_json::to_value(self.status.clone()).unwrap(),
+        );
+        map.insert(
+            "origin".to_string(),
+            serde_json::to_value(self.origin.clone()).unwrap(),
+        );
         map.insert("actf".to_string(), Value::String(self.actf.clone()));
         map.insert("message".to_string(), Value::String(self.message.clone()));
 
@@ -147,14 +171,22 @@ impl CommandInstructions {
         let mode = match map.get("mode").and_then(Value::as_str) {
             Some("Function") => CommandMode::Function,
             Some("Response") => CommandMode::Response,
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing mode".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing mode".to_string(),
+                ))
+            }
         };
 
         let command_type = match map.get("type").and_then(Value::as_str) {
             Some("SpecialFunction") => CommandType::SpecialFunction,
             Some("DirectFunction") => CommandType::DirectFunction,
             Some("ExternalFunction") => CommandType::ExternalFunction,
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing type".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing type".to_string(),
+                ))
+            }
         };
 
         // let target = map.get("target").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing target".to_string()))?;
@@ -164,35 +196,65 @@ impl CommandInstructions {
             Some("Origin") => CommandTarget::Origin,
             Some(c) => {
                 if c != "" {
-                    return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
+                    return Err(CommandError::InvalidCommand(
+                        "Invalid or missing target".to_string(),
+                    ));
                 }
 
                 CommandTarget::ClientKey(c.to_string())
-            },
+            }
             None => {
-                return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
-            },
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing target".to_string(),
+                ));
+            }
         };
 
         let status = match map.get("status").and_then(Value::as_str) {
             Some("Success") => CommandStatus::Success,
             Some("Failure") => CommandStatus::Failure,
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing status".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing status".to_string(),
+                ))
+            }
         };
 
         let origin = match map.get("origin").and_then(Value::as_str) {
             Some("Host") => CommandOrigin::Host,
             Some(client_id) => CommandOrigin::ClientKey(client_id.to_string()),
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing origin".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing origin".to_string(),
+                ))
+            }
         };
 
-        let actf = map.get("actf").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing actf".to_string()))?;
-        let message = map.get("message").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing message".to_string()))?;
+        let actf = map
+            .get("actf")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or_else(|| CommandError::InvalidCommand("Missing actf".to_string()))?;
+        let message = map
+            .get("message")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .ok_or_else(|| CommandError::InvalidCommand("Missing message".to_string()))?;
 
         // Extract kwargs directly
-        let kwargs = map
-            .remove("kwargs")
-            .map_or_else(|| HashMap::new(), |v| v.as_object().map_or_else(|| HashMap::new(), |map| map.into_iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
+        let kwargs = map.remove("kwargs").map_or_else(
+            || HashMap::new(),
+            |v| {
+                v.as_object().map_or_else(
+                    || HashMap::new(),
+                    |map| {
+                        map.into_iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    },
+                )
+            },
+        );
 
         println!("Converted kwargs value object to Map: {:?}", kwargs);
 
@@ -212,7 +274,11 @@ impl CommandInstructions {
         let mode = match map.get("mode").map(String::as_str) {
             Some("Function") => CommandMode::Function,
             Some("Response") => CommandMode::Response,
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing mode".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing mode".to_string(),
+                ))
+            }
         };
 
         let command_type = match map.get("type").map(String::as_str) {
@@ -220,7 +286,11 @@ impl CommandInstructions {
             Some("DirectFunction") => CommandType::DirectFunction,
             Some("ExternalFunction") => CommandType::ExternalFunction,
 
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing type".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing type".to_string(),
+                ))
+            }
         };
 
         // let target = map.get("target").cloned().ok_or_else(|| "Missing target".to_string())?;
@@ -235,21 +305,31 @@ impl CommandInstructions {
                         let client_id = &c["ClientKey(".len()..c.len() - 1];
                         CommandTarget::ClientKey(client_id.to_string())
                     } else {
-                        return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
+                        return Err(CommandError::InvalidCommand(
+                            "Invalid or missing target".to_string(),
+                        ));
                     }
                 } else {
-                    return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
+                    return Err(CommandError::InvalidCommand(
+                        "Invalid or missing target".to_string(),
+                    ));
                 }
-            },
+            }
             None => {
-                return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
-            },
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing target".to_string(),
+                ));
+            }
         };
 
         let status = match map.get("status").map(String::as_str) {
             Some("Success") => CommandStatus::Success,
             Some("Failure") => CommandStatus::Failure,
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing status".to_string())),
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing status".to_string(),
+                ))
+            }
         };
 
         let origin = match map.get("origin").map(String::as_str) {
@@ -260,18 +340,32 @@ impl CommandInstructions {
                     let client_key = &client_id["ClientKey(".len()..client_id.len() - 1];
                     CommandOrigin::ClientKey(client_key.to_string())
                 } else {
-                    return Err(CommandError::InvalidCommand("Invalid or missing origin".to_string()));
+                    return Err(CommandError::InvalidCommand(
+                        "Invalid or missing origin".to_string(),
+                    ));
                 }
-            },
-            _ => return Err(CommandError::InvalidCommand("Invalid or missing origin".to_string())),
+            }
+            _ => {
+                return Err(CommandError::InvalidCommand(
+                    "Invalid or missing origin".to_string(),
+                ))
+            }
         };
 
-        let actf = map.get("actf").cloned().ok_or_else(|| CommandError::InvalidCommand("Missing actf".to_string()))?;
-        let message = map.get("message").cloned().ok_or_else(|| CommandError::InvalidCommand("Missing message".to_string()))?;
+        let actf = map
+            .get("actf")
+            .cloned()
+            .ok_or_else(|| CommandError::InvalidCommand("Missing actf".to_string()))?;
+        let message = map
+            .get("message")
+            .cloned()
+            .ok_or_else(|| CommandError::InvalidCommand("Missing message".to_string()))?;
 
         // Extract and parse the kwargs field
         let kwargs = if let Some(kwargs_str) = map.remove("kwargs") {
-            serde_json::from_str::<HashMap<String, Value>>(&kwargs_str).map_err(|e| CommandError::InvalidCommand(format!("Failed to parse kwargs: {}", e)))?
+            serde_json::from_str::<HashMap<String, Value>>(&kwargs_str).map_err(|e| {
+                CommandError::InvalidCommand(format!("Failed to parse kwargs: {}", e))
+            })?
         } else {
             HashMap::new()
         };
@@ -316,7 +410,7 @@ fn transform_value(value: &Value) -> Value {
                 }
             }
             Value::Object(serde_json::Map::from_iter(new_map)) // Convert HashMap to serde_json::Map using into()
-        },
+        }
         Value::String(s) => {
             // If the string is a JSON representation, parse it and transform it
             if let Ok(parsed) = serde_json::from_str::<Value>(s) {
@@ -324,15 +418,25 @@ fn transform_value(value: &Value) -> Value {
             } else {
                 Value::String(s.clone())
             }
-        },
+        }
         Value::Array(arr) => Value::Array(arr.iter().map(|v| transform_value(v)).collect()),
         _ => value.clone(),
     }
 }
 
 impl Command {
-    pub fn new(client_key: String, parity_id: String, priority: u8, command: CommandInstructions) -> Self {
-        Self { client_key, parity_id, priority, command }
+    pub fn new(
+        client_key: String,
+        parity_id: String,
+        priority: u8,
+        command: CommandInstructions,
+    ) -> Self {
+        Self {
+            client_key,
+            parity_id,
+            priority,
+            command,
+        }
     }
 
     /// Converts a `DownCommand` into `Command`.
@@ -364,12 +468,18 @@ impl Command {
         let parity_id = down_command.parity_id.clone();
         let priority = down_command.priority.clone();
 
-        let command: CommandInstructions = match serde_json::from_str(&down_command.command.clone()) {
+        let command: CommandInstructions = match serde_json::from_str(&down_command.command.clone())
+        {
             Ok(c) => c,
             Err(_) => return Err(CommandError::InvalidCommand("".to_string())),
         };
 
-        Ok(Self { client_key, parity_id, priority, command })
+        Ok(Self {
+            client_key,
+            parity_id,
+            priority,
+            command,
+        })
     }
 
     /// Converts an `UpCommand` into `Command`.
@@ -403,12 +513,22 @@ impl Command {
 
         let command: CommandInstructions = match serde_json::from_str(&up_command.command.clone()) {
             Ok(c) => c,
-            Err(e) => return Err(CommandError::InvalidCommand(format!("The error is: {:?}", e))),
+            Err(e) => {
+                return Err(CommandError::InvalidCommand(format!(
+                    "The error is: {:?}",
+                    e
+                )))
+            }
         };
 
         println!("Client -> Command from UpCommand: {:?}", command);
 
-        Ok(Self { client_key, parity_id, priority, command })
+        Ok(Self {
+            client_key,
+            parity_id,
+            priority,
+            command,
+        })
     }
 
     pub fn command_type(&self) -> CommandType {
@@ -420,9 +540,18 @@ impl Command {
         let mut map = Map::new();
 
         // Serialize simple fields directly
-        map.insert("client_key".to_owned(), serde_json::Value::from(self.client_key.clone()));
-        map.insert("parity_id".to_owned(), serde_json::Value::from(self.parity_id.clone()));
-        map.insert("priority".to_owned(), serde_json::Value::from(serde_json::Number::from_f64(self.priority as f64).unwrap()));
+        map.insert(
+            "client_key".to_owned(),
+            serde_json::Value::from(self.client_key.clone()),
+        );
+        map.insert(
+            "parity_id".to_owned(),
+            serde_json::Value::from(self.parity_id.clone()),
+        );
+        map.insert(
+            "priority".to_owned(),
+            serde_json::Value::from(serde_json::Number::from_f64(self.priority as f64).unwrap()),
+        );
 
         // For the command field, use its to_string_value method
         let command_map = &self.command.to_value_map();
