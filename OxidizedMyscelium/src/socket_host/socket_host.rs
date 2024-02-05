@@ -960,7 +960,6 @@ fn handle_connection(stream: &mut TcpStream) {
                             logger.debug("Command is in command patterns!".to_string());
                             let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command_to_redirect.parity_id.clone(), command_to_redirect.client_key.clone());
                             let response: Command;
-handle_client_disconnect
                             //> HANDLE COMMANDS WITH RESPONSE:
                             if !command_is_not_registry {
                                 logger.warn(format!(
