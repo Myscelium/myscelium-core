@@ -60,7 +60,7 @@ pub use socket_host::socket_host::set_heartbeat_callback;
 lazy_static! {
 
     // CLIENT
-    pub static ref CLIENT_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+    pub static ref CLIENT_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref CLIENT_IS_SYNC: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref CLIENT_NODE_KEY: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
     pub static ref CLIENT_NODE_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
@@ -378,6 +378,7 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     thread::spawn(|| {
         ctrlc::set_handler(move || {
             if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                 println!("\nreceived Ctrl+C!\n");
                 stop_socket_client();
@@ -388,7 +389,7 @@ pub fn initialize_socket_client(ip: String, port: i32) {
         initialize_client(address);
 
         println!("Socket host exited successfully!");
-
+        CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
     });
 
