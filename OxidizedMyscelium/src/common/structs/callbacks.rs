@@ -28,9 +28,27 @@ pub enum CallbackError {
 fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
     match value {
         Value::String(s) => Some(Box::new(s.clone()) as Box<dyn Any>),
-        Value::Number(n) if n.is_i64() => n.as_i64().map(|i| Box::new(i) as Box<dyn Any>),
-        // Handle other types as needed
-        _ => None,
+        Value::Number(n) => {
+            if n.is_i64() {
+                n.as_i64().map(|i| Box::new(i) as Box<dyn Any>)
+            } else if n.is_f64() {
+                n.as_f64().map(|f| Box::new(f) as Box<dyn Any>)
+            } else if n.is_u64() {
+                n.as_u64().map(|u| Box::new(u) as Box<dyn Any>)
+            } else {
+                None
+            }
+        },
+        Value::Bool(b) => Some(Box::new(*b) as Box<dyn Any>),
+        Value::Null => None,
+        Value::Array(arr) => {
+            let boxed_array: Vec<Box<dyn Any>> = arr.iter().filter_map(|item| convert_json_value_to_any(item)).collect();
+            Some(Box::new(boxed_array) as Box<dyn Any>)
+        },
+        Value::Object(obj) => {
+            let boxed_map: HashMap<String, Box<dyn Any>> = obj.iter().filter_map(|(k, v)| if let Some(boxed_value) = convert_json_value_to_any(v) { Some((k.clone(), boxed_value)) } else { None }).collect();
+            Some(Box::new(boxed_map) as Box<dyn Any>)
+        },
     }
 }
 
