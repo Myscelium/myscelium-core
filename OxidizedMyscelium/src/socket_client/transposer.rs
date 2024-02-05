@@ -193,7 +193,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
 
-    let mut resp;
+    let resp: ProcessResult;
 
     println!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction");
 
@@ -214,7 +214,11 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = CLIENT_CALLBACK_PATTERNS.clone();
-            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), translated_command.command.kwargs.clone()) {
+
+            let mut kwargs: HashMap<String, Value> = HashMap::new();
+            kwargs.insert("data".to_string(), serde_json::Value::from_iter(serde_json::Map::from_iter(translated_command.command_to_hashmap().unwrap())));
+
+            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs) {
                 Ok(r) => {
                     logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
                     r

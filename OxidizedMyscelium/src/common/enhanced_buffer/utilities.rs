@@ -414,4 +414,21 @@ impl Command {
     pub fn command_type(&self) -> CommandType {
         return self.command.command_type.clone();
     }
+
+    /// Converts a Command instance into a HashMap<String, Value>
+    pub fn command_to_hashmap(&self) -> Result<HashMap<String, Value>, CommandError> {
+        let mut map = Map::new();
+
+        // Serialize simple fields directly
+        map.insert("client_key".to_owned(), serde_json::to_value(&self.client_key).unwrap());
+        map.insert("parity_id".to_owned(), serde_json::to_value(&self.parity_id).unwrap());
+        map.insert("priority".to_owned(), serde_json::to_value(&self.priority).unwrap());
+
+        // For the command field, use its to_string_value method
+        let command_map = &self.command.to_value_map();
+        map.insert("command".to_owned(), command_map.clone());
+
+        // Convert the serde_json Map to HashMap
+        Ok(map.into_iter().collect())
+    }
 }
