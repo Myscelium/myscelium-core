@@ -702,6 +702,7 @@ fn handle_connection(stream: &mut TcpStream) {
             Err(e) => {
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
+                handle_client_disconnect(client_key);
                 return; //> or handle differently
             }
         };
@@ -724,6 +725,7 @@ fn handle_connection(stream: &mut TcpStream) {
             Err(e) => {
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
+                handle_client_disconnect(client_key);
                 return; //> or handle differently
             }
         };
@@ -900,6 +902,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {}
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
+                                handle_client_disconnect(client_key);
                                 return;
                             }
 
@@ -915,6 +918,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {}
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
+                                handle_client_disconnect(client_key);
                                 return;
                             }
 
@@ -935,6 +939,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {}
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
+                                handle_client_disconnect(client_key);
                                 return;
                             };
 
@@ -1021,6 +1026,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {}
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
+                                handle_client_disconnect(client_key);
                                 return;
                             };
 
@@ -1081,6 +1087,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                 Ok(_) => {}
                                 Err(e) => handle_send_error!(e, logger, client_key),
                             };
+                            handle_client_disconnect(client_key);
                             return;
                         }
                     }
