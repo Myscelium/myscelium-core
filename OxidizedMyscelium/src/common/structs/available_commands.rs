@@ -25,6 +25,29 @@ pub struct NodeHandler {
 }
 
 impl NodeHandler {
+    pub fn into_hashmap(self) -> HashMap<String, Value> {
+        let mut map = HashMap::new();
+
+        // Insert each field into the map. You will need to convert non-String types to Value.
+        // This assumes that CommandType and HandlerStatus implement Serialize.
+        map.insert("name".to_string(), Value::String(self.name));
+        map.insert("parameters".to_string(), self.parameters);
+        map.insert(
+            "handler_type".to_string(),
+            serde_json::to_value(self.handler_type).unwrap(),
+        );
+        map.insert(
+            "status".to_string(),
+            serde_json::to_value(self.status).unwrap(),
+        );
+        map.insert(
+            "response_structure".to_string(),
+            Value::Object(Map::from_iter(self.response_structure)),
+        );
+        map.insert("description".to_string(), Value::String(self.description));
+
+        map
+    }
     pub fn new(
         name: String,
         parameters: Value,
@@ -62,7 +85,30 @@ pub struct NodeVersion {
     identifier: VersionIndentifier,
 }
 
+impl VersionIndentifier {
+    pub fn to_string(&self) -> String {
+        match &self {
+            VersionIndentifier::ReleaseCandidate => "ReleaseCandidate",
+            VersionIndentifier::Alpha => "Alpha",
+            VersionIndentifier::PreAlpha => "PreAlpha",
+            VersionIndentifier::Beta => "Beta",
+            VersionIndentifier::PreBeta => "PreBeta",
+            VersionIndentifier::Release => "Release",
+        }
+        .to_string()
+    }
+}
+
 impl NodeVersion {
+    pub fn to_string(&self) -> String {
+        format!(
+            "{}.{}.{}-{}",
+            self.major,
+            self.minor,
+            self.patch,
+            self.identifier.to_string()
+        )
+    }
     pub fn cast_version(
         major: u32,
         minor: u32,
@@ -101,6 +147,19 @@ pub enum NodeStatus {
     NotSyncYet,
     NotImplemented,
     Offline,
+}
+
+impl NodeStatus {
+    pub fn to_string(&self) -> String {
+        match &self {
+            NodeStatus::Online => "Online",
+            NodeStatus::Offline => "Offline",
+            NodeStatus::NotSyncYet => "NotSyncYet",
+            NodeStatus::NotImplemented => "NotImplemented",
+            NodeStatus::Idle => "Idle",
+        }
+        .to_string()
+    }
 }
 
 impl Node {
