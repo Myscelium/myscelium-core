@@ -181,7 +181,7 @@ impl Node {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkMap {
-    nodes: Vec<Node>,
+    pub nodes: Vec<Node>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
