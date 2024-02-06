@@ -48,8 +48,6 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::CLIENT_CALLBACK_PATTERNS;
 
 lazy_static! {
-    pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> =
-        Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 }
 

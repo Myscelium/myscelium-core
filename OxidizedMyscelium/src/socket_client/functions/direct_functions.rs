@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use crate::socket_client::client_logger::log_handler::Logger;
 use crate::{CLIENT_IS_SYNC, CLIENT_LOG_LEVEL};
 
-use crate::socket_client::transposer::HOST_ALLOWED_COMMANDS;
+use crate::HOST_ALLOWED_COMMANDS;
 
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::utilities::{
