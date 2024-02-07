@@ -133,7 +133,7 @@ pub enum NodeError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     name: Option<String>,
-    key: Option<String>,
+    pub key: Option<String>,
     status: Option<NodeStatus>,
     description: Option<String>,
     version: Option<NodeVersion>,

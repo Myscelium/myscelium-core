@@ -445,6 +445,24 @@ pub fn handle_client_disconnect(client_key: String) {
     logger.info(format!("Client: {} disconnected!", client_key));
     let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
     client_sync_manager.reset_sync_for_client(&client_key);
+
+    // -> Change client to offline in network map
+    let mut network_map = HOST_COMMAND_PATTERNS.lock();
+    let mut node = network_map.get_node_by_key(&client_key).unwrap();
+    node.change_node_status(crate::NodeStatus::Offline);
+
+    // -> Make all the client related to this client need to sync again
+
+    let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&client_key);
+
+    let mut clients_to_reset: Vec<String> = Vec::new();
+    for node in nodes_to_update {
+        if let Some(key) = node.key {
+            clients_to_reset.push(key);
+        }
+    }
+
+    client_sync_manager.reset_sync_for_clients(clients_to_reset);
 }
 
 // > Socket main structure:
