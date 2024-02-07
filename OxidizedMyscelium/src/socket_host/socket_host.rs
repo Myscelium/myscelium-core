@@ -453,6 +453,10 @@ pub fn handle_client_disconnect(client_key: String) {
 
     // -> Make all the client related to this client need to sync again
 
+    // TODO
+    //> When implement the mechanism of permissions change this to only set the nodes that the node
+    //> that disconnected have access to, so only the nodes that this clients depends can be turn off
+
     let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&client_key);
 
     let mut clients_to_reset: Vec<String> = Vec::new();
