@@ -192,6 +192,24 @@ impl Node {
         }
     }
 
+    pub fn partially_initialize(
+        name: String,
+        key: String,
+        status: NodeStatus,
+        description: Option<String>,
+        version: Option<NodeVersion>,
+        handlers: Option<Vec<NodeHandler>>,
+    ) -> Self {
+        Self {
+            name: Some(name),
+            key: Some(key),
+            status: Some(status),
+            description: description,
+            version: version,
+            handlers: handlers,
+        }
+    }
+
     pub fn from_value(value: Value) -> Result<Self, NodeError> {
         let node: Node = match serde_json::from_value(value) {
             Ok(n) => n,
