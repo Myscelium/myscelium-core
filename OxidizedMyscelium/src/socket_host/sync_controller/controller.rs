@@ -182,6 +182,16 @@ impl Clients {
         Ok(())
     }
 
+    pub fn reset_sync_for_clients(
+        &mut self,
+        client_keys: Vec<String>,
+    ) -> Result<(), ClientStatusPoolError> {
+        for key in client_keys {
+            self.reset_sync_for_client(&key)?;
+        }
+        Ok(())
+    }
+
     pub fn reset_sync_for_client(
         &mut self,
         client_key: &String,

@@ -133,7 +133,7 @@ pub enum NodeError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     name: Option<String>,
-    key: Option<String>,
+    pub key: Option<String>,
     status: Option<NodeStatus>,
     description: Option<String>,
     version: Option<NodeVersion>,
@@ -189,6 +189,24 @@ impl Node {
             description: Some(description),
             version: Some(version),
             handlers: Some(handlers),
+        }
+    }
+
+    pub fn partially_initialize(
+        name: String,
+        key: String,
+        status: NodeStatus,
+        description: Option<String>,
+        version: Option<NodeVersion>,
+        handlers: Option<Vec<NodeHandler>>,
+    ) -> Self {
+        Self {
+            name: Some(name),
+            key: Some(key),
+            status: Some(status),
+            description: description,
+            version: version,
+            handlers: handlers,
         }
     }
 

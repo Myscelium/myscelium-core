@@ -505,6 +505,19 @@ pub fn load_allowed_clients() {
             println!("\nSet clients sync controler to:\n{:?}\n", controller);
         }
 
+        {
+            let mut network_map = HOST_COMMAND_PATTERNS.lock();
+            let new_node = Node::partially_initialize(
+                client_allowed.client_name.clone(),
+                client_allowed.client_key.clone(),
+                NodeStatus::NotImplemented,
+                None,
+                None,
+                None,
+            );
+            network_map.add_or_update_if_exists(new_node)
+        }
+
         println!(
             "Successfully created client: {} of key: {}",
             client_allowed.client_name, client_allowed.client_key
