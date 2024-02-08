@@ -488,13 +488,13 @@ impl NetworkMap {
         for key in not_seen_nodes {
             let new_node = new_nodes[&key].clone();
 
-            self.nodes.push(Node::new(
+            self.nodes.push(Node::partially_initialize(
                 new_node.name.unwrap(),
                 new_node.key.unwrap(),
-                new_node.description.unwrap(),
-                new_node.version.unwrap(),
-                new_node.handlers.unwrap(),
                 new_node.status.unwrap(),
+                new_node.description,
+                new_node.version,
+                new_node.handlers,
             ))
         }
 
