@@ -283,40 +283,12 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             let mut client_name: String = client.get_client_name();
 
             {
-                let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
-
-                let mut client_node = match Node::from_value(client_handlers.clone()) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        return ProcessResult::Error(format!("Error creating node, the error was: {:?}", e));
-                    },
-                };
-
-                client_node.change_node_status(NodeStatus::Online);
-                actual_patterns.add_or_update_if_exists(client_node);
-            }
-
-            {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
                 let status = controller.update_client_sync_status(client_key, true);
                 // TODO >>> Add a mechanism to set all the other clients state to sync = false
             }
 
-            let mut responses: Vec<ProcessResult> = Vec::new();
-
-            // Generate confirmation to triggering client
-            let new_command_instructions = CommandInstructions::new(
-                CommandMode::Response,
-                CommandType::SpecialFunction,
-                CommandTarget::Origin,
-                CommandStatus::Success,
-                CommandOrigin::Host,
-                "C210".to_string(),
-                HashMap::new(),
-                "".to_string(),
-            );
-
-            return ProcessResult::CommandInstructions(new_command_instructions);
+            return ProcessResult::Empty;
         },
         "add_client" => {
             // > edit client

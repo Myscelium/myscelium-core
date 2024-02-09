@@ -390,7 +390,7 @@ fn process(down_command: DownCommand) {
     logger.debug(format!("Translated command: {:?}", translated_command));
 
     // TODO >>> Add a direct way to verify if it is a direct function by use the command.commandinstruction.commandtype
-    let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "add_client", "update_client", "remove_client"]
+    let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
         .into_iter()
         .map(|s| s.to_string())
         .collect();

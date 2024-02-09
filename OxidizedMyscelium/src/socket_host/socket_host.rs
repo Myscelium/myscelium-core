@@ -411,8 +411,6 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
     let logger = acquire_logger!("Core");
     logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status));
 
-    let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
-
     // -> Change client to offline in network map
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
     let mut node = network_map.get_node_by_key(&client_key).unwrap();
@@ -423,6 +421,8 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
     }
 
     node.change_node_status(new_status);
+
+    let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
 
     println!("Client Sync Manager: {:?}", client_sync_manager);
 
@@ -819,7 +819,7 @@ fn handle_connection(stream: &mut TcpStream) {
             println!("\nCommand.Command.function: {:?}", command.command.actf);
             logger.debug(format!("Command function: {}", command.command.actf));
 
-            let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "add_client", "update_client", "remove_client"]
+            let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
                 .into_iter()
                 .map(|s| s.to_string())
                 .collect();
