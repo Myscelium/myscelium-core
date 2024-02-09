@@ -251,6 +251,73 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
             return ProcessResult::List(responses);
         },
+        "restrictive_update_client_commands_ref" => {
+            logger.info(format!("Receive restrictive_update_client_commands_ref in host!"));
+
+            // -> get the client by the client key
+            let client = match Client::get_by_key(client_key) {
+                Ok(c) => c,
+                Err(e) => match e {
+                    ClientError::ClientDoesNotExist(_) => {
+                        return ProcessResult::Error(format!("Unknow client_key: {:?}", client_key));
+                    },
+                    _ => {
+                        return ProcessResult::Error(format!("Get a error {:?}, obtaining client: {:?}", e, client_key));
+                    },
+                },
+            };
+
+            let client_handlers;
+
+            // Check if 'client_handlers' exists within 'kwargs'
+            if let Some(handlers) = command.kwargs.get("client_handlers") {
+                client_handlers = handlers;
+            } else {
+                return ProcessResult::Error(format!("restrictive_update_client_commands_ref give the followign error: The 'client_handlers' key does not exist within 'kwargs'."));
+            }
+
+            // } else {
+            //     return ResultType::Error(format!("update_client_commands_ref command doesn't have kwargs in it!"));
+            // }
+
+            let mut client_name: String = client.get_client_name();
+
+            {
+                let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+
+                let mut client_node = match Node::from_value(client_handlers.clone()) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        return ProcessResult::Error(format!("Error creating node, the error was: {:?}", e));
+                    },
+                };
+
+                client_node.change_node_status(NodeStatus::Online);
+                actual_patterns.add_or_update_if_exists(client_node);
+            }
+
+            {
+                let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+                let status = controller.update_client_sync_status(client_key, true);
+                // TODO >>> Add a mechanism to set all the other clients state to sync = false
+            }
+
+            let mut responses: Vec<ProcessResult> = Vec::new();
+
+            // Generate confirmation to triggering client
+            let new_command_instructions = CommandInstructions::new(
+                CommandMode::Response,
+                CommandType::SpecialFunction,
+                CommandTarget::Origin,
+                CommandStatus::Success,
+                CommandOrigin::Host,
+                "C210".to_string(),
+                HashMap::new(),
+                "".to_string(),
+            );
+
+            return ProcessResult::CommandInstructions(new_command_instructions);
+        },
         "add_client" => {
             // > edit client
             // {'response_mode':'InternalManagement', 'activation_function':'add_client', 'kwargs':response, 'response_activation_function':'function_name'}
