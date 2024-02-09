@@ -19,13 +19,10 @@ use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator};
 use crate::CLIENT_STATE_MANAGER;
 
 lazy_static! {
-    static ref STATES_BUFFER_NAME: Arc<Mutex<String>> =
-        Arc::new(Mutex::new("buffer.db".to_string()));
-    static ref STATES_BUFFER_PATH: Arc<Mutex<String>> =
-        Arc::new(Mutex::new("buffer.db".to_string()));
+    static ref STATES_BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
+    static ref STATES_BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref STATES_NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref STATES_BUFFER_POOL: Mutex<SQLiteConnectionPool> =
-        Mutex::new(SQLiteConnectionPool::empty());
+    static ref STATES_BUFFER_POOL: Mutex<SQLiteConnectionPool> = Mutex::new(SQLiteConnectionPool::empty());
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,32 +43,7 @@ pub fn inialize_client_status_table_table(status_db_spath: String) {
     let mutex1 = Mutex::new(0);
     let mutex2 = Mutex::new(0);
 
-    // Spawn a thread to periodically check for deadlocks
-    thread::spawn(|| {
-        loop {
-            thread::sleep(Duration::from_secs(5)); // Check every 5 seconds
-            let deadlocks = parking_lot::deadlock::check_deadlock();
-            if deadlocks.is_empty() {
-                continue;
-            }
-
-            println!("{} deadlocks detected", deadlocks.len());
-            for (i, threads) in deadlocks.iter().enumerate() {
-                println!("Deadlock #{}", i);
-                for t in threads {
-                    println!("Thread Id {:?}", t.thread_id());
-                    println!("{:?}", t.backtrace());
-                }
-            }
-        }
-    });
-
-    set_new_path_to_buffer_db!(
-        STATES_BUFFER_POOL,
-        STATES_NUM_WORKERS,
-        status_db_spath,
-        STATES_BUFFER_NAME
-    );
+    set_new_path_to_buffer_db!(STATES_BUFFER_POOL, STATES_NUM_WORKERS, status_db_spath, STATES_BUFFER_NAME);
 
     with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
         let result = conn.execute(
@@ -82,13 +54,10 @@ pub fn inialize_client_status_table_table(status_db_spath: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize ClientStates table!");
-            }
+            },
             Err(e) => {
-                eprintln!(
-                    "An error occurred while initializing the ClientState table, the error was: {}",
-                    e
-                );
-            }
+                eprintln!("An error occurred while initializing the ClientState table, the error was: {}", e);
+            },
         };
     });
 }
@@ -100,16 +69,7 @@ pub enum StateManagerError {
 }
 
 impl ClientState {
-    pub fn new(
-        name: String,
-        key: String,
-        network_map: NetworkMap,
-        client_node_configs: Node,
-        is_initialized: bool,
-        is_ready: bool,
-        is_connected: bool,
-        is_sync: bool,
-    ) -> Self {
+    pub fn new(name: String, key: String, network_map: NetworkMap, client_node_configs: Node, is_initialized: bool, is_ready: bool, is_connected: bool, is_sync: bool) -> Self {
         Self {
             name: Some(name),
             key: Some(key),
@@ -132,13 +92,10 @@ impl ClientState {
             match result {
                 Ok(_) => {
                     println!("Successfully clean ClientStates table");
-                }
+                },
                 Err(e) => {
-                    eprintln!(
-                        "An error occurred while cleaning the ClientStates table: {}",
-                        e
-                    );
-                }
+                    eprintln!("An error occurred while cleaning the ClientStates table: {}", e);
+                },
             };
         });
     }
@@ -158,14 +115,7 @@ impl ClientState {
     }
 
     pub fn is_fully_initialized(&self) -> bool {
-        self.name.is_some()
-            && self.key.is_some()
-            && self.network_map.is_some()
-            && self.client_node_configs.is_some()
-            && self.is_initialized.is_some()
-            && self.is_connected.is_some()
-            && self.is_sync.is_some()
-            && self.last_change.is_some()
+        self.name.is_some() && self.key.is_some() && self.network_map.is_some() && self.client_node_configs.is_some() && self.is_initialized.is_some() && self.is_connected.is_some() && self.is_sync.is_some() && self.last_change.is_some()
     }
 
     pub fn save_in_storage(&self) -> Result<(), StateManagerError> {
@@ -178,8 +128,7 @@ impl ClientState {
             // client states table.
 
             let now = Utc::now();
-            let timestamp =
-                now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
+            let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
             let result = conn.execute(
                 "INSERT INTO ClientStates (ID, Name, Key, NetMap, ClientNodeConfigs, IsInitialized, IsReady, IsConnected, IsSync, LastChange) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
@@ -200,13 +149,10 @@ impl ClientState {
             match result {
                 Ok(_) => {
                     println!("Successfully saved state in ClientStates table");
-                }
+                },
                 Err(e) => {
-                    eprintln!(
-                        "An error occurred while saving a cient sate in ClientStates table: {}",
-                        e
-                    );
-                }
+                    eprintln!("An error occurred while saving a cient sate in ClientStates table: {}", e);
+                },
             };
         });
 
@@ -220,9 +166,7 @@ impl ClientState {
             let mut state: ClientState = ClientState::empty();
 
             {
-                let mut smtp = conn
-                    .prepare("SELECT * FROM ClientStates WHERE ID = ?")
-                    .unwrap();
+                let mut smtp = conn.prepare("SELECT * FROM ClientStates WHERE ID = ?").unwrap();
                 let mut commands_iter = smtp
                     .query_map(params![0], |row| {
                         let network: String = row.get(3).unwrap();
@@ -232,9 +176,7 @@ impl ClientState {
                             name: Some(row.get(1).unwrap()),
                             key: Some(row.get(2).unwrap()),
                             network_map: Some(serde_json::from_str(network.as_str()).unwrap()),
-                            client_node_configs: Some(
-                                serde_json::from_str::<Node>(client_node.as_str()).unwrap(),
-                            ),
+                            client_node_configs: Some(serde_json::from_str::<Node>(client_node.as_str()).unwrap()),
                             is_initialized: Some(row.get(5).unwrap()),
                             is_ready: Some(row.get(6).unwrap()),
                             is_connected: Some(row.get(7).unwrap()),
@@ -263,8 +205,7 @@ impl ClientState {
             //};
 
             let now = Utc::now();
-            let timestamp =
-                now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
+            let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
             let result = conn.execute(
                 "UPDATE ClientStates SET Name = ?, Key = ?, NetMap = ?, ClientNodeConfigs = ?, IsInitialized = ?, IsReady = ?, IsConnected = ?, IsSync = ?, LastChange = ? WHERE ID = ?",
                 params![
@@ -283,10 +224,10 @@ impl ClientState {
             match result {
                 Ok(_) => {
                     println!("Successfully update client state in ClientStates table");
-                }
+                },
                 Err(e) => {
                     eprintln!("An error occurred while update the client state in the ClientStates table: {}", e);
-                }
+                },
             };
         });
         Ok(())
