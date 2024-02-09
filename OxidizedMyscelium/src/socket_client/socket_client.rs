@@ -705,7 +705,7 @@ pub fn initialize_client(address: String) -> Option<String> {
 
     logger.info(format!("Connected to {:?}!", &address).to_string());
 
-    thread::sleep(Duration::from_millis(2000));
+    thread::sleep(Duration::from_millis(5));
 
     let client_key: String;
 
