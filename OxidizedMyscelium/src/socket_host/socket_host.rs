@@ -17,6 +17,7 @@ use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
 use crate::ClientState;
+use crate::NodeStatus;
 use serde_json::to_string;
 
 use crate::handle_manager_client_error;
@@ -406,15 +407,22 @@ pub fn get_available_commands_registered() -> HashMap<String, Value> {
     return global_command_patterns.extract_all_commands().unwrap();
 }
 
-pub fn handle_client_disconnect(client_key: String) {
+pub fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) {
     let logger = acquire_logger!("Core");
-    logger.info(format!("Client: {} disconnected!", client_key));
+    logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status));
+
     let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
 
     // -> Change client to offline in network map
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
     let mut node = network_map.get_node_by_key(&client_key).unwrap();
-    node.change_node_status(crate::NodeStatus::Offline);
+
+    if node.get_node_status() == new_status {
+        logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
+        return;
+    }
+
+    node.change_node_status(new_status);
 
     println!("Client Sync Manager: {:?}", client_sync_manager);
 
@@ -437,6 +445,10 @@ pub fn handle_client_disconnect(client_key: String) {
     }
 
     client_sync_manager.reset_sync_for_clients(clients_to_reset).unwrap();
+}
+
+pub fn handle_client_disconnect(client_key: String) {
+    change_client_node_status_and_stream(client_key, crate::NodeStatus::Offline)
 }
 
 // > Socket main structure:
@@ -771,6 +783,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     println!("Try to sync with: {}", command.client_key);
                     send_network_available_commands(command.client_key.clone());
                     update_client_sync_attempt(&command.client_key, &logger);
+                    change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.warn(format!(
                         "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",

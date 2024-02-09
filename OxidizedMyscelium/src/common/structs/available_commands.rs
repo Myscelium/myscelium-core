@@ -32,30 +32,14 @@ impl NodeHandler {
         // This assumes that CommandType and HandlerStatus implement Serialize.
         map.insert("name".to_string(), Value::String(self.name));
         map.insert("parameters".to_string(), self.parameters);
-        map.insert(
-            "handler_type".to_string(),
-            serde_json::to_value(self.handler_type).unwrap(),
-        );
-        map.insert(
-            "status".to_string(),
-            serde_json::to_value(self.status).unwrap(),
-        );
-        map.insert(
-            "response_structure".to_string(),
-            Value::Object(Map::from_iter(self.response_structure)),
-        );
+        map.insert("handler_type".to_string(), serde_json::to_value(self.handler_type).unwrap());
+        map.insert("status".to_string(), serde_json::to_value(self.status).unwrap());
+        map.insert("response_structure".to_string(), Value::Object(Map::from_iter(self.response_structure)));
         map.insert("description".to_string(), Value::String(self.description));
 
         map
     }
-    pub fn new(
-        name: String,
-        parameters: Value,
-        handler_type: CommandType,
-        status: HandlerStatus,
-        response_structure: HashMap<String, Value>,
-        description: String,
-    ) -> Self {
+    pub fn new(name: String, parameters: Value, handler_type: CommandType, status: HandlerStatus, response_structure: HashMap<String, Value>, description: String) -> Self {
         Self {
             name,
             parameters,
@@ -101,26 +85,10 @@ impl VersionIndentifier {
 
 impl NodeVersion {
     pub fn to_string(&self) -> String {
-        format!(
-            "{}.{}.{}-{}",
-            self.major,
-            self.minor,
-            self.patch,
-            self.identifier.to_string()
-        )
+        format!("{}.{}.{}-{}", self.major, self.minor, self.patch, self.identifier.to_string())
     }
-    pub fn cast_version(
-        major: u32,
-        minor: u32,
-        patch: u32,
-        identifier: VersionIndentifier,
-    ) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-            identifier,
-        }
+    pub fn cast_version(major: u32, minor: u32, patch: u32, identifier: VersionIndentifier) -> Self {
+        Self { major, minor, patch, identifier }
     }
 }
 
@@ -140,7 +108,7 @@ pub struct Node {
     handlers: Option<Vec<NodeHandler>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum NodeStatus {
     Online,
     Idle,
@@ -174,14 +142,7 @@ impl Node {
         }
     }
 
-    pub fn new(
-        name: String,
-        key: String,
-        description: String,
-        version: NodeVersion,
-        handlers: Vec<NodeHandler>,
-        status: NodeStatus,
-    ) -> Self {
+    pub fn new(name: String, key: String, description: String, version: NodeVersion, handlers: Vec<NodeHandler>, status: NodeStatus) -> Self {
         Self {
             name: Some(name),
             key: Some(key),
@@ -192,14 +153,7 @@ impl Node {
         }
     }
 
-    pub fn partially_initialize(
-        name: String,
-        key: String,
-        status: NodeStatus,
-        description: Option<String>,
-        version: Option<NodeVersion>,
-        handlers: Option<Vec<NodeHandler>>,
-    ) -> Self {
+    pub fn partially_initialize(name: String, key: String, status: NodeStatus, description: Option<String>, version: Option<NodeVersion>, handlers: Option<Vec<NodeHandler>>) -> Self {
         Self {
             name: Some(name),
             key: Some(key),
@@ -208,6 +162,10 @@ impl Node {
             version: version,
             handlers: handlers,
         }
+    }
+
+    pub fn get_node_status(&mut self) -> NodeStatus {
+        self.status.as_ref().unwrap_or(&NodeStatus::NotImplemented).clone()
     }
 
     pub fn from_value(value: Value) -> Result<Self, NodeError> {
@@ -240,14 +198,7 @@ impl Node {
         self.status = Some(new_status);
     }
 
-    pub fn update(
-        &mut self,
-        name: String,
-        key: String,
-        description: String,
-        version: NodeVersion,
-        handlers: Vec<NodeHandler>,
-    ) {
+    pub fn update(&mut self, name: String, key: String, description: String, version: NodeVersion, handlers: Vec<NodeHandler>) {
         self.name = Some(name);
         self.key = Some(key);
         self.description = Some(description);
@@ -300,10 +251,7 @@ impl NetworkMap {
 
     pub fn get_all_nodes_except_node_with_name(&self, name: String) -> Vec<Node> {
         let mut nodes_mirror = self.nodes.clone();
-        if let Some(index) = nodes_mirror
-            .iter()
-            .position(|x| x.name == Some(name.clone()))
-        {
+        if let Some(index) = nodes_mirror.iter().position(|x| x.name == Some(name.clone())) {
             nodes_mirror.remove(index); // remove especific node
         }
         nodes_mirror
@@ -345,10 +293,7 @@ impl NetworkMap {
 
     pub fn convert_to_value_map(&self) -> HashMap<String, Value> {
         let mut value_map = HashMap::new();
-        value_map.insert(
-            "network_map".to_string(),
-            serde_json::to_value(&self).unwrap(),
-        );
+        value_map.insert("network_map".to_string(), serde_json::to_value(&self).unwrap());
         value_map
     }
 
@@ -362,7 +307,7 @@ impl NetworkMap {
             Err(e) => {
                 println!("Error creating network map from value: {:?}", e);
                 return Err(NetworkMapError::IncorrectValuePattern);
-            }
+            },
         };
 
         Ok(new_network_map)
@@ -378,14 +323,9 @@ impl NetworkMap {
         Ok(NetworkMap::decode_value(value_object)?)
     }
 
-    pub fn update_from_value_map(
-        &mut self,
-        map: HashMap<String, Value>,
-    ) -> Result<(), NetworkMapError> {
+    pub fn update_from_value_map(&mut self, map: HashMap<String, Value>) -> Result<(), NetworkMapError> {
         if !map.contains_key("network_nodes") {
-            return Err(NetworkMapError::IncorrectValueMapPattern(
-                "network map key not found in the map provided".to_string(),
-            ));
+            return Err(NetworkMapError::IncorrectValueMapPattern("network map key not found in the map provided".to_string()));
         };
 
         let value_network_map = &map["network_nodes"];
@@ -412,19 +352,19 @@ impl NetworkMap {
             match status {
                 NodeStatus::NotImplemented => {
                     return Ok(false);
-                }
+                },
                 NodeStatus::Online => {
                     return Ok(true);
-                }
+                },
                 NodeStatus::Offline => {
                     return Ok(false);
-                }
+                },
                 NodeStatus::NotSyncYet => {
                     return Ok(false);
-                }
+                },
                 NodeStatus::Idle => {
                     return Ok(true); // This represent the cases that node is restarting
-                }
+                },
             }
             // TODO >> Maybe create a new case where the status can be InShutdown
             // This will allow to make the client now that the target is turning Offline
@@ -440,10 +380,7 @@ impl NetworkMap {
     /// current network map and update nodes based in the nodes contained in
     /// the vec of updated nodes, if a node exists then it will be updated
     /// with the values or the variables contained in this vec.
-    pub fn mass_update_all_nodes(
-        &mut self,
-        updated_nodes: &Vec<Node>,
-    ) -> Result<(), NetworkMapError> {
+    pub fn mass_update_all_nodes(&mut self, updated_nodes: &Vec<Node>) -> Result<(), NetworkMapError> {
         // TODO >>> Add a better mechanism that can see if a node or function isn't implemented anymore in relation to the previous expectation
 
         let nnl = updated_nodes.len();
@@ -506,7 +443,7 @@ impl NetworkMap {
             Ok(n) => n,
             Err(_) => {
                 return false;
-            }
+            },
         };
 
         if let Some(node_handlers) = &node.handlers {
@@ -566,23 +503,15 @@ pub struct CommandPatterns {
 
 impl CommandPatterns {
     pub fn new() -> Self {
-        CommandPatterns {
-            patterns: HashMap::new(),
-        }
+        CommandPatterns { patterns: HashMap::new() }
     }
 
     pub fn command_exists(&self, owner: &str, command_name: &str) -> bool {
-        self.patterns
-            .get(owner)
-            .and_then(|commands| commands.get(command_name))
-            .is_some()
+        self.patterns.get(owner).and_then(|commands| commands.get(command_name)).is_some()
     }
 
     pub fn add_command(&mut self, owner: String, command_name: String, command: Command) {
-        self.patterns
-            .entry(owner)
-            .or_insert_with(HashMap::new)
-            .insert(command_name, command);
+        self.patterns.entry(owner).or_insert_with(HashMap::new).insert(command_name, command);
     }
 
     // Function to parse the JSON and integrate it into CommandPatterns
@@ -601,7 +530,7 @@ impl CommandPatterns {
                             command_params.insert(param_name, type_str);
                         }
                     }
-                }
+                },
                 _ => (), // Handle other types like Array, if necessary
             }
 
@@ -618,10 +547,7 @@ impl CommandPatterns {
 
     // Function to integrate a HashMap<String, Value> as commands for a client
     pub fn add_commands_from_map(&mut self, client: &str, commands_map: HashMap<String, Value>) {
-        let client_commands = self
-            .patterns
-            .entry(client.to_string())
-            .or_insert_with(HashMap::new);
+        let client_commands = self.patterns.entry(client.to_string()).or_insert_with(HashMap::new);
 
         for (command_name, params) in commands_map {
             let mut command_params = HashMap::new();
@@ -634,7 +560,7 @@ impl CommandPatterns {
                         }
                         // Handle other Value types if necessary
                     }
-                }
+                },
                 _ => (), // Handle non-Object types if necessary
             }
 
@@ -661,11 +587,7 @@ impl CommandPatterns {
         }
     }
 
-    pub fn extract_command_params_for_client(
-        &self,
-        client: &str,
-        command_name: &str,
-    ) -> Option<HashMap<String, Value>> {
+    pub fn extract_command_params_for_client(&self, client: &str, command_name: &str) -> Option<HashMap<String, Value>> {
         // Attempt to retrieve the command for the specified client
         if let Some(client_commands) = &self.patterns.get(client) {
             if let Some(command) = client_commands.get(command_name) {
@@ -692,11 +614,7 @@ impl CommandPatterns {
 
             // Iterate over each command for the client
             for (command_name, command) in client_commands {
-                let params_value = command
-                    .parameters
-                    .iter()
-                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-                    .collect::<serde_json::Map<_, _>>();
+                let params_value = command.parameters.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect::<serde_json::Map<_, _>>();
 
                 client_commands_map.insert(command_name.clone(), Value::Object(params_value));
             }
@@ -708,10 +626,7 @@ impl CommandPatterns {
     }
 
     // Function to get all commands except for those of a specified client, formatted as a HashMap<String, Value>
-    pub fn get_all_commands_except_for_client(
-        &self,
-        excluded_client: &str,
-    ) -> HashMap<String, Value> {
+    pub fn get_all_commands_except_for_client(&self, excluded_client: &str) -> HashMap<String, Value> {
         let mut filtered_commands = HashMap::new();
 
         for (client_name, client_commands) in &self.patterns {
@@ -720,11 +635,7 @@ impl CommandPatterns {
 
                 // Iterate over each command for the client
                 for (command_name, command) in client_commands {
-                    let params_value = command
-                        .parameters
-                        .iter()
-                        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-                        .collect::<Map<_, _>>();
+                    let params_value = command.parameters.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect::<Map<_, _>>();
 
                     client_commands_map.insert(command_name.clone(), Value::Object(params_value));
                 }
