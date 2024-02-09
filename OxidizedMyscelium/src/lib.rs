@@ -226,7 +226,7 @@ pub fn is_client_ready() -> bool {
 // }
 
 pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
-    if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+    if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
     }
@@ -249,7 +249,7 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
 }
 
 pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), ClientError> {
-    if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+    if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
     }
