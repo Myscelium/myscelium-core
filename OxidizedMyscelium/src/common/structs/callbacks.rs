@@ -62,7 +62,14 @@ impl MyCallbacks {
         map.insert(key, closure);
     }
 
-    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>) -> Result<Box<dyn Any>, CallbackError> {
+    /// Call the external callback
+    ///
+    /// This method requires
+    /// - key -> is the key of the function that you wan to call
+    /// - kwrags -> are the arguments to call thins function
+    /// - args_pattern -> are the patterns to organize the arguments in the tuple to call it
+    ///
+    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>, args_pattern: Vec<String>) -> Result<Box<dyn Any>, CallbackError> {
         let map = self.map.lock();
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------
