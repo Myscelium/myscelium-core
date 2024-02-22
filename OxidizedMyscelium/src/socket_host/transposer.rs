@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
@@ -418,13 +419,28 @@ fn process(down_command: DownCommand) {
 
         // -> EXTRACT CALLBACK FUNCTION
 
+        let command_instructions = translated_command.command.clone();
+
+        let kwargs_to_call: HashMap<String, Value>;
+
+        let mut map = HashMap::new();
+
+        // > Get the info parameters and add to kwargs
+        map.insert("mode".to_string(), serde_json::to_value(&command_instructions.mode).unwrap());
+        map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
+        map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
+        map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
+
+        let mut kwargs = command_instructions.kwargs.clone();
+        kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
+
         let response;
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
 
-            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), translated_command.command.kwargs.clone()) {
+            response = match callback_patterns.call(command_instructions.actf.as_str(), kwargs) {
                 Ok(r) => r,
                 Err(e) => {
                     // Existing logic to handle the error
