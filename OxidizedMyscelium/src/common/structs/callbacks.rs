@@ -74,17 +74,24 @@ impl MyCallbacks {
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------
             //> EXTRACT ARGS
-            let mut args: Vec<Box<dyn Any>> = Vec::new();
-            for (_key, value) in kwargs {
-                let any: Box<dyn Any> = Box::new(value.clone());
-                args.push(any);
 
-                // if let Some(any) = convert_json_value_to_any(&value) {
-                //     args.push(any);
-                // } else {
-                //     return Err(CallbackError::UnsupportedResponseArgument(_key));
-                // }
+            let mut args_pattern = args_pattern;
+
+            let mut args: Vec<Box<dyn Any>> = Vec::new();
+
+            //> Extract first arg that is a info carrier arg not contained inside the args_pattern
+            let mut first_arg_index = args_pattern.pop().unwrap();
+            let f_arg = kwargs.get(&first_arg_index).unwrap();
+            let f_any: Box<dyn Any> = Box::new(f_arg.clone());
+
+            args.push(f_any);
+
+            for arg_index in args_pattern {
+                let arg = kwargs.get(&arg_index).unwrap();
+                let any: Box<dyn Any> = Box::new(arg.clone());
+                args.push(any);
             }
+
             // Convert Box<dyn Any> to &[&dyn Any] for callback
             let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
             Ok(closure(args))
