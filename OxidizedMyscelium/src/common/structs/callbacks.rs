@@ -82,7 +82,6 @@ impl MyCallbacks {
                 // Iterate through the IndexMap and add both keys and values to the vector
                 for (key, value) in map {
                     vec.push(key); // Add key to the vector
-                    vec.push(value); // Add value to the vector
                 }
 
                 vec
@@ -94,17 +93,21 @@ impl MyCallbacks {
             let mut args: Vec<Box<dyn Any>> = Vec::new();
 
             //> Extract first arg that is a info carrier arg not contained inside the args_pattern
-            let mut first_arg_index = args_pattern.pop().unwrap();
-            let f_arg = kwargs.get(&first_arg_index).unwrap();
+            let f_arg = kwargs.get("info").unwrap();
             let f_any: Box<dyn Any> = Box::new(f_arg.clone());
 
             args.push(f_any);
 
+            println!("trying to reindex kwargs: {:?}", kwargs);
+
             //> Extract every other necessary argument and place in the correct order
             for arg_index in args_pattern {
-                let arg = kwargs.get(&arg_index).unwrap();
-                let any: Box<dyn Any> = Box::new(arg.clone());
-                args.push(any);
+                if let Some(arg) = kwargs.get(&arg_index) {
+                    let any: Box<dyn Any> = Box::new(arg.clone());
+                    args.push(any);
+                } else {
+                    println!("arg index: {:?} not found inside kwargs!", arg_index);
+                }
             }
 
             // Convert Box<dyn Any> to &[&dyn Any] for callback
