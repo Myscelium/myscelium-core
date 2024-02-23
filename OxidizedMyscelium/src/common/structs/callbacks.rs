@@ -81,6 +81,7 @@ impl MyCallbacks {
 
                 // Iterate through the IndexMap and add both keys and values to the vector
                 for (key, value) in map {
+                    // TODO >>> Here is a nice place to put a type checking mechanism using the values that are the type required of the callback
                     vec.push(key); // Add key to the vector
                 }
 
