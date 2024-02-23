@@ -1,6 +1,7 @@
 use crate::common::enhanced_buffer::utilities::CommandType;
 use crate::common::structs::results_structs::ResultType;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -17,7 +18,7 @@ pub enum HandlerStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeHandler {
     pub name: String,
-    parameters: Value, // This is a Value::Array
+    pub parameters: IndexMap<String, String>,
     // It wasn't was changed because this is the only way to directly parse from other languages
     // using bidges that contain json to be a wrapper to the values and translate from one lang to
     // another using it
@@ -34,7 +35,7 @@ impl NodeHandler {
         // Insert each field into the map. You will need to convert non-String types to Value.
         // This assumes that CommandType and HandlerStatus implement Serialize.
         map.insert("name".to_string(), Value::String(self.name));
-        map.insert("parameters".to_string(), self.parameters);
+        map.insert("parameters".to_string(), serde_json::to_value(self.parameters).unwrap());
         map.insert("handler_type".to_string(), serde_json::to_value(self.handler_type).unwrap());
         map.insert("status".to_string(), serde_json::to_value(self.status).unwrap());
         map.insert("response_structure".to_string(), Value::Object(Map::from_iter(self.response_structure)));
@@ -43,7 +44,7 @@ impl NodeHandler {
         map
     }
 
-    pub fn new(name: String, parameters: Value, handler_type: CommandType, status: HandlerStatus, response_structure: HashMap<String, Value>, description: String) -> Self {
+    pub fn new(name: String, parameters: IndexMap<String, String>, handler_type: CommandType, status: HandlerStatus, response_structure: HashMap<String, Value>, description: String) -> Self {
         Self {
             name,
             parameters,
@@ -52,11 +53,6 @@ impl NodeHandler {
             response_structure,
             description,
         }
-    }
-
-    pub fn get_parameters(&self) -> HashMap<String, String> {
-        let converted: HashMap<String, String> = from_value(self.parameters).unwrap();
-        converted
     }
 }
 
@@ -189,8 +185,8 @@ impl Node {
         serde_json::to_value(&self).unwrap()
     }
 
-    pub fn get_node_handlers(&self) -> Result<HashMap<String, Value>, NodeError> {
-        let mut node_handlers: HashMap<String, Value> = HashMap::new();
+    pub fn get_node_handlers(&self) -> Result<HashMap<String, IndexMap<String, String>>, NodeError> {
+        let mut node_handlers: HashMap<String, IndexMap<String, String>> = HashMap::new();
 
         if let Some(handlers) = &self.handlers {
             for handler in handlers {
@@ -239,8 +235,8 @@ impl NetworkMap {
     /// This will return a Result with HashMap<String, Value> or a Error,
     /// the HashMap contains all the command available inside the msycelium
     /// network, all reachable and registred commands
-    pub fn extract_all_commands(&self) -> Result<HashMap<String, Value>, NetworkMapError> {
-        let mut available_commands: HashMap<String, Value> = HashMap::new();
+    pub fn extract_all_commands(&self) -> Result<HashMap<String, IndexMap<String, String>>, NetworkMapError> {
+        let mut available_commands: HashMap<String, IndexMap<String, String>> = HashMap::new();
 
         for node in &self.nodes {
             if let Some(handlers) = node.handlers.clone() {

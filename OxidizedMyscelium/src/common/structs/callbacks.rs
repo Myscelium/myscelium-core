@@ -1,4 +1,5 @@
 use crate::common::functions::callbacks::call_callback;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::Value;
@@ -69,11 +70,25 @@ impl MyCallbacks {
     /// - kwrags -> are the arguments to call thins function
     /// - args_pattern -> are the patterns to organize the arguments in the tuple to call it
     ///
-    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>, args_pattern: Vec<String>) -> Result<Box<dyn Any>, CallbackError> {
+    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>, args_pattern: IndexMap<std::string::String, std::string::String>) -> Result<Box<dyn Any>, CallbackError> {
         let map = self.map.lock();
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------
             //> EXTRACT ARGS
+
+            fn extract_strings_to_vec(map: IndexMap<String, String>) -> Vec<String> {
+                let mut vec = Vec::new();
+
+                // Iterate through the IndexMap and add both keys and values to the vector
+                for (key, value) in map {
+                    vec.push(key); // Add key to the vector
+                    vec.push(value); // Add value to the vector
+                }
+
+                vec
+            }
+
+            let args_pattern = extract_strings_to_vec(args_pattern);
 
             let mut args_pattern = args_pattern;
             let mut args: Vec<Box<dyn Any>> = Vec::new();

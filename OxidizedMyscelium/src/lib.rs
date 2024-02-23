@@ -20,6 +20,7 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[deny(warnings)]
@@ -478,7 +479,7 @@ pub fn set_host_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
 //     Ok(())
 // }
 
-pub fn get_socket_host_available_commands() -> HashMap<String, Value> {
+pub fn get_socket_host_available_commands() -> HashMap<String, IndexMap<String, String>> {
     get_available_commands_registered()
 }
 

@@ -17,6 +17,7 @@ use crate::common::functions::converters::convert_to_value_map;
 use crate::common::structs::available_commands::{CommandPatterns, Node, NodeHandler, NodeVersion};
 use crate::HOST_COMMAND_PATTERNS;
 use crate::HOST_LOG_LEVEL;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 use serde_json::to_string;
 use std::any::Any;
@@ -438,49 +439,16 @@ fn process(down_command: DownCommand) {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
 
-            let mut args_pattern: HashMap<String, String> = HashMap::new();
+            let mut args_pattern: IndexMap<String, String> = IndexMap::new();
 
             {
                 let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
                 let host_node = global_command_patterns.get_node_by_key(&"host".to_string()).unwrap();
                 let host_handlers = host_node.get_node_handlers().unwrap();
-                let target_handler = host_handlers.get(&command_instructions.actf.clone()).unwrap();
-
-                // Obtain the vec of handlers
-                let handlers: Vec<NodeHandler> = match target_handler.as_array() {
-                    Some(array) => {
-                        // If the value is an array, convert it to Vec<serde_json::Value>
-                        let handlers: Vec<NodeHandler> = array
-                            .iter()
-                            .map(|val| from_value(val.clone()).unwrap()) // Using unwrap here
-                            .collect();
-
-                        handlers
-                    },
-                    None => {
-                        println!("The value is not an array.");
-                        panic!();
-                    },
-                };
-
-                // Get the target handler
-                let handler = {
-                    let target_handler;
-                    for handler in handlers {
-                        if (handler.name == command_instructions.actf) {
-                            target_handler = handler.clone();
-                            break;
-                        }
-                    }
-                    target_handler
-                };
-
-
-                //! Find a way to convert pydic to rust dict presernving the order of the arguments to remap the 
-                //! Callback arguments in the correct order, maybe will be necessary to use IndexMap to do that
+                let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
 
                 //Obtain the correct order of the kwargs
-                args_pattern = handler.get_parameters();
+                args_pattern = target_handler_params.clone();
             }
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
