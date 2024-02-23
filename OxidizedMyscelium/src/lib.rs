@@ -290,7 +290,7 @@ pub fn set_client_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
     }
 }
 
-pub fn get_socket_client_available_handlers() -> HashMap<String, Value> {
+pub fn get_socket_client_available_handlers() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
     get_available_handlers_registered()
 }
 
