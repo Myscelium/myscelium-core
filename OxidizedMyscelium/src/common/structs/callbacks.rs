@@ -76,7 +76,6 @@ impl MyCallbacks {
             //> EXTRACT ARGS
 
             let mut args_pattern = args_pattern;
-
             let mut args: Vec<Box<dyn Any>> = Vec::new();
 
             //> Extract first arg that is a info carrier arg not contained inside the args_pattern
@@ -86,6 +85,7 @@ impl MyCallbacks {
 
             args.push(f_any);
 
+            //> Extract every other necessary argument and place in the correct order
             for arg_index in args_pattern {
                 let arg = kwargs.get(&arg_index).unwrap();
                 let any: Box<dyn Any> = Box::new(arg.clone());

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use serde_json::{Map, Value};
+use serde_json::{from_value, Map, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HandlerStatus {
@@ -16,8 +16,11 @@ pub enum HandlerStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeHandler {
-    name: String,
-    parameters: Value,
+    pub name: String,
+    parameters: Value, // This is a Value::Array
+    // It wasn't was changed because this is the only way to directly parse from other languages
+    // using bidges that contain json to be a wrapper to the values and translate from one lang to
+    // another using it
     handler_type: CommandType,
     status: HandlerStatus,
     response_structure: HashMap<String, Value>,
@@ -39,6 +42,7 @@ impl NodeHandler {
 
         map
     }
+
     pub fn new(name: String, parameters: Value, handler_type: CommandType, status: HandlerStatus, response_structure: HashMap<String, Value>, description: String) -> Self {
         Self {
             name,
@@ -48,6 +52,11 @@ impl NodeHandler {
             response_structure,
             description,
         }
+    }
+
+    pub fn get_parameters(&self) -> HashMap<String, String> {
+        let converted: HashMap<String, String> = from_value(self.parameters).unwrap();
+        converted
     }
 }
 
@@ -225,6 +234,11 @@ impl NetworkMap {
         Self { nodes }
     }
 
+    /// Extracts all commands available for each handler with no filter
+    ///
+    /// This will return a Result with HashMap<String, Value> or a Error,
+    /// the HashMap contains all the command available inside the msycelium
+    /// network, all reachable and registred commands
     pub fn extract_all_commands(&self) -> Result<HashMap<String, Value>, NetworkMapError> {
         let mut available_commands: HashMap<String, Value> = HashMap::new();
 
@@ -241,6 +255,12 @@ impl NetworkMap {
         Ok(available_commands)
     }
 
+    /// Extracts all the nodes filtering a specific node
+    ///
+    /// This allows to get all the nodes besides one node, wah tis a powerfull
+    /// tool to the cases that need to get only the nodes that matters, for check some state
+    /// like in the cases that only one node changes somethings and whe need to get all nodes besides
+    /// this node in specific.
     pub fn get_all_nodes_except_node_with_key(&self, key: &String) -> Vec<Node> {
         let mut nodes_mirror = self.nodes.clone();
         if let Some(index) = nodes_mirror.iter().position(|x| x.key == Some(key.clone())) {

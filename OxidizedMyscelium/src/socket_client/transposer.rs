@@ -219,6 +219,8 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
             println!("kwargs to pass to external function: {:?}", kwargs);
 
+            // TODO >>> Add the node map required to organize the callback calling arguments array
+
             response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs) {
                 Ok(r) => {
                     logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
