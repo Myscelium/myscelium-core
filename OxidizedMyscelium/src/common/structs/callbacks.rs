@@ -1,4 +1,5 @@
 use crate::common::functions::callbacks::call_callback;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::Value;
@@ -62,22 +63,54 @@ impl MyCallbacks {
         map.insert(key, closure);
     }
 
-    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>) -> Result<Box<dyn Any>, CallbackError> {
+    /// Call the external callback
+    ///
+    /// This method requires
+    /// - key -> is the key of the function that you wan to call
+    /// - kwrags -> are the arguments to call thins function
+    /// - args_pattern -> are the patterns to organize the arguments in the tuple to call it
+    ///
+    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>, args_pattern: IndexMap<std::string::String, std::string::String>) -> Result<Box<dyn Any>, CallbackError> {
         let map = self.map.lock();
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------
             //> EXTRACT ARGS
-            let mut args: Vec<Box<dyn Any>> = Vec::new();
-            for (_key, value) in kwargs {
-                let any: Box<dyn Any> = Box::new(value.clone());
-                args.push(any);
 
-                // if let Some(any) = convert_json_value_to_any(&value) {
-                //     args.push(any);
-                // } else {
-                //     return Err(CallbackError::UnsupportedResponseArgument(_key));
-                // }
+            fn extract_strings_to_vec(map: IndexMap<String, String>) -> Vec<String> {
+                let mut vec = Vec::new();
+
+                // Iterate through the IndexMap and add both keys and values to the vector
+                for (key, value) in map {
+                    // TODO >>> Here is a nice place to put a type checking mechanism using the values that are the type required of the callback
+                    vec.push(key); // Add key to the vector
+                }
+
+                vec
             }
+
+            let args_pattern = extract_strings_to_vec(args_pattern);
+
+            let mut args_pattern = args_pattern;
+            let mut args: Vec<Box<dyn Any>> = Vec::new();
+
+            //> Extract first arg that is a info carrier arg not contained inside the args_pattern
+            let f_arg = kwargs.get("info").unwrap();
+            let f_any: Box<dyn Any> = Box::new(f_arg.clone());
+
+            args.push(f_any);
+
+            println!("trying to reindex kwargs: {:?}", kwargs);
+
+            //> Extract every other necessary argument and place in the correct order
+            for arg_index in args_pattern {
+                if let Some(arg) = kwargs.get(&arg_index) {
+                    let any: Box<dyn Any> = Box::new(arg.clone());
+                    args.push(any);
+                } else {
+                    println!("arg index: {:?} not found inside kwargs!", arg_index);
+                }
+            }
+
             // Convert Box<dyn Any> to &[&dyn Any] for callback
             let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
             Ok(closure(args))

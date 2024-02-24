@@ -4,8 +4,10 @@ use std::net::TcpStream;
 
 use std::sync::{mpsc, Arc, Mutex};
 
+use indexmap::IndexMap;
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
+use syn::Index;
 
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -402,7 +404,7 @@ pub fn initialize_host(address: String, client_key: String) {
 ///
 /// # Returns
 /// - A `HashMap<String, Value>` representing the cloned command patterns.
-pub fn get_available_commands_registered() -> HashMap<String, Value> {
+pub fn get_available_commands_registered() -> HashMap<std::string::String, IndexMap<String, String>> {
     let global_command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
     return global_command_patterns.extract_all_commands().unwrap();
 }

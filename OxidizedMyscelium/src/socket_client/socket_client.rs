@@ -6,6 +6,7 @@ use super::client_logger::log_handler::Logger;
 
 use crate::{CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
+use indexmap::IndexMap;
 use serde_json::json;
 use serde_json::{from_str, Value};
 
@@ -119,8 +120,8 @@ pub fn initialize_client_buffer(buffer_location: String) {
 ///
 /// # Returns
 /// - A `HashMap` containing the available command patterns.
-pub fn get_available_handlers_registered() -> HashMap<String, Value> {
-    let global_command_patterns: HashMap<String, Value>;
+pub fn get_available_handlers_registered() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
+    let global_command_patterns: HashMap<String, IndexMap<std::string::String, std::string::String>>;
 
     {
         println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");

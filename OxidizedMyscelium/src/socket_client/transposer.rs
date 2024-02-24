@@ -7,6 +7,7 @@ use crate::common::structs::available_commands::NetworkMap;
 use crate::socket_client::functions::direct_functions::handle_direct_function;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::Value;
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use crate::CLIENT_IS_RUNNING;
+use crate::{CLIENT_IS_RUNNING, CLIENT_NODE_CONFIGS, HOST_ALLOWED_COMMANDS};
 
 use super::client_logger::log_handler::Logger;
 use crate::CLIENT_LOG_LEVEL;
@@ -214,12 +215,35 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = CLIENT_CALLBACK_PATTERNS.clone();
 
-            let mut kwargs: HashMap<String, Value> = HashMap::new();
-            kwargs.insert("data".to_string(), translated_command.command.to_value_map());
+            let command_instructions = translated_command.command.clone();
+            let kwargs_to_call: HashMap<String, Value>;
+            let mut map = HashMap::new();
+
+            // > Get the info parameters and add to kwargs
+            map.insert("mode".to_string(), serde_json::to_value(&command_instructions.mode).unwrap());
+            map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
+            map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
+            map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
+
+            let mut kwargs = command_instructions.kwargs.clone();
+            kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
 
             println!("kwargs to pass to external function: {:?}", kwargs);
 
-            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs) {
+            //> Get the Node Configs, Here in client we can directly acess it
+            let mut args_pattern: IndexMap<String, String> = IndexMap::new();
+
+            {
+                let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock();
+                let host_handlers = global_command_patterns.get_node_handlers().unwrap();
+                let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
+
+                //Obtain the correct order of the kwargs
+                args_pattern = target_handler_params.clone();
+            }
+
+            //> Call the callback
+            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs, args_pattern) {
                 Ok(r) => {
                     logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
                     r
