@@ -598,6 +598,46 @@ impl Client {
     }
 }
 
+pub fn registry_new_client(
+    client_name: String,
+    client_key: String,
+    client_type: String,
+    client_permission_group: String,
+    client_is_super_user: bool,
+    client_max_sub_channels: u32,
+    client_owned_sub_channels_keys: Vec<String>,
+    client_handlers: Vec<HashMap<String, Value>>,
+) {
+    if check_if_client_key_exists(client_key.clone()) {
+        return;
+    }
+
+    //> TYPES
+
+    // TODO >>> Create a enum for client Type be more organized
+
+    //> VERIFICATION:
+
+    // TODO >>> Verify if the client permission group exists
+    //* Also maybe will be nice to make a way to be able to retrieve the valid permission groups
+
+    // TODO >>> See if the max sub channels value is a valid number
+    // TODO >>> See if the owned sub channel keys are valid ones
+
+    let client = handle_manager_client_error!(Client::new(
+        client_name.clone(),
+        client_key.clone(),
+        client_type,
+        client_permission_group,
+        client_is_super_user,
+        client_max_sub_channels,
+        client_owned_sub_channels_keys,
+        client_handlers,
+    ));
+
+    client.save_into_db();
+}
+
 pub fn check_if_client_key_exists(client_key: String) -> bool {
     let client_keys: Vec<String> = get_clients_keys_registered();
 
