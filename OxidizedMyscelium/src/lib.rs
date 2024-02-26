@@ -422,6 +422,20 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     println!("Socket transposer exited successfully!");
 }
 
+pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String) {
+    initialize_client_buffer_tables(&buffer_path);
+    set_socket_client_log_level(&log_level);
+    set_client_key(client_uid.clone());
+    {
+        let mut key = CLIENT_NODE_KEY.lock();
+        *key = client_uid.clone();
+    }
+    {
+        let mut name = CLIENT_NODE_NAME.lock();
+        *name = client_name.clone();
+    }
+}
+
 // -------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> HOST
 
