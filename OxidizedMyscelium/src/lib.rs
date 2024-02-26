@@ -52,6 +52,7 @@ pub use socket_client::states_manager::manager::{ClientState, StateManagerError}
 
 // -> HOST
 pub use crate::common::client_manager::manager::check_if_client_key_exists;
+pub use crate::common::client_manager::manager::registry_new_client;
 pub use crate::common::client_manager::manager::Client;
 pub use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
 pub use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
