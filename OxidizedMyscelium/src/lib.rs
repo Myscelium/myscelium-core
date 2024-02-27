@@ -676,7 +676,7 @@ pub fn setup_socket_host(
 
     // -> Partially initialize the host node without the handlers
     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
-    let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+    let node_version = HOST_VERSION.clone();
     let host_node: Node = Node::new(
         "host".to_string(),
         "host".to_string(),
