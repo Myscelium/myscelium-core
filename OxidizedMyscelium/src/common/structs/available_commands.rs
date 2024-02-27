@@ -203,6 +203,18 @@ impl Node {
         self.status = Some(new_status);
     }
 
+    pub fn update_description(&mut self, description: String) {
+        self.description = Some(description)
+    }
+
+    pub fn update_name(&mut self, name: String) {
+        self.name = Some(name)
+    }
+
+    pub fn update_handlers(&mut self, handlers: Vec<NodeHandler>) {
+        self.handlers = Some(handlers)
+    }
+
     pub fn update(&mut self, name: String, key: String, description: String, version: NodeVersion, handlers: Vec<NodeHandler>) {
         self.name = Some(name);
         self.key = Some(key);

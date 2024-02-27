@@ -60,6 +60,12 @@ pub use socket_host::socket_host::set_heartbeat_callback;
 
 lazy_static! {
 
+    // Crate
+
+    pub static ref CLIENT_VERSION: NodeVersion = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+    pub static ref HOST_VERSION: NodeVersion = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+
+
     // CLIENT
     pub static ref CLIENT_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref CLIENT_IS_SYNC: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
@@ -429,7 +435,13 @@ pub fn initialize_socket_client(ip: String, port: i32) {
     println!("Socket transposer exited successfully!");
 }
 
-pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String) {
+pub fn change_client_to_initialized() {
+    let mut client_state = CLIENT_STATE_MANAGER.lock();
+    client_state.change_initialization_state(true);
+    client_state.save_in_storage().unwrap();
+}
+
+pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -444,28 +456,32 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
 
     // -> PRE INITIALIZE CLIENT STATUS AND NODE NETWORK
 
-    {
-        // TODO >>> Centralize the version of the node
-        // TODO >>> Make Direct functions that aren't private be visible in the network map
-        // TODO >>> Integrate inner management remotelly
-
-        println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
-        let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
-        println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
-
-        let client_version: NodeVersion = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+    if is_main_process {
+        // This process diferentiation is required to not overide the initialization when initialize another instance of the client main class in another thred
+        // so by doing that the client states continues fixed and with the correct initialization
+        let client_version: NodeVersion = CLIENT_VERSION.clone();
         let client_node = Node::new(client_name.clone(), client_uid.clone(), "".to_string(), client_version, Vec::new(), NodeStatus::NotSyncYet);
-        *command_patterns = client_node.clone();
 
+        {
+            println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+            let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
+            println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
+            *command_patterns = client_node.clone();
+            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+        }
         {
             let mut client_state = CLIENT_STATE_MANAGER.lock();
             client_state.clean_storage(); // remove any old state
-            let new_client_state = ClientState::new(client_name.clone(), client_uid.clone(), NetworkMap::new(Vec::new()), client_node.clone(), true, false, false, false);
+            let new_client_state = ClientState::new(client_name.clone(), client_uid.clone(), NetworkMap::new(Vec::new()), client_node.clone(), false, false, false, false);
             new_client_state.save_in_storage().unwrap();
             *client_state = new_client_state.clone();
         }
-
-        println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+    } else {
+        {
+            let mut client_state = CLIENT_STATE_MANAGER.lock();
+            let new_client_state = ClientState::load_from_storage().unwrap();
+            *client_state = new_client_state.clone();
+        }
     }
 }
 

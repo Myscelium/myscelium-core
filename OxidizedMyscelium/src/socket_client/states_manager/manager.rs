@@ -83,6 +83,10 @@ impl ClientState {
         }
     }
 
+    pub fn change_initialization_state(&mut self, new_state: bool) {
+        self.is_initialized = Some(new_state)
+    }
+
     pub fn clean_storage(&self) {
         // TODO >>> Finish this method;
 
