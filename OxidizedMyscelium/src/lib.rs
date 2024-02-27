@@ -46,7 +46,9 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
-pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
+pub use common::structs::available_commands::{
+    HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier,
+};
 pub use common::structs::results_structs::ResultType;
 pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
 
@@ -106,7 +108,9 @@ macro_rules! acquire_logger {
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
+use crate::socket_client::client_logger::log_handler::{
+    initialize_client_logs_database_dir, set_client_log_level,
+};
 use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
 
@@ -120,7 +124,10 @@ use std::time::Duration;
 use crate::socket_client::scheduler::{self, schedule};
 use crate::socket_client::socket_client::get_available_handlers_registered;
 use crate::socket_client::socket_client::{initialize_client, initialize_client_buffer};
-use crate::socket_client::transposer::{initialize_socket_client_transposer, set_socket_client_transposer_callbacks, set_socket_client_transposer_workers_num};
+use crate::socket_client::transposer::{
+    initialize_socket_client_transposer, set_socket_client_transposer_callbacks,
+    set_socket_client_transposer_workers_num,
+};
 
 pub fn set_socket_client_transposer_num_of_workers(n_workers: u32) {
     set_socket_client_transposer_workers_num(n_workers);
@@ -157,7 +164,7 @@ pub fn is_target_ready(node_key: String) -> bool {
         Ok(c) => c,
         Err(_) => {
             return false;
-        },
+        }
     };
 
     if let Some(net_map) = client_status.network_map {
@@ -168,10 +175,10 @@ pub fn is_target_ready(node_key: String) -> bool {
                     if !reachable {
                         return false;
                     }
-                },
+                }
                 Err(_) => {
                     return false;
-                },
+                }
             };
         }
         {
@@ -180,10 +187,10 @@ pub fn is_target_ready(node_key: String) -> bool {
                     if !redy {
                         return false;
                     }
-                },
+                }
                 Err(_) => {
                     return false;
-                },
+                }
             };
         }
     } else {
@@ -201,7 +208,7 @@ pub fn is_client_ready() -> bool {
         Err(e) => {
             logger.exception(format!("Exception trying to load client status: {:?}", e));
             return false;
-        },
+        }
     };
 
     //if !client_status.is_fully_initialized() {
@@ -233,7 +240,10 @@ pub fn is_client_ready() -> bool {
 //     NotAbleToReadClientStates,
 // }
 
-pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
+pub fn client_send_hashmap(
+    command: HashMap<String, String>,
+    priority: u8,
+) -> Result<(), ClientError> {
     if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
@@ -246,10 +256,10 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
-            },
+            }
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
-            },
+            }
         },
     };
 
@@ -267,10 +277,10 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
-            },
+            }
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
-            },
+            }
         },
     };
 
@@ -304,7 +314,8 @@ pub fn set_client_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
     }
 }
 
-pub fn get_socket_client_available_handlers() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
+pub fn get_socket_client_available_handlers(
+) -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
     get_available_handlers_registered()
 }
 
@@ -418,14 +429,15 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         loop {
-            println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
+            println!(
+                "➡️ Client status: {}",
+                CLIENT_IS_RUNNING.load(Ordering::SeqCst)
+            );
 
             if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                 println!("Stop the core!");
                 break;
             }
-
-            std::thread::sleep(Duration::from_secs(1));
 
             initialize_socket_client_transposer();
             println!("Socket transposer working!!");
@@ -441,7 +453,13 @@ pub fn change_client_to_initialized() {
     client_state.save_in_storage().unwrap();
 }
 
-pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
+pub fn setup_socket_client(
+    client_name: String,
+    client_uid: String,
+    buffer_path: String,
+    log_level: String,
+    is_main_process: bool,
+) {
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -460,7 +478,14 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
         // This process diferentiation is required to not overide the initialization when initialize another instance of the client main class in another thred
         // so by doing that the client states continues fixed and with the correct initialization
         let client_version: NodeVersion = CLIENT_VERSION.clone();
-        let client_node = Node::new(client_name.clone(), client_uid.clone(), "".to_string(), client_version, Vec::new(), NodeStatus::NotSyncYet);
+        let client_node = Node::new(
+            client_name.clone(),
+            client_uid.clone(),
+            "".to_string(),
+            client_version,
+            Vec::new(),
+            NodeStatus::NotSyncYet,
+        );
 
         {
             println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
@@ -472,7 +497,16 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
         {
             let mut client_state = CLIENT_STATE_MANAGER.lock();
             client_state.clean_storage(); // remove any old state
-            let new_client_state = ClientState::new(client_name.clone(), client_uid.clone(), NetworkMap::new(Vec::new()), client_node.clone(), false, false, false, false);
+            let new_client_state = ClientState::new(
+                client_name.clone(),
+                client_uid.clone(),
+                NetworkMap::new(Vec::new()),
+                client_node.clone(),
+                false,
+                false,
+                false,
+                false,
+            );
             new_client_state.save_in_storage().unwrap();
             *client_state = new_client_state.clone();
         }
@@ -491,16 +525,23 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
 // use crate::common::enhanced_buffer::utilities::CommandType;
 // use crate::common::functions::callbacks::extract_arg_types;
 
-use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
-use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
+use crate::common::client_manager::manager::{
+    clients_manager_initialize_table, set_host_clients_manager__pool_workers_num,
+};
+use crate::socket_host::host_logger::log_handler::{
+    initialize_host_logs_database_dir, set_host_log_level,
+};
 use crate::socket_host::socket_host::get_available_commands_registered;
 use crate::socket_host::socket_host::initialize_host;
 use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
 use crate::socket_host::transposer::set_socket_host_transposer_callbacks;
-use crate::socket_host::transposer::{initialize_socket_host_transposer, set_socket_host_transposer_workers_num};
+use crate::socket_host::transposer::{
+    initialize_socket_host_transposer, set_socket_host_transposer_workers_num,
+};
 
 lazy_static! {
-    pub static ref CLIENTS_SYNC_CONTROLLER: Arc<Mutex<Clients>> = Arc::new(Mutex::new(Clients::new()));
+    pub static ref CLIENTS_SYNC_CONTROLLER: Arc<Mutex<Clients>> =
+        Arc::new(Mutex::new(Clients::new()));
 }
 
 fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
@@ -576,11 +617,21 @@ pub fn load_allowed_clients() {
 
         {
             let mut network_map = HOST_COMMAND_PATTERNS.lock();
-            let new_node = Node::partially_initialize(client_allowed.client_name.clone(), client_allowed.client_key.clone(), NodeStatus::NotImplemented, None, None, None);
+            let new_node = Node::partially_initialize(
+                client_allowed.client_name.clone(),
+                client_allowed.client_key.clone(),
+                NodeStatus::NotImplemented,
+                None,
+                None,
+                None,
+            );
             network_map.add_or_update_if_exists(new_node)
         }
 
-        println!("Successfully created client: {} of key: {}", client_allowed.client_name, client_allowed.client_key)
+        println!(
+            "Successfully created client: {} of key: {}",
+            client_allowed.client_name, client_allowed.client_key
+        )
     }
 }
 
@@ -612,7 +663,12 @@ fn stop_socket_host() {
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
 
-pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
+pub fn setup_socket_host(
+    buffer_path: &String,
+    log_level: &String,
+    n_workers: &u32,
+    n_max_conns: &u32,
+) {
     initialize_host_buffer_tables(buffer_path.clone());
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
@@ -621,7 +677,14 @@ pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u
     // -> Partially initialize the host node without the handlers
     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
     let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
-    let host_node: Node = Node::new("host".to_string(), "host".to_string(), "".to_string(), node_version, Vec::new(), NodeStatus::Online);
+    let host_node: Node = Node::new(
+        "host".to_string(),
+        "host".to_string(),
+        "".to_string(),
+        node_version,
+        Vec::new(),
+        NodeStatus::Online,
+    );
     global_command_patterns.add_or_update_if_exists(host_node);
 }
 
