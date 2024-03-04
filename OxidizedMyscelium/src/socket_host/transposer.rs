@@ -538,13 +538,20 @@ fn process(down_command: DownCommand) {
         result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                println!("Successfully downcasted!");
+                println!("Successfully downcasted to CommandInstructions!");
+
+                // Additional logging: Inspect the contents of instructions_box
+                println!("CommandInstructions details: {:?}", instructions_box);
+
                 // You can now use instructions_box as Box<CommandInstructions>
                 let instruction = *instructions_box;
                 ProcessResult::CommandInstructions(instruction)
             },
-            Err(_) => {
+            Err(e) => {
                 // The downcast operation failed
+                // Logging the error for more details
+                println!("Failed to downcast callback response! Error: {:?}", e);
+
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
