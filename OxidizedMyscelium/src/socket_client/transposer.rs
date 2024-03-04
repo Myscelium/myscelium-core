@@ -1,10 +1,7 @@
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{
-    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
-    CommandType,
-};
+use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
 use crate::common::functions::callbacks::call_callback;
 use crate::common::structs::available_commands::NetworkMap;
 use crate::socket_client::functions::direct_functions::handle_direct_function;
@@ -160,20 +157,14 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     logger.info(format!("Initializing processing!"));
 
     // Check if the command has already been registered in the up buffer
-    let command_is_not_registry: bool =
-        enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(
-            down_command.parity_id.clone(),
-            down_command.client_key.clone(),
-        );
+    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.unwrap().clone();
 
     {
         if !command_is_not_registry {
             // If command is already registered, remove it from the down buffer schedule
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
-            return Err(ProcessError::CommandAlreadyProcessed(
-                down_command.parity_id.clone(),
-            ));
+            return Err(ProcessError::CommandAlreadyProcessed(down_command.parity_id.clone()));
         }
     }
 
@@ -185,7 +176,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         Err(e) => {
             println!("error converting down_command into command: {:?}", e);
             return Err(ProcessError::Error(format!("{:?}", e)));
-        }
+        },
     };
 
     logger.debug(format!("Translated command: {:?}", translated_command));
@@ -204,19 +195,12 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
     let resp: ProcessResult;
 
-    println!(
-        "Command is a direct function: {:?}",
-        translated_command.command.command_type == "DirectFunction"
-    );
+    println!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction");
 
     if translated_command.command.command_type == "DirectFunction" {
         println!("Command is a direct function!");
-        logger.info(format!(
-            "Command function: {} is a valid function!",
-            translated_command.command.actf
-        ));
-        resp =
-            handle_direct_function(&translated_command.command, &client_key, command_id)?.clone(); // This cloen avoids locking
+        logger.info(format!("Command function: {} is a valid function!", translated_command.command.actf));
+        resp = handle_direct_function(&translated_command.command, &client_key, command_id)?.clone(); // This cloen avoids locking
         println!("Direct Function Result: {:?}", resp);
     } else {
         println!("Command isn't a direct function");
@@ -236,22 +220,14 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let mut map = HashMap::new();
 
             // > Get the info parameters and add to kwargs
-            map.insert(
-                "mode".to_string(),
-                serde_json::to_value(&command_instructions.mode).unwrap(),
-            );
-            map.insert(
-                "status".to_string(),
-                serde_json::to_value(&command_instructions.status).unwrap(),
-            );
-            map.insert(
-                "origin".to_string(),
-                serde_json::to_value(&command_instructions.origin).unwrap(),
-            );
-            map.insert(
-                "message".to_string(),
-                serde_json::to_value(&command_instructions.message).unwrap(),
-            );
+            map.insert("mode".to_string(), serde_json::to_value(&command_instructions.mode).unwrap());
+            map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
+            map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
+            map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
+
+            map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
+            map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
+            map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
 
             let mut kwargs = command_instructions.kwargs.clone();
             kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
@@ -264,32 +240,23 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             {
                 let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock();
                 let host_handlers = global_command_patterns.get_node_handlers().unwrap();
-                let target_handler_params = host_handlers
-                    .get(&command_instructions.actf.clone())
-                    .unwrap();
+                let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
 
                 //Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
             }
 
             //> Call the callback
-            response = match callback_patterns.call(
-                translated_command.command.clone().actf.as_str(),
-                kwargs,
-                args_pattern,
-            ) {
+            response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs, args_pattern) {
                 Ok(r) => {
-                    logger.info(format!(
-                        "External function: {} is a valid function!",
-                        translated_command.command.actf.clone()
-                    ));
+                    logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
                     r
-                }
+                },
                 Err(e) => {
                     // Existing logic to handle the error
                     logger.exception(format!("Callback error: {:?}", e));
                     return Err(ProcessError::Error(format!("{:?}", e)));
-                }
+                },
             };
         }
 
@@ -336,11 +303,11 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
                 // You can now use instructions_box as Box<CommandInstructions>
                 let instruction = *instructions_box;
                 ProcessResult::CommandInstructions(instruction)
-            }
+            },
             Err(_) => {
                 // The downcast operation failed
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
-            }
+            },
         };
     }
 
@@ -351,68 +318,45 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     //> This will allow to easily manage commands, reducing the times that it needs to be parsed from str and allowing convert from value directly.
 
     logger.debug(format!("Function returned: {:?}", resp));
-    logger.info(format!(
-        "Command: {:?}, processed!",
-        down_command.parity_id.clone()
-    ));
+    logger.info(format!("Command: {:?}, processed!", down_command.parity_id.clone()));
 
     match resp {
         ProcessResult::CommandInstructions(c) => {
             println!("Received response: {:?}", c);
-            let command: Command = Command::new(
-                client_key.clone(),
-                down_command.parity_id.clone(),
-                down_command.priority.clone(),
-                c,
-            );
+            let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
             let up_command: UpCommand = UpCommand::from_command(command);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                command_id.clone(),
-            );
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-        }
+        },
         ProcessResult::List(l) => {
             for c in l {
                 match c {
                     ProcessResult::Error(e) => {
                         println!("Receive a error: {:?}", e);
-                    }
+                    },
                     ProcessResult::Empty => {
                         println!("Response is empty, continuing!");
-                    }
+                    },
                     ProcessResult::List(_) => {
-                        println!(
-                            "Receive a ilegal process Result List inside a Process Resul List!"
-                        );
-                    }
+                        println!("Receive a ilegal process Result List inside a Process Resul List!");
+                    },
                     ProcessResult::CommandInstructions(c) => {
-                        let command: Command = Command::new(
-                            client_key.clone(),
-                            down_command.parity_id.clone(),
-                            down_command.priority.clone(),
-                            c,
-                        );
+                        let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
                         let up_command: UpCommand = UpCommand::from_command(command);
                         enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-                    }
+                    },
                 }
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                    command_id.clone(),
-                );
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
             }
-        }
+        },
         ProcessResult::Error(e) => {
             println!("Receive a error: {:?}", e);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                command_id.clone(),
-            );
-        }
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+        },
         ProcessResult::Empty => {
             println!("Response is empty, continuing!");
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-                command_id.clone(),
-            );
-        }
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+        },
     }
 
     return Ok(());
@@ -441,8 +385,7 @@ pub fn initialize_socket_client_transposer() {
     let logger = acquire_logger!("Transposer");
 
     // Retrieve scheduled commands
-    let mut schedule: Vec<DownCommand> =
-        enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+    let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
 
     // Sort commands by priority in ascending order
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
@@ -502,38 +445,35 @@ pub fn initialize_socket_client_transposer() {
             let result = process(&dow_command, &client_key).map_err(|e| match e {
                 ProcessError::CommandAlreadyProcessed(m) => {
                     format!("Command: {:?} already processed! So skipping", m)
-                }
+                },
                 ProcessError::CommandNotRegistered(m) => {
-                    format!(
-                        "Command function {:?} not registered in the callbacks! So skipping",
-                        m
-                    )
-                }
+                    format!("Command function {:?} not registered in the callbacks! So skipping", m)
+                },
                 ProcessError::MissingResponseKey(m) => {
                     format!("Command: {:?}, missing command response key", m)
-                }
+                },
                 ProcessError::MissingKwargsKey(m) => {
                     format!("Command: {:?}, missing command kwargs key", m)
-                }
+                },
                 ProcessError::MissingCommandFunction(m) => {
                     format!("Command: {:?}, missing command function", m)
-                }
+                },
                 ProcessError::InvalidCallbackResponse(m, r) => {
                     format!("Callback function: {:?} invalid response: {:?}", m, r)
-                }
+                },
                 ProcessError::Error(e) => {
                     format!("An error occurred while processing command: {:?}", e)
-                }
+                },
                 ProcessError::UnknownCommandType => "Unknown Command type".to_string(),
             });
 
             match result {
                 Ok(()) => {
                     logger.info(format!("Finalized a process task!"));
-                }
+                },
                 Err(e) => {
                     logger.warn(format!("\nWarning: {:?}\n", e));
-                }
+                },
             }
         }
     }

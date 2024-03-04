@@ -207,9 +207,9 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 "update_client_commands_ref".to_string(),
                 filtered_commands_map,
                 "".to_string(),
-                c.response_type,
-                c.response_target,
-                c.response_actf,
+                c.response_type.clone(),
+                c.response_target.clone(),
+                c.response_actf.clone(),
             );
 
             let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());

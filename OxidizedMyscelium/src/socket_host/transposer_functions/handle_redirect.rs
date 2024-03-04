@@ -145,9 +145,9 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
         m.actf.clone(),
         m.kwargs.clone(),
         "".to_string(),
-        m.response_type,
-        m.response_target,
-        m.response_actf,
+        m.response_type.clone(),
+        m.response_target.clone(),
+        m.response_actf.clone(),
     );
 
     *client_id = redirect_to; // > Update the client id that it will send to

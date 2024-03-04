@@ -435,6 +435,9 @@ fn process(down_command: DownCommand) {
         map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
         map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
         map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
+        map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
+        map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
+        map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
 
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
