@@ -52,6 +52,13 @@ pub enum CommandType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ResponseType {
+    SpecialFunction,
+    DirectFunction,
+    ExternalFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CommandStatus {
     Success,
     Failure,
@@ -81,7 +88,7 @@ pub enum ResponseTarget {
     Host,
 }
 
-impl_stringfiable_for_enum!(CommandMode, CommandType, CommandStatus, CommandTarget);
+impl_stringfiable_for_enum!(CommandMode, CommandType, CommandStatus, CommandTarget, ResponseType, ResponseTarget);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CommandOrigin {
@@ -100,8 +107,9 @@ pub struct CommandInstructions {
     pub actf: String,
     pub kwargs: HashMap<String, serde_json::Value>,
     pub message: String,
-    pub response_target: ResponseTarget,
-    pub response_actf: String,
+    pub response_type: Option<ResponseType>,
+    pub response_target: Option<ResponseTarget>,
+    pub response_actf: Option<String>,
 }
 
 #[derive(Debug)]
@@ -119,8 +127,9 @@ impl CommandInstructions {
         actf: String,
         kwargs: HashMap<String, serde_json::Value>,
         message: String,
-        response_target: ResponseTarget,
-        response_actf: String,
+        response_type: Option<ResponseType>,
+        response_target: Option<ResponseTarget>,
+        response_actf: Option<String>,
     ) -> Self {
         Self {
             mode,
@@ -131,6 +140,7 @@ impl CommandInstructions {
             actf,
             kwargs,
             message,
+            response_type,
             response_target,
             response_actf,
         }
@@ -216,6 +226,15 @@ impl CommandInstructions {
             .remove("kwargs")
             .map_or_else(|| HashMap::new(), |v| v.as_object().map_or_else(|| HashMap::new(), |map| map.into_iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
 
+        // Extract response type:
+
+        let response_type = match map.get("response_type").and_then(Value::as_str) {
+            Some("SpecialFunction") => ResponseType::SpecialFunction,
+            Some("DirectFunction") => ResponseType::DirectFunction,
+            Some("ExternalFunction") => ResponseType::ExternalFunction,
+            _ => return Err(CommandError::InvalidCommand("Invalid or missing response type".to_string())),
+        };
+
         // Extract response target
 
         let response_target = match map.get("response_target").and_then(Value::as_str) {
@@ -233,9 +252,11 @@ impl CommandInstructions {
             },
         };
 
-        let response_actf = map.get("respnse_actf").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing respnse_actf!".to_string()))?;
+        let response_actf = map.get("response_actf").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing respnse_actf!".to_string()))?;
 
         println!("Converted kwargs value object to Map: {:?}", kwargs);
+
+        // TODO >>> See if the response target and the response actf need to have a None parser
 
         Ok(CommandInstructions {
             mode,
@@ -246,8 +267,9 @@ impl CommandInstructions {
             actf,
             kwargs,
             message,
-            response_target,
-            response_actf,
+            response_type: Some(response_type),
+            response_target: Some(response_target),
+            response_actf: Some(response_actf),
         })
     }
 
@@ -319,6 +341,16 @@ impl CommandInstructions {
             HashMap::new()
         };
 
+        // Extract response_type:
+
+        let response_type = match map.get("response_type").map(String::as_str) {
+            Some("SpecialFunction") => ResponseType::SpecialFunction,
+            Some("DirectFunction") => ResponseType::DirectFunction,
+            Some("ExternalFunction") => ResponseType::ExternalFunction,
+
+            _ => return Err(CommandError::InvalidCommand("Invalid or missing response type".to_string())),
+        };
+
         // Extract response_target:
 
         let response_target = match map.get("response_target").map(String::as_str) {
@@ -344,6 +376,8 @@ impl CommandInstructions {
 
         let response_actf = map.get("response_actf").cloned().ok_or_else(|| CommandError::InvalidCommand("Missing response actf".to_string()))?;
 
+        // TODO >>> See if the response target and the response actf need to have a None parser
+
         Ok(CommandInstructions {
             mode,
             command_type,
@@ -353,8 +387,9 @@ impl CommandInstructions {
             actf,
             kwargs,
             message,
-            response_target,
-            response_actf,
+            response_type: Some(response_type),
+            response_target: Some(response_target),
+            response_actf: Some(response_actf),
         })
     }
 }

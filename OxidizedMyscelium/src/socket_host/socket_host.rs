@@ -16,19 +16,14 @@ use crate::common::communication::decoders::read_json_from_stream;
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{
-    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
-    CommandType,
-};
+use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
 use crate::ClientState;
 use crate::NodeStatus;
 use serde_json::to_string;
 
 use crate::handle_manager_client_error;
-use crate::socket_host::scheduler::{
-    request_client_available_commands, send_network_available_commands,
-};
+use crate::socket_host::scheduler::{request_client_available_commands, send_network_available_commands};
 
 #[macro_use]
 use crate::{init_thread_pool, terminate_pool, run_in_thread_pool, wait_all_threads};
@@ -103,26 +98,17 @@ macro_rules! handle_client_controller_error {
     ($error:expr, $client_key:expr, $logger:expr) => {
         match $error {
             ClientStatusPoolError::ClientDoesNotExist(c) => {
-                $logger.warn(format!(
-                    "WARNING: Client: {:?} does not exist so can't sync!",
-                    c
-                ));
-            }
+                $logger.warn(format!("WARNING: Client: {:?} does not exist so can't sync!", c));
+            },
             ClientStatusPoolError::ClientAlreadySync(c) => {
                 $logger.warn(format!("WARNING: Client: {:?} is already sync!", c));
-            }
+            },
             ClientStatusPoolError::MaxSyncAttemptsReached(c) => {
-                $logger.warn(format!(
-                    "WARNING: Max attempts trying to sync with Client: {:?} reached!",
-                    c
-                ));
-            }
+                $logger.warn(format!("WARNING: Max attempts trying to sync with Client: {:?} reached!", c));
+            },
             _ => {
-                $logger.warn(format!(
-                    "WARNING: Unexpected error trying to sync with client: {:?}!",
-                    $client_key
-                ));
-            }
+                $logger.warn(format!("WARNING: Unexpected error trying to sync with client: {:?}!", $client_key));
+            },
         }
     };
 }
@@ -171,6 +157,8 @@ macro_rules! create_special_command_response {
             $special_command.to_string(),
             HashMap::new(),
             "".to_string(),
+            None,
+            None,
         );
 
         let command = Command {
@@ -204,25 +192,16 @@ macro_rules! handle_send_error {
     ($error:expr, $logger:expr, $client_key:expr) => {
         match $error {
             StreamError::ConnectionClosed => {
-                $logger.warn(format!(
-                    "[HOST][SOCKET][CLOSE CONNECTION] - {}",
-                    $client_key
-                ));
-            }
+                $logger.warn(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+            },
             StreamError::WriteError(e) => {
                 $logger.exception(format!("[HOST][SOCKET][WRITE ERROR] - {:?}", e));
-                $logger.exception(format!(
-                    "[HOST][SOCKET][CLOSE CONNECTION] - {}",
-                    $client_key
-                ));
-            }
+                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+            },
             StreamError::WriteSizeError(e) => {
                 $logger.exception(format!("[HOST][SOCKET][WRITE SIZE ERROR] - {:?}", e));
-                $logger.exception(format!(
-                    "[HOST][SOCKET][CLOSE CONNECTION] - {}",
-                    $client_key
-                ));
-            }
+                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+            },
         }
     };
 }
@@ -253,10 +232,10 @@ macro_rules! handle_client_manager_error {
             ClientError::ClientDoesNotExist(_) => {
                 let message = "Your client isn't registered in the whitelist!";
                 send_error_response!($stream, $command, $logger, message);
-            }
+            },
             _ => {
                 send_error_response!($stream, $command, $logger, $default_message);
-            }
+            },
         }
     };
 }
@@ -269,25 +248,19 @@ macro_rules! handle_client_manager_error {
 /// * `$message` - The error message to include in the response.
 macro_rules! send_error_response {
     ($stream:expr, $command:expr, $logger:expr, $message:expr) => {
-        let response =
-            create_error_command_response!($command.client_key, $command.parity_id, $message);
-        $logger.exception(format!(
-            "WARNING: {}, sending back: {:?}",
-            $message, response
-        ));
+        let response = create_error_command_response!($command.client_key, $command.parity_id, $message);
+        $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response));
         match send($stream, response) {
-            Ok(_) => {}
+            Ok(_) => {},
             Err(e) => {
                 handle_send_error!(e, $logger, $command.client_key);
                 break;
-            }
+            },
         }
     };
 }
 
-pub fn set_heartbeat_callback(
-    callback_pattern: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>,
-) {
+pub fn set_heartbeat_callback(callback_pattern: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>) {
     {
         let mut heart_beat_callback = HEARTBEAT_CALLBACK.lock().unwrap();
         *heart_beat_callback = callback_pattern;
@@ -310,20 +283,20 @@ pub fn update_last_contact(client_key: String) {
         Ok(c) => {
             println!("Receive client contact!");
             handle_manager_client_error!(c.update_last_contact());
-        }
+        },
         Err(e) => match e {
             ClientError::ClientAlreadyExist(e) => {
                 logger.exception(format!("Error client: {} already exist", e));
-            }
+            },
             ClientError::ClientDoesNotExist(e) => {
                 logger.exception(format!("Error client: {} does't exist", e));
-            }
+            },
             ClientError::UnexpectedError(e) => {
                 logger.exception(format!("Get a unexpected error: {}", e));
-            }
+            },
             _ => {
                 logger.exception(format!("Get a unexpected error"));
-            }
+            },
         },
     }
 }
@@ -357,10 +330,7 @@ use crate::common::enhanced_buffer::history::register::register::initialize_buff
 pub fn initialize_host_buffer(buffer_location: String) {
     let logger = acquire_logger!("[Socket][Initialize Host Buffer]");
 
-    logger.info(format!(
-        "initializing the buffer database into: {}buffer.db, if not initialized!",
-        buffer_location
-    ));
+    logger.info(format!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location));
 
     initialize_buffer_history(&buffer_location);
 
@@ -410,15 +380,13 @@ pub fn initialize_host(address: String, client_key: String) {
                 // This allows the main loop to immediately go back to listening for new connections.
                 run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
                     // Set a read timeout of 5 seconds
-                    stream
-                        .set_read_timeout(Some(std::time::Duration::new(5, 0)))
-                        .unwrap();
+                    stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
                     handle_connection(&mut stream);
                 });
-            }
+            },
             Err(e) => {
                 logger.warn(format!("Failed to accept a connection: {}", e));
-            }
+            },
         }
 
         // No need to wait for all threads here. The main loop should be able to immediately proceed.
@@ -438,28 +406,21 @@ pub fn initialize_host(address: String, client_key: String) {
 ///
 /// # Returns
 /// - A `HashMap<String, Value>` representing the cloned command patterns.
-pub fn get_available_commands_registered() -> HashMap<std::string::String, IndexMap<String, String>>
-{
+pub fn get_available_commands_registered() -> HashMap<std::string::String, IndexMap<String, String>> {
     let global_command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
     return global_command_patterns.extract_all_commands().unwrap();
 }
 
 pub fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) {
     let logger = acquire_logger!("Core");
-    logger.info(format!(
-        "changed Client {} status: to: {:?}!",
-        client_key, new_status
-    ));
+    logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status));
 
     // -> Change client to offline in network map
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
     let mut node = network_map.get_node_by_key(&client_key).unwrap();
 
     if node.get_node_status() == new_status {
-        logger.debug(format!(
-            "Client {} is alwready with status: {:?}!",
-            client_key, new_status
-        ));
+        logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
         return;
     }
 
@@ -487,9 +448,7 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
         }
     }
 
-    client_sync_manager
-        .reset_sync_for_clients(clients_to_reset)
-        .unwrap();
+    client_sync_manager.reset_sync_for_clients(clients_to_reset).unwrap();
 }
 
 pub fn handle_client_disconnect(client_key: String) {
@@ -518,10 +477,7 @@ fn handle_special_functions(client_key: String, function: String) -> Command {
     } else if function == "C206" {
         // -> Ping request
 
-        let up_schedule: Vec<UpCommand> =
-            enhanced_buffer::buffer_up_manager::buffer_up_list_schedule_fo_client_id(
-                client_key.clone(),
-            );
+        let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule_fo_client_id(client_key.clone());
 
         if !(up_schedule.len() > 0) {
             return create_special_command_response!(client_key, "C207"); // If don't have any response to send send C207 that is a ping confirmation
@@ -535,13 +491,10 @@ fn handle_special_functions(client_key: String, function: String) -> Command {
                 // TODO >>> Handle the invalid Commands cases
                 println!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e);
                 return create_special_command_response!(client_key, "C207");
-            }
+            },
         };
 
-        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(
-            &client_key,
-            &response_command.parity_id,
-        );
+        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&client_key, &response_command.parity_id);
 
         return response_command;
     } else {
@@ -573,12 +526,7 @@ fn handle_common_function(command: &Command) -> Command {
     // > Schedule to process
 
     let json_command = serde_json::to_string(&command.command).unwrap();
-    let down_command = DownCommand::new(
-        command.client_key.clone(),
-        command.parity_id.clone(),
-        command.priority,
-        json_command,
-    );
+    let down_command = DownCommand::new(command.client_key.clone(), command.parity_id.clone(), command.priority, json_command);
 
     enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
 
@@ -651,11 +599,7 @@ enum Response {
 /// 4. The original scheduled response is then removed from the buffer to avoid any future retrievals.
 /// 5. The transformed command is returned as `Response::Command(response_command)`.
 fn get_response(command: Command) -> Response {
-    let up_schedule: Vec<UpCommand> =
-        enhanced_buffer::buffer_up_manager::buffer_up_get_scheduled_by_parity_id(
-            &command.client_key,
-            &command.parity_id,
-        );
+    let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_get_scheduled_by_parity_id(&command.client_key, &command.parity_id);
 
     if !(up_schedule.len() > 0) {
         return Response::None;
@@ -663,16 +607,8 @@ fn get_response(command: Command) -> Response {
 
     let command_response = &up_schedule[0];
     let command_response_command = serde_json::from_str(command_response.command.as_str()).unwrap();
-    let response_command = create_response_command!(
-        command_response.client_key,
-        command_response.parity_id,
-        command_response.priority,
-        command_response_command
-    );
-    enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(
-        &command.client_key,
-        &response_command.parity_id,
-    );
+    let response_command = create_response_command!(command_response.client_key, command_response.parity_id, command_response.priority, command_response_command);
+    enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&command.client_key, &response_command.parity_id);
     return Response::Command(response_command);
 }
 
@@ -697,18 +633,18 @@ fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
 
     // Send the size of the data
     match stream.write(&size_buffer) {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(e) => {
             return Err(StreamError::WriteSizeError(e));
-        }
+        },
     };
 
     // Send the actual data
     match stream.write(command_response_json.as_bytes()) {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(e) => {
             return Err(StreamError::WriteError(e));
-        }
+        },
     };
 
     Ok(())
@@ -755,7 +691,7 @@ fn handle_connection(stream: &mut TcpStream) {
                 //> Handle the error, e.g., by returning from the function or taking corrective action
                 handle_client_disconnect(client_key);
                 return; //> or handle differently
-            }
+            },
         };
 
         if data_size > MAX_DATA_SIZE {
@@ -770,15 +706,13 @@ fn handle_connection(stream: &mut TcpStream) {
 
         //> Read the data into the buffer
         let buffer_string = match stream.read_exact(&mut data_buffer) {
-            Ok(_) => String::from_utf8_lossy(&data_buffer)
-                .trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0')
-                .to_string(),
+            Ok(_) => String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(),
             Err(e) => {
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
                 handle_client_disconnect(client_key);
                 return; //> or handle differently
-            }
+            },
         };
 
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
@@ -791,23 +725,16 @@ fn handle_connection(stream: &mut TcpStream) {
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
 
-            let response: Command = create_error_command_response!(
-                command.client_key,
-                command.parity_id,
-                "Your client isn't registered in the whitelist!"
-            );
+            let response: Command = create_error_command_response!(command.client_key, command.parity_id, "Your client isn't registered in the whitelist!");
 
-            logger.exception(format!(
-                "WARNING: Client isn't registered, sending back: {:?}",
-                response
-            ));
+            logger.exception(format!("WARNING: Client isn't registered, sending back: {:?}", response));
 
             match send(stream, response) {
-                Ok(_) => {}
+                Ok(_) => {},
                 Err(e) => {
                     handle_send_error!(e, logger, command.client_key);
                     break;
-                }
+                },
             };
 
             break;
@@ -818,15 +745,9 @@ fn handle_connection(stream: &mut TcpStream) {
         client = Some(match Client::get_by_key(&command.client_key) {
             Ok(c) => c,
             Err(e) => {
-                handle_client_manager_error!(
-                    e,
-                    stream,
-                    command,
-                    logger,
-                    "Unexpected error getting your client"
-                );
+                handle_client_manager_error!(e, stream, command, logger, "Unexpected error getting your client");
                 break;
-            }
+            },
         });
 
         // -> GET CLIENT STATUS, SEE IF IT IS SYNC OR NOT
@@ -840,14 +761,14 @@ fn handle_connection(stream: &mut TcpStream) {
                 Err(e) => {
                     handle_client_controller_error!(e, &command.client_key, logger);
                     None
-                }
+                },
             };
             client_last_sync = match controller.get_last_sync(&command.client_key.clone()) {
                 Ok(last_sync) => Some(last_sync),
                 Err(e) => {
                     handle_client_controller_error!(e, &command.client_key, logger);
                     None
-                }
+                },
             };
             println!("Clients In Sync Controller: {:?}", controller);
         }
@@ -868,18 +789,13 @@ fn handle_connection(stream: &mut TcpStream) {
                 println!("\nClient: {:?} isn't sync\n", &command.client_key);
 
                 let current_time = Utc::now();
-                let should_attempt_sync = client_last_sync.map_or(true, |last_sync| {
-                    current_time - last_sync > Duration::seconds(30)
-                });
+                let should_attempt_sync = client_last_sync.map_or(true, |last_sync| current_time - last_sync > Duration::seconds(30));
 
                 if should_attempt_sync {
                     logger.info(format!("Try to sync with: {}", command.client_key));
                     send_network_available_commands(command.client_key.clone());
                     update_client_sync_attempt(&command.client_key, &logger);
-                    change_client_node_status_and_stream(
-                        command.client_key.clone(),
-                        NodeStatus::NotSyncYet,
-                    );
+                    change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.info(format!(
                         "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
@@ -907,34 +823,24 @@ fn handle_connection(stream: &mut TcpStream) {
             println!("\nCommand.Command.function: {:?}", command.command.actf);
             logger.debug(format!("Command function: {}", command.command.actf));
 
-            let direct_functions: Vec<String> = vec![
-                "get_registered_commands",
-                "update_client_commands_ref",
-                "restrictive_update_client_commands_ref",
-                "add_client",
-                "update_client",
-                "remove_client",
-            ]
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
+            let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect();
 
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
                     if special_functions.contains(&command.command.actf) {
-                        let response: Command = handle_special_functions(
-                            command.client_key.clone(),
-                            command.command.actf.clone(),
-                        );
+                        let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone());
                         logger.debug(format!("Sending back: {:?}", response));
 
                         match send(stream, response) {
-                            Ok(_) => {}
+                            Ok(_) => {},
                             Err(e) => handle_send_error!(e, logger, command.client_key),
                         };
                     }
-                }
+                },
                 _ => {
                     // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
 
@@ -955,7 +861,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                 logger.debug(format!("Sending back: {:?}", &command));
                                 let client_key = command.client_key.clone();
                                 match send(stream, command) {
-                                    Ok(_) => {}
+                                    Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
                                 handle_client_disconnect(client_key);
@@ -971,28 +877,19 @@ fn handle_connection(stream: &mut TcpStream) {
                                 logger.debug(format!("Sending back: {:?}", &command));
                                 let client_key = command.client_key.clone();
                                 match send(stream, command) {
-                                    Ok(_) => {}
+                                    Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
                                 handle_client_disconnect(client_key);
                                 return;
                             }
 
-                            if !command_patterns
-                                .handler_exists_in(target.as_str(), command.command.actf.as_str())
-                            {
-                                let command: Command = create_error_command_response!(
-                                    command.client_key.clone(),
-                                    command.parity_id,
-                                    format!(
-                                        "Function: {}, Doesn't exist in target client: {}!",
-                                        command.command.actf, target
-                                    )
-                                );
+                            if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
+                                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
                                 logger.debug(format!("Sending back: {:?}", &command));
                                 let client_key = command.client_key.clone();
                                 match send(stream, command) {
-                                    Ok(_) => {}
+                                    Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
                                 handle_client_disconnect(client_key);
@@ -1001,13 +898,7 @@ fn handle_connection(stream: &mut TcpStream) {
 
                             logger.debug(format!("Redirecting command to target: {}", target));
 
-                            let command_instructions_to_schedule: CommandInstructions =
-                                handle_redirect(
-                                    &command.command.clone(),
-                                    &mut command.client_key.clone(),
-                                    command.parity_id.clone(),
-                                    command.priority.clone(),
-                                );
+                            let command_instructions_to_schedule: CommandInstructions = handle_redirect(&command.command.clone(), &mut command.client_key.clone(), command.parity_id.clone(), command.priority.clone());
 
                             //> CAST COMMAND TO REDIRECT
                             let command_to_redirect: Command = Command {
@@ -1023,63 +914,47 @@ fn handle_connection(stream: &mut TcpStream) {
                             let response: Command;
                             //> HANDLE COMMANDS WITH RESPONSE:
                             if !command_is_not_registry {
-                                logger.warn(format!(
-                                    "Command {}, already have a response!",
-                                    command.parity_id.clone()
-                                ));
+                                logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
                                 match get_response(command.clone()) {
                                     Response::Command(c) => {
                                         if c.client_key == command.client_key {
                                             response = c;
                                         } else {
                                             logger.info("Response is None!".to_string());
-                                            response = create_special_command_confirmation!(
-                                                command.client_key.clone(),
-                                                command.parity_id.clone()
-                                            );
+                                            response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
                                         }
-                                    }
+                                    },
                                     Response::None => {
                                         logger.info("Response is None!".to_string());
-                                        response = create_special_command_confirmation!(
-                                            command.client_key.clone(),
-                                            command.parity_id.clone()
-                                        );
-                                    }
+                                        response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                    },
                                 }
 
                             //> HANDLE COMMANDS WITHOUT RESPONSES:
                             } else {
                                 // _ = handle_common_function(&command_to_redirect);
-                                let up_command =
-                                    UpCommand::from_command(command_to_redirect.clone());
+                                let up_command = UpCommand::from_command(command_to_redirect.clone());
                                 enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-                                response = create_special_command_confirmation!(
-                                    command.client_key.clone(),
-                                    command.parity_id.clone()
-                                );
+                                response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
                             }
 
                             //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                             logger.debug(format!("Sending back: {:?}", response));
                             match send(stream, response) {
-                                Ok(_) => {}
+                                Ok(_) => {},
                                 Err(e) => {
                                     handle_send_error!(e, logger, command_to_redirect.client_key)
-                                }
+                                },
                             };
-                        }
+                        },
                         CommandTarget::Host => {
                             //> CHECK IF HANDLER DON'T EXIST AND RETURN & SEND ERROR MESSAGE IF NOT
-                            if !command_patterns
-                                .handler_exists_in("host", command.command.actf.as_str())
-                                && !direct_functions.contains(&command.command.actf)
-                            {
+                            if !command_patterns.handler_exists_in("host", command.command.actf.as_str()) && !direct_functions.contains(&command.command.actf) {
                                 let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in host callbacks nor in any client!", command.command.actf));
                                 logger.debug(format!("Sending back: {:?}", &command));
                                 let client_key = command.client_key.clone();
                                 match send(stream, command) {
-                                    Ok(_) => {}
+                                    Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
                                 handle_client_disconnect(client_key);
@@ -1093,29 +968,20 @@ fn handle_connection(stream: &mut TcpStream) {
 
                             //> HANDLE COMMANDS WITH RESPONSE:
                             if !command_is_not_registry {
-                                logger.warn(format!(
-                                    "Command {}, already have a response!",
-                                    command.parity_id.clone()
-                                ));
+                                logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
                                 match get_response(command.clone()) {
                                     Response::Command(c) => {
                                         if c.client_key == command.client_key {
                                             response = c;
                                         } else {
                                             logger.info("Response is None!".to_string());
-                                            response = create_special_command_confirmation!(
-                                                command.client_key.clone(),
-                                                command.parity_id.clone()
-                                            );
+                                            response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
                                         }
-                                    }
+                                    },
                                     Response::None => {
                                         logger.info("Response is None!".to_string());
-                                        response = create_special_command_confirmation!(
-                                            command.client_key.clone(),
-                                            command.parity_id.clone()
-                                        );
-                                    }
+                                        response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                    },
                                 }
 
                             //> HANDLE COMMANDS WITHOUT RESPONSES:
@@ -1126,10 +992,10 @@ fn handle_connection(stream: &mut TcpStream) {
                             //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                             logger.debug(format!("Sending back: {:?}", response));
                             match send(stream, response) {
-                                Ok(_) => {}
+                                Ok(_) => {},
                                 Err(e) => handle_send_error!(e, logger, command.client_key),
                             };
-                        }
+                        },
                         _ => {
                             // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
                             let command: Command = create_error_command_response!(
@@ -1140,14 +1006,14 @@ fn handle_connection(stream: &mut TcpStream) {
                             logger.debug(format!("Sending back: {:?}", &command));
                             let client_key = command.client_key.clone();
                             match send(stream, command) {
-                                Ok(_) => {}
+                                Ok(_) => {},
                                 Err(e) => handle_send_error!(e, logger, client_key),
                             };
                             handle_client_disconnect(client_key);
                             return;
-                        }
+                        },
                     }
-                }
+                },
             }
         }
     }
