@@ -343,9 +343,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 "add_client_handler".to_string(),
                 HashMap::new(),
                 format!("Successfully add a client: {}!", new_client.client_key).to_string(),
-                Some(ResponseType::DirectFunction),
-                Some(ResponseTarget::Host),
-                None, // Not required in this case
+                command.response_type,
+                command.response_target,
+                command.response_actf,
             );
 
             logger.info(format!("Successfully add a client: {}!", new_client.client_key));
@@ -437,9 +437,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         "update_client_handler".to_string(),
                         resp_kwargs,
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key).to_string(),
-                        Some(ResponseType::DirectFunction),
-                        Some(ResponseTarget::Host),
-                        None, // Not required in this case
+                        command.response_type,
+                        command.response_target,
+                        command.response_actf,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key));
@@ -504,9 +504,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         "remove_client_handler".to_string(),
                         HashMap::new(),
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key).to_string(),
-                        Some(ResponseType::DirectFunction),
-                        Some(ResponseTarget::Host),
-                        None, // Not required in this case
+                        command.response_type,
+                        command.response_target,
+                        command.response_actf,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key));
