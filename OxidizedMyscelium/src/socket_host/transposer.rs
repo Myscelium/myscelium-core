@@ -453,6 +453,8 @@ fn process(down_command: DownCommand) {
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
 
+            // -> CALL CALLBACK FUNCTION
+
             response = match callback_patterns.call(command_instructions.actf.as_str(), kwargs, args_pattern) {
                 Ok(r) => r,
                 Err(e) => {
@@ -479,8 +481,6 @@ fn process(down_command: DownCommand) {
                 },
             };
         }
-
-        // -> CALL CALLBACK FUNCTION
 
         // response = match call_callback(
         //     translated_command.command.actf.as_str(),
