@@ -101,6 +101,9 @@ macro_rules! create_special_command_instruction_response {
             $special_command.to_string(),
             HashMap::new(),
             "".to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         new_command_instructions.to_value_map()
@@ -118,6 +121,9 @@ macro_rules! error_response {
             "error_handler".to_string(),
             HashMap::new(),
             $msg.to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         new_command_instructions.to_value_map()

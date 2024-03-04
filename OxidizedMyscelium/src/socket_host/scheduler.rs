@@ -119,7 +119,7 @@ pub fn send_network_available_commands(client_key: String) {
         "".to_string(),
         Some(ResponseType::DirectFunction),
         Some(ResponseTarget::Host),
-        Some("update_client_commands_ref".to_string()), // This is the default for first sync
+        None, // Not required in this case
     );
 
     schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string())

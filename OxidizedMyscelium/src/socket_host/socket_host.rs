@@ -81,6 +81,9 @@ macro_rules! create_error_command_response {
             "error_handler".to_string(),
             HashMap::new(),
             $error.to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         let command = Command {
@@ -133,6 +136,9 @@ macro_rules! create_special_command_confirmation {
             "C210".to_string(),
             HashMap::new(),
             "".to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         let resp = Command {
@@ -157,8 +163,9 @@ macro_rules! create_special_command_response {
             $special_command.to_string(),
             HashMap::new(),
             "".to_string(),
-            None,
-            None,
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         let command = Command {
@@ -558,6 +565,9 @@ fn handle_common_function(command: &Command) -> Command {
         "C210".to_string(),
         kwargs,
         "".to_string(),
+        None, // Not required here
+        None, // Not required here
+        None, // Not required here
     );
 
     let conf_command = Command {

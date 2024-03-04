@@ -15,7 +15,7 @@ use crate::{CLIENT_IS_SYNC, CLIENT_LOG_LEVEL};
 use crate::HOST_ALLOWED_COMMANDS;
 
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget, ResponseType};
 use crate::common::functions::converters::convert_to_value_map;
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
@@ -134,6 +134,9 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     "update_client_commands_ref".to_string(),
                     filtered_commands_map,
                     "".to_string(),
+                    Some(ResponseType::DirectFunction),
+                    Some(ResponseTarget::Host),
+                    None, // Not required in this case
                 );
 
                 // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
@@ -155,6 +158,9 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     "restrictive_update_client_commands_ref".to_string(),
                     filtered_commands_map,
                     "".to_string(),
+                    Some(ResponseType::DirectFunction),
+                    Some(ResponseTarget::Host),
+                    None, // Not required in this case
                 );
 
                 let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
