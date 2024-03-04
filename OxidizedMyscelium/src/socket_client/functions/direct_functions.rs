@@ -169,6 +169,8 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             return Ok(ProcessResult::Empty);
         },
         "get_socket_client_available_handlers" => {
+            // -> DINAMIC RESPONSE IMPLEMENTED:
+
             logger.info(format!("Receive Available Handlers Request"));
 
             // Lock the CLIENT_NODE_CONFIGS and insert the new map
@@ -199,7 +201,10 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 "update_client_commands_ref".to_string(),
                 filtered_commands_map,
                 "".to_string(),
-            ); // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
+                c.response_type,
+                c.response_target,
+                c.response_actf,
+            );
 
             let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());

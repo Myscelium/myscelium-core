@@ -2,8 +2,8 @@ use crate::common::client_manager::manager::{check_if_client_key_exists, Client,
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::ResponseTarget;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{ResponseTarget, ResponseType};
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
 use crate::common::structs::results_structs::ResultType;
@@ -63,7 +63,9 @@ pub fn request_client_available_commands(client_key: String) {
         "get_socket_client_available_handlers".to_string(),
         HashMap::new(),
         "".to_string(),
-        ResponseTarget::Host,
+        Some(ResponseType::DirectFunction),
+        Some(ResponseTarget::Host),
+        Some("update_client_commands_ref".to_string()),
     );
 
     schedule(&command_instructions, 11, client_key, "itisaspecialcase".to_string())
@@ -106,8 +108,6 @@ pub fn send_network_available_commands(client_key: String) {
 
     // logger.info(format!("Successfully actualize the host available commands!"));
 
-    // TODO >>> Add the expected response actf function here to this case:
-
     let command_instructions = CommandInstructions::new(
         CommandMode::Function,
         CommandType::DirectFunction,
@@ -117,7 +117,9 @@ pub fn send_network_available_commands(client_key: String) {
         "update_available_host_commands".to_string(),
         filtered_commands,
         "".to_string(),
-        ResponseTarget::Host,
+        Some(ResponseType::DirectFunction),
+        Some(ResponseTarget::Host),
+        Some("update_client_commands_ref".to_string()), // This is the default for first sync
     );
 
     schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string())
