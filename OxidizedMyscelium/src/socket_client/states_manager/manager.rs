@@ -11,7 +11,7 @@ use crate::{
         client_network_controller::availability_controller::NetworkControllerError,
         structs::available_commands::{NetworkMap, Node},
     },
-    set_new_path_to_buffer_db, with_connection,
+    set_new_path_to_buffer_db, with_connection, ClientError, NodeHandler,
 };
 
 use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator};
@@ -83,6 +83,15 @@ impl ClientState {
         }
     }
 
+    pub fn update_client_handlers(&mut self, new_handlers: Vec<NodeHandler>) -> Result<(), ClientError> {
+        if let Some(client_node_configs) = &mut self.client_node_configs {
+            client_node_configs.update_handlers(new_handlers);
+            Ok(())
+        } else {
+            return Err(ClientError::ClientNotFullyInitialized);
+        }
+    }
+
     pub fn change_initialization_state(&mut self, new_state: bool) {
         self.is_initialized = Some(new_state)
     }
@@ -122,9 +131,45 @@ impl ClientState {
         self.name.is_some() && self.key.is_some() && self.network_map.is_some() && self.client_node_configs.is_some() && self.is_initialized.is_some() && self.is_connected.is_some() && self.is_sync.is_some() && self.last_change.is_some()
     }
 
-    pub fn save_in_storage(&self) -> Result<(), StateManagerError> {
-        // TODO >>> Finish this method;
+    pub fn update_storage_with_self(&self) -> Result<(), StateManagerError> {
+        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+            //let registered_ids = get_registred_ids(conn);
+            // let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
+            // This on top isn't necessary since here will only have one client per per db in each
+            // client states table.
 
+            let now = Utc::now();
+            let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
+            let result = conn.execute(
+                "UPDATE ClientStates SET Name = ?, Key = ?, NetMap = ?, ClientNodeConfigs = ?, IsInitialized = ?, IsReady = ?, IsConnected = ?, IsSync = ?, LastChange = ? WHERE ID = ?",
+                params![
+                    self.name.clone().unwrap_or("".to_string()),
+                    self.key.clone().unwrap_or("".to_string()),
+                    serde_json::to_string(&self.network_map.clone().unwrap()).unwrap_or("".to_string()),
+                    serde_json::to_string(&self.client_node_configs.clone().unwrap()).unwrap_or("".to_string()),
+                    self.is_initialized.unwrap_or(false),
+                    self.is_ready.unwrap_or(false),
+                    self.is_connected.unwrap_or(false),
+                    self.is_sync.unwrap_or(false),
+                    timestamp,
+                    0,
+                ],
+            );
+
+            match result {
+                Ok(_) => {
+                    println!("Successfully update state in ClientStates table");
+                },
+                Err(e) => {
+                    eprintln!("An error occurred while updating a cient sate in ClientStates table: {}", e);
+                },
+            };
+        });
+
+        Ok(())
+    }
+
+    pub fn save_in_storage(&self) -> Result<(), StateManagerError> {
         with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
             //let registered_ids = get_registred_ids(conn);
             // let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };

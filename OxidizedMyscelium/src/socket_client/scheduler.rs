@@ -179,9 +179,11 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         };
 
                         if let Some(response_actf) = command_instructions.response_actf.clone() {
-                            //> See if this node has the expected handler
-                            if !this_node_handlers.contains_key(&response_actf) {
-                                return Err(SchedulingError::ResponseHandlerDoesntExist);
+                            if response_actf != "".to_string() {
+                                //> See if this node has the expected handler
+                                if !this_node_handlers.contains_key(&response_actf) {
+                                    return Err(SchedulingError::ResponseHandlerDoesntExist);
+                                }
                             }
                         }
                     }
@@ -193,8 +195,10 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                     }
 
                     if let Some(response_actf) = command_instructions.response_actf.clone() {
-                        if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
-                            return Err(SchedulingError::HandlerDoesntExist);
+                        if response_actf != "".to_string() {
+                            if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
+                                return Err(SchedulingError::HandlerDoesntExist);
+                            }
                         }
                     } else {
                         //* Response actf is none then response will be ignored
@@ -207,8 +211,10 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                     }
 
                     if let Some(response_actf) = command_instructions.response_actf.clone() {
-                        if !network_map.handler_exists_in("host", response_actf.as_str()) {
-                            return Err(SchedulingError::HandlerDoesntExist);
+                        if response_actf != "".to_string() {
+                            if !network_map.handler_exists_in("host", response_actf.as_str()) {
+                                return Err(SchedulingError::HandlerDoesntExist);
+                            }
                         }
                     } else {
                         //* Response actf is none then response will be ignored
