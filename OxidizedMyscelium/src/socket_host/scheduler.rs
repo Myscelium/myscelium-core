@@ -108,6 +108,10 @@ pub fn send_network_available_commands(client_key: String) {
 
     // logger.info(format!("Successfully actualize the host available commands!"));
 
+    //> Sync mechanism don't uses the response_actf dinamic system cause it is splicity configured and has diferent cases in the sync flow
+    //> for example in the first sync the `update_available_host_commands` response is: `update_client_commands_ref` the consectuvie times
+    //> is
+
     let command_instructions = CommandInstructions::new(
         CommandMode::Function,
         CommandType::DirectFunction,
