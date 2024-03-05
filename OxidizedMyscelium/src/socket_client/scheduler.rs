@@ -105,6 +105,8 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     //    return Err(SchedulingError::ClientIsntFullyInitialized);
     //}
 
+    // TODO >>> Make a universal function to verify this kind of conflict prevention
+
     if let Some(ready) = state_manager.is_ready {
         if !ready {
             return Err(SchedulingError::ClientIsntFullyInitialized);
@@ -136,18 +138,18 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
         CommandTarget::Origin => {
             return Err(SchedulingError::CantScheduleCommandsToItself);
         },
-        CommandTarget::Host => command_target = "Host".to_string(),
+        CommandTarget::Host => command_target = "host".to_string(),
         CommandTarget::ClientKey(k) => {
             if &k == &this_client_key_ref {
                 return Err(SchedulingError::CantScheduleCommandsToItself);
             }
-            command_target = k
+            command_target = k;
         },
     }
 
     if let Some(network_map) = &mut state_manager.network_map {
         //> VERIFY IF THE COMMAND TARGET EXISTS
-        match network_map.target_is_reachable(&command_instructions.target.to_string()) {
+        match network_map.target_is_reachable(&command_target) {
             Ok(v) => {
                 if !v {
                     return Err(SchedulingError::TargetDoesntExists);
@@ -159,7 +161,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
         }
 
         //> VERIFY IF THE HANDLER EXISTS IN THE TARGET
-        if !network_map.handler_exists_in(command_instructions.target.to_string().as_str(), command_instructions.actf.as_str()) {
+        if !network_map.handler_exists_in(command_target.as_str(), command_instructions.actf.as_str()) {
             return Err(SchedulingError::HandlerDoesntExist);
         }
 
@@ -200,7 +202,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                 },
                 ResponseTarget::Host => {
                     //* See if the target is host and if the response is pointing to itself
-                    if command_target == "Host" {
+                    if command_target == "host" {
                         return Err(SchedulingError::HostCantSendResponseToItself);
                     }
 
@@ -236,11 +238,6 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     }
 
     logger.debug(format!("Client id is: {:?}", client_key));
-
-    // TODO >>> Add mecanisms to check the structure of the command that we are trying to registry
-    // > Check if the command handler exist in the target
-    // > Check if the response handler exist here in this client
-    // > If the response target is other client check if this target exist and if the response handler exist
 
     let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 

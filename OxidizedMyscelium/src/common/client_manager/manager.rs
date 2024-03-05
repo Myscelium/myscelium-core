@@ -115,6 +115,12 @@ pub enum ClientError {
     ClientIsNotRunning,
     ClientNotFullyInitialized,
     NotAbleToReadClientStates,
+    TargetDoesntExists,
+    HandlerDoesntExist,
+    ResponseHandlerDoesntExist,
+    CantScheduleCommandsToItself,
+    HostCantSendResponseToItself,
+    TargetCantSendResponseToItself,
 }
 
 #[derive(Debug, Clone)]

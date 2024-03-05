@@ -251,6 +251,12 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
             },
+            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
+            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
+            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
+            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
+            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
+            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
         },
     };
 
@@ -272,6 +278,12 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
             },
+            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
+            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
+            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
+            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
+            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
+            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
         },
     };
 
