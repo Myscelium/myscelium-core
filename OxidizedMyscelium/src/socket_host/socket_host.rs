@@ -16,9 +16,11 @@ use crate::common::communication::decoders::read_json_from_stream;
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
+use crate::common::enhanced_buffer::utilities::ResponseTarget;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
 use crate::ClientState;
+use crate::NetworkMap;
 use crate::NodeStatus;
 use serde_json::to_string;
 
@@ -878,6 +880,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                 return;
                             }
 
+                            //> VERIFY IF THE TARGET IS SYNC
                             if !command_patterns.target_is_ready(target).unwrap() {
                                 let command: Command = create_error_command_response!(
                                     command.client_key.clone(),
@@ -894,6 +897,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                 return;
                             }
 
+                            //> SEE IF THE HANDLER EXIST IN THE TARGET
                             if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
                                 let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
                                 logger.debug(format!("Sending back: {:?}", &command));
@@ -908,11 +912,99 @@ fn handle_connection(stream: &mut TcpStream) {
 
                             // TODO >>> See if the client has permission to send commands to this target
 
-                            // TODO >>> Add a verifier to check if the response target exist
-                            // TODO >>> Add a verifier to check if the response target isn't equal to the command target
-                            // TODO >>> Add a verifier to check if the response target is reachable
-                            // TODO >>> Verify if the client that send this command has permission to send the response to this target
-                            // TODO >>> Verify if the target for the response have the response handler specified
+                            // TODO >>> ADD THIS TO THE OTHER CASES< NOT ONLY TO THE CommandTarget::ClientKey
+                            if let Some(response_target) = command.command.response_target.clone() {
+                                match response_target {
+                                    ResponseTarget::Origin => {
+                                        if let Some(response_actf) = command.command.response_actf.clone() {
+                                            //> IF RESPONSE ACTF ISN'T "" VERIFY IF THE HANDLER EXISTS
+                                            if response_actf != "" {
+                                                if !command_patterns.handler_exists_in(command.client_key.as_str(), response_actf.as_str()) {
+                                                    let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                                    logger.debug(format!("Sending back: {:?}", &command));
+                                                    let client_key = command.client_key.clone();
+                                                    match send(stream, command) {
+                                                        Ok(_) => {},
+                                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                                    };
+                                                    handle_client_disconnect(client_key);
+                                                    return;
+                                                };
+                                            }
+                                        }
+                                        //* Don't need to check permission to send some response to origin since is the origin
+                                    },
+                                    ResponseTarget::Host => {
+                                        if let Some(response_actf) = command.command.response_actf.clone() {
+                                            if response_actf != "" {
+                                                if !command_patterns.handler_exists_in("host", response_actf.as_str()) {
+                                                    let command: Command =
+                                                        create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                                    logger.debug(format!("Sending back: {:?}", &command));
+                                                    let client_key = command.client_key.clone();
+                                                    match send(stream, command) {
+                                                        Ok(_) => {},
+                                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                                    };
+                                                    handle_client_disconnect(client_key);
+                                                    return;
+                                                };
+                                            }
+                                        }
+
+                                        // TODO >>> Verify if the client that send this command has permission to send the response to this target
+                                    },
+                                    ResponseTarget::ClientKey(key) => {
+                                        // If target is cliet withe key == to key exception (cant send response to target self)
+
+                                        //> IF TARGET IS EQUAL TO RESPONSE TARGET THEN RETURN A ERROR
+                                        if &key == target {
+                                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Can't send a response from target: {} to itself", target));
+                                            logger.debug(format!("Sending back: {:?}", &command));
+                                            let client_key = command.client_key.clone();
+                                            match send(stream, command) {
+                                                Ok(_) => {},
+                                                Err(e) => handle_send_error!(e, logger, client_key),
+                                            };
+                                            handle_client_disconnect(client_key);
+                                        }
+
+                                        let available_targets_map = command_patterns.get_node_keys().unwrap();
+                                        let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+
+                                        //> CHECK IF THE TARGET EXISTS
+                                        if !available_targets_keys.contains(&key) {
+                                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", key));
+                                            logger.debug(format!("Sending back: {:?}", &command));
+                                            let client_key = command.client_key.clone();
+                                            match send(stream, command) {
+                                                Ok(_) => {},
+                                                Err(e) => handle_send_error!(e, logger, client_key),
+                                            };
+                                            handle_client_disconnect(client_key);
+                                        }
+
+                                        // TODO >>> Verify if the client that send this command has permission to send the response to this target
+
+                                        if let Some(response_actf) = command.command.response_actf.clone() {
+                                            if response_actf != "" {
+                                                if !command_patterns.handler_exists_in(key.as_str(), response_actf.as_str()) {
+                                                    let command: Command =
+                                                        create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                                    logger.debug(format!("Sending back: {:?}", &command));
+                                                    let client_key = command.client_key.clone();
+                                                    match send(stream, command) {
+                                                        Ok(_) => {},
+                                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                                    };
+                                                    handle_client_disconnect(client_key);
+                                                    return;
+                                                };
+                                            }
+                                        }
+                                    },
+                                }
+                            }
 
                             logger.debug(format!("Redirecting command to target: {}", target));
 
@@ -930,6 +1022,7 @@ fn handle_connection(stream: &mut TcpStream) {
                             logger.debug("Command is in command patterns!".to_string());
                             let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command_to_redirect.parity_id.clone(), command_to_redirect.client_key.clone());
                             let response: Command;
+
                             //> HANDLE COMMANDS WITH RESPONSE:
                             if !command_is_not_registry {
                                 logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
