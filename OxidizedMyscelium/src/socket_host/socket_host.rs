@@ -906,6 +906,14 @@ fn handle_connection(stream: &mut TcpStream) {
                                 return;
                             };
 
+                            // TODO >>> See if the client has permission to send commands to this target
+
+                            // TODO >>> Add a verifier to check if the response target exist
+                            // TODO >>> Add a verifier to check if the response target isn't equal to the command target
+                            // TODO >>> Add a verifier to check if the response target is reachable
+                            // TODO >>> Verify if the client that send this command has permission to send the response to this target
+                            // TODO >>> Verify if the target for the response have the response handler specified
+
                             logger.debug(format!("Redirecting command to target: {}", target));
 
                             let command_instructions_to_schedule: CommandInstructions = handle_redirect(&command.command.clone(), &mut command.client_key.clone(), command.parity_id.clone(), command.priority.clone());
