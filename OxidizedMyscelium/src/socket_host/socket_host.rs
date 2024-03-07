@@ -827,7 +827,11 @@ fn handle_connection(stream: &mut TcpStream) {
         // -> ---------------------------------------------------------------------------------------------------------------------
         // -> HOST FUNCTION VERIFICATION
         {
-            let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
+            let mut command_patterns;
+
+            {
+                command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+            }
 
             println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
 
@@ -1115,7 +1119,18 @@ fn handle_connection(stream: &mut TcpStream) {
                                             handle_client_disconnect(client_key);
                                         }
 
-                                        // TODO >>> Check if the target is ready
+                                        //> Check if the target is ready
+                                        // TODO >>> Possible waith to target become ready
+                                        if !command_patterns.target_is_ready(&resp_target).unwrap() {
+                                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
+                                            logger.debug(format!("Sending back: {:?}", &command));
+                                            let client_key = command.client_key.clone();
+                                            match send(stream, command) {
+                                                Ok(_) => {},
+                                                Err(e) => handle_send_error!(e, logger, client_key),
+                                            };
+                                            handle_client_disconnect(client_key);
+                                        }
 
                                         //> Check if the handler to response exist in target (this also will handler the case that the target isn't initialized)
                                         if let Some(response_actf) = command.command.response_actf.clone() {
