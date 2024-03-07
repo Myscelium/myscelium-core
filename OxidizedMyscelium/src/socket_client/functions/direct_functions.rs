@@ -135,7 +135,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     filtered_commands_map,
                     "".to_string(),
                     Some(ResponseType::DirectFunction),
-                    Some(ResponseTarget::Host),
+                    Some(ResponseTarget::Origin),
                     None, // Not required in this case
                 );
 
@@ -159,7 +159,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     filtered_commands_map,
                     "".to_string(),
                     Some(ResponseType::DirectFunction),
-                    Some(ResponseTarget::Host),
+                    Some(ResponseTarget::Origin),
                     None, // Not required in this case
                 );
 
