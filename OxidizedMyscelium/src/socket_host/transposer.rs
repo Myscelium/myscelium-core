@@ -101,6 +101,9 @@ macro_rules! create_special_command_instruction_response {
             $special_command.to_string(),
             HashMap::new(),
             "".to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         new_command_instructions.to_value_map()
@@ -118,6 +121,9 @@ macro_rules! error_response {
             "error_handler".to_string(),
             HashMap::new(),
             $msg.to_string(),
+            None, // Not required here
+            None, // Not required here
+            None, // Not required here
         );
 
         new_command_instructions.to_value_map()
@@ -429,6 +435,9 @@ fn process(down_command: DownCommand) {
         map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
         map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
         map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
+        map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
+        map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
+        map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
 
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
@@ -452,6 +461,8 @@ fn process(down_command: DownCommand) {
             }
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
+
+            // -> CALL CALLBACK FUNCTION
 
             response = match callback_patterns.call(command_instructions.actf.as_str(), kwargs, args_pattern) {
                 Ok(r) => r,
@@ -479,8 +490,6 @@ fn process(down_command: DownCommand) {
                 },
             };
         }
-
-        // -> CALL CALLBACK FUNCTION
 
         // response = match call_callback(
         //     translated_command.command.actf.as_str(),
@@ -529,13 +538,20 @@ fn process(down_command: DownCommand) {
         result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                println!("Successfully downcasted!");
+                println!("Successfully downcasted to CommandInstructions!");
+
+                // Additional logging: Inspect the contents of instructions_box
+                println!("CommandInstructions details: {:?}", instructions_box);
+
                 // You can now use instructions_box as Box<CommandInstructions>
                 let instruction = *instructions_box;
                 ProcessResult::CommandInstructions(instruction)
             },
-            Err(_) => {
+            Err(e) => {
                 // The downcast operation failed
+                // Logging the error for more details
+                println!("Failed to downcast callback response! Error: {:?}", e);
+
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };

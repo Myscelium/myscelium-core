@@ -127,6 +127,26 @@ impl UnifiedThreadPool {
         self.workers.iter().filter(|worker| !worker.busy.load(Ordering::SeqCst)).map(|worker| worker.id).collect()
     }
 
+    /// Helper method to check if all worker threads are free.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if all workers are free, `false` otherwise.
+    fn all_workers_free(&self) -> bool {
+        self.workers.iter().all(|worker| !worker.busy.load(Ordering::SeqCst))
+    }
+
+    /// Waits for all worker threads to become free.
+    ///
+    /// This is a blocking operation that waits until all workers have finished their tasks.
+    pub fn join(&self) {
+        let lock = Mutex::new(());
+        let mut guard = lock.lock().unwrap();
+        while !self.all_workers_free() {
+            guard = self.free_condvar.wait_timeout(guard, std::time::Duration::from_millis(10)).unwrap().0;
+        }
+    }
+
     /// Gracefully stops all worker threads.
     ///
     /// This method sends a termination message to all workers and waits for them to finish their current tasks.
@@ -160,26 +180,6 @@ impl UnifiedThreadPool {
 
             self.stopped.store(true, Ordering::SeqCst);
         }
-    }
-
-    /// Waits for all worker threads to become free.
-    ///
-    /// This is a blocking operation that waits until all workers have finished their tasks.
-    pub fn join(&self) {
-        let lock = Mutex::new(());
-        let mut guard = lock.lock().unwrap();
-        while !self.all_workers_free() {
-            guard = self.free_condvar.wait_timeout(guard, std::time::Duration::from_millis(10)).unwrap().0;
-        }
-    }
-
-    /// Helper method to check if all worker threads are free.
-    ///
-    /// # Returns
-    ///
-    /// * `true` if all workers are free, `false` otherwise.
-    fn all_workers_free(&self) -> bool {
-        self.workers.iter().all(|worker| !worker.busy.load(Ordering::SeqCst))
     }
 }
 

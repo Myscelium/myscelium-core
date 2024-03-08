@@ -24,6 +24,9 @@ macro_rules! create_error_response_and_return {
             "error_handler".to_string(),
             HashMap::new(),
             $error.to_string(),
+            None, // Not required in this case
+            None, // Not required in this case
+            None, // Not required in this case
         );
 
         new_command_instructions
@@ -142,6 +145,9 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
         m.actf.clone(),
         m.kwargs.clone(),
         "".to_string(),
+        m.response_type.clone(),
+        m.response_target.clone(),
+        m.response_actf.clone(),
     );
 
     *client_id = redirect_to; // > Update the client id that it will send to

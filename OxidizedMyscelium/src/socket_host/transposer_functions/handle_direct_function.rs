@@ -2,7 +2,7 @@ use crate::chrono::TimeZone;
 use crate::common::client_manager::manager::get_all_clients;
 use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget, ResponseType};
 use crate::common::functions::converters::{convert_json_map_to_hash_map, convert_value_map_to_resulttype_map, ConversionError};
 use crate::common::structs::available_commands::NodeStatus;
 use crate::common::structs::available_commands::{CommandPatterns, Node};
@@ -95,6 +95,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 function,
                 filtered_commands,
                 "".to_string(),
+                Some(ResponseType::DirectFunction),
+                Some(ResponseTarget::Host),
+                None, // Not required in this case
             );
 
             return ProcessResult::CommandInstructions(new_command_instructions);
@@ -166,6 +169,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                             "update_available_host_commands".to_string(),
                             HashMap::new(),
                             "unexpect error getting clients to redirect the update commands".to_string(),
+                            Some(ResponseType::DirectFunction),
+                            Some(ResponseTarget::Host),
+                            None, // Not required in this case
                         );
 
                         return ProcessResult::CommandInstructions(new_command_instructions);
@@ -195,6 +201,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 "C210".to_string(),
                 HashMap::new(),
                 "".to_string(),
+                None, // Not required in this case
+                None, // Not required in this case
+                None, // Not required in this case
             );
 
             responses.push(ProcessResult::CommandInstructions(new_command_instructions));
@@ -242,6 +251,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                     "update_available_host_commands".to_string(),
                     filtered_commands,
                     "".to_string(),
+                    Some(ResponseType::DirectFunction),
+                    Some(ResponseTarget::Host),
+                    None, // Not required in this case
                 );
 
                 responses.push(ProcessResult::CommandInstructions(new_command_instructions));
@@ -331,6 +343,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 "add_client_handler".to_string(),
                 HashMap::new(),
                 format!("Successfully add a client: {}!", new_client.client_key).to_string(),
+                command.response_type,
+                command.response_target,
+                command.response_actf,
             );
 
             logger.info(format!("Successfully add a client: {}!", new_client.client_key));
@@ -422,6 +437,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         "update_client_handler".to_string(),
                         resp_kwargs,
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key).to_string(),
+                        command.response_type,
+                        command.response_target,
+                        command.response_actf,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key));
@@ -486,6 +504,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         "remove_client_handler".to_string(),
                         HashMap::new(),
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key).to_string(),
+                        command.response_type,
+                        command.response_target,
+                        command.response_actf,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key));

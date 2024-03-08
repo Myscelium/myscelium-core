@@ -48,6 +48,7 @@ pub use common::client_network_controller::availability_controller::AllowedNetWo
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
 pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
+pub use common::structs::callbacks_structure::Callback;
 pub use common::structs::results_structs::ResultType;
 pub use socket_client::states_manager::manager::{ClientState, StateManagerError};
 
@@ -251,6 +252,12 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
             },
+            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
+            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
+            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
+            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
+            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
+            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
         },
     };
 
@@ -272,6 +279,12 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
             scheduler::SchedulingError::ClientIsntFullyInitialized => {
                 return Err(ClientError::ClientNotFullyInitialized);
             },
+            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
+            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
+            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
+            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
+            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
+            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
         },
     };
 
@@ -299,9 +312,44 @@ pub fn set_socket_client_log_level(log_level: &String) {
 /// wrapped mem ref inside a secure closure to make the send and sync work, so this is necessary
 /// to make libs that use myscelium in other lenguages because is the simplest way to set remote callbacks
 /// so keep that in mind when do some mod to it!
-pub fn set_client_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
-    for (key, callback) in callbacks {
-        set_socket_client_transposer_callbacks(key, callback)
+pub fn set_client_callbacks(callbacks: Vec<Callback>) {
+    let mut client_handlers: Vec<NodeHandler> = Vec::new();
+
+    for callback in callbacks {
+        set_socket_client_transposer_callbacks(callback.actf_name.clone(), callback.callable);
+
+        let handler: NodeHandler = NodeHandler::new(
+            callback.actf_name.to_string(),
+            callback.parameters.clone(),
+            CommandType::ExternalFunction,
+            HandlerStatus::NotTested,
+            callback.response_structure,
+            callback.description,
+        );
+
+        client_handlers.push(handler);
+    }
+
+    // -> Update client handlers:
+    {
+        //> Update Client Handlers Globals
+        {
+            println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+            let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
+            println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
+            command_patterns.update_handlers(client_handlers.clone());
+            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+        }
+
+        //> Save client handlers
+        let mut client_state = CLIENT_STATE_MANAGER.lock();
+        let mut new_client_state = ClientState::load_from_storage().unwrap();
+        match new_client_state.update_client_handlers(client_handlers.clone()) {
+            Ok(_) => {},
+            Err(e) => panic!("Error saving handlers in state manager, error was: {:?}", e),
+        };
+        new_client_state.update_storage_with_self().unwrap();
+        *client_state = new_client_state.clone();
     }
 }
 
