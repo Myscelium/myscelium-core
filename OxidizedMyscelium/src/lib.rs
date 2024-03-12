@@ -235,7 +235,7 @@ pub fn is_client_ready() -> bool {
 //     NotAbleToReadClientStates,
 // }
 
-pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
+pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<String, ClientError> {
     if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
@@ -243,8 +243,8 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
 
     let command_instructions = CommandInstructions::from_string_hashmap(command).unwrap();
 
-    let _ = match schedule(command_instructions, priority) {
-        Ok(o) => o,
+    let parity_id = match schedule(command_instructions, priority) {
+        Ok(parity_id) => parity_id,
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
@@ -261,17 +261,17 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         },
     };
 
-    Ok(())
+    Ok(parity_id)
 }
 
-pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), ClientError> {
+pub fn client_send(command: CommandInstructions, priority: u8) -> Result<String, ClientError> {
     if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
     }
 
-    let _ = match schedule(command, priority) {
-        Ok(o) => o,
+    let parity_id = match schedule(command, priority) {
+        Ok(parity_id) => parity_id,
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
@@ -288,7 +288,7 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), Cli
         },
     };
 
-    Ok(())
+    Ok(parity_id)
 }
 
 /// Sets the log level for the client.

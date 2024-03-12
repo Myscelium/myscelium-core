@@ -89,7 +89,7 @@ pub enum SchedulingError {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<(), SchedulingError> {
+pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
     let logger: Logger = acquire_logger!("Core - Scheduler");
 
     logger.debug("Enter Scheduler".to_string());
@@ -247,7 +247,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 
-    let command = Command::new(client_key, parity_id, priority, command_instructions);
+    let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
 
     println!("[CLIENT] - Scheduling: {:?}", command);
 
@@ -257,5 +257,5 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     logger.info(format!("Command: {:?} scheduled!", command_to_schedule));
 
-    Ok(())
+    Ok(parity_id)
 }
