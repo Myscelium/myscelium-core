@@ -104,6 +104,7 @@ macro_rules! create_special_command_instruction_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         new_command_instructions.to_value_map()
@@ -124,6 +125,7 @@ macro_rules! error_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         new_command_instructions.to_value_map()

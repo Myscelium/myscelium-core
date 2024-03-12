@@ -206,6 +206,7 @@ macro_rules! create_special_command {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         let command = Command {

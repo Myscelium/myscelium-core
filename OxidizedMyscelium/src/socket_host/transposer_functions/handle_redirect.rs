@@ -27,6 +27,7 @@ macro_rules! create_error_response_and_return {
             None, // Not required in this case
             None, // Not required in this case
             None, // Not required in this case
+            true,
         );
 
         new_command_instructions
@@ -148,6 +149,7 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
         m.response_type.clone(),
         m.response_target.clone(),
         m.response_actf.clone(),
+        true,
     );
 
     *client_id = redirect_to; // > Update the client id that it will send to

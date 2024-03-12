@@ -86,6 +86,7 @@ macro_rules! create_error_command_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         let command = Command {
@@ -141,6 +142,7 @@ macro_rules! create_special_command_confirmation {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         let resp = Command {
@@ -168,6 +170,7 @@ macro_rules! create_special_command_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         let command = Command {
@@ -570,6 +573,7 @@ fn handle_common_function(command: &Command) -> Command {
         None, // Not required here
         None, // Not required here
         None, // Not required here
+        true,
     );
 
     let conf_command = Command {
