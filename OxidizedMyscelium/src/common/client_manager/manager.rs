@@ -317,9 +317,9 @@ impl Client {
                     new_client.max_sub_channels,
                     serialized_owned_sub_channels_keys,
                     new_client.sub_channels_in_use,
-                    self.client_id,
                     client_handlers,
                     new_client.syncronized,
+                    self.client_id,
                 ],
             );
 

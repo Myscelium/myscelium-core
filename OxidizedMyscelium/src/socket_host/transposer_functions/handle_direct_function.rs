@@ -334,13 +334,20 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             // let mut resp_kwargs: HashMap<String, Value> = HashMap::new();
             // resp_kwargs.insert("client_key".to_string(), Value::String(client_key.to_string()));
 
+            //> Define the default acft
+            let mut acft: String = "add_client_handler".to_string();
+
+            if let Some(actf) = command.response_target.clone() {
+                acft = acft
+            }
+
             let new_command_instructions: CommandInstructions = CommandInstructions::new(
                 CommandMode::Response,
                 CommandType::ExternalFunction,
                 CommandTarget::Origin,
                 CommandStatus::Success,
                 CommandOrigin::Host,
-                "add_client_handler".to_string(),
+                acft,
                 HashMap::new(),
                 format!("Successfully add a client: {}!", new_client.client_key).to_string(),
                 command.response_type,
@@ -428,13 +435,20 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
                     resp_kwargs.insert("actual_client_key".to_string(), Value::String(actual_client_key.to_string())); // TODO >>> See if this actual client key is correct
 
+                    //> Define the default acft
+                    let mut acft: String = "update_client_handler".to_string();
+
+                    if let Some(actf) = command.response_target.clone() {
+                        acft = acft
+                    }
+
                     let new_command_instructions: CommandInstructions = CommandInstructions::new(
                         CommandMode::Response,
                         CommandType::ExternalFunction,
                         CommandTarget::Origin,
                         CommandStatus::Success,
                         CommandOrigin::Host,
-                        "update_client_handler".to_string(),
+                        acft,
                         resp_kwargs,
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key).to_string(),
                         command.response_type,
@@ -495,13 +509,20 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                     // let mut resp_kwargs: HashMap<String, Value> = HashMap::new();
                     // resp_kwargs.insert("actual_client_key".to_string(), Value::String(client_key.to_string())); // TODO >>> See if this actual client key is correct
 
+                    //> Define the default acft
+                    let mut acft: String = "remove_client_handler".to_string();
+
+                    if let Some(actf) = command.response_target.clone() {
+                        acft = acft
+                    }
+
                     let new_command_instructions: CommandInstructions = CommandInstructions::new(
                         CommandMode::Response,
                         CommandType::ExternalFunction,
                         CommandTarget::Origin,
                         CommandStatus::Success,
                         CommandOrigin::Host,
-                        "remove_client_handler".to_string(),
+                        acft,
                         HashMap::new(),
                         format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key).to_string(),
                         command.response_type,
