@@ -384,8 +384,12 @@ impl CommandInstructions {
 
         let collect_response = map
             .get("collect_response")
-            .and_then(|s| s.parse::<bool>().ok())
-            .ok_or_else(|| CommandError::InvalidCommand("Missing or invalid response_actf!".to_string()))?;
+            .and_then(|s| match s.as_str() {
+                "1" => Some(true),
+                "0" => Some(false),
+                _ => None,
+            })
+            .ok_or_else(|| CommandError::InvalidCommand("Missing or invalid collect_response!".to_string()))?;
 
         // TODO >>> See if the response target and the response actf need to have a None parser
 

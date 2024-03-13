@@ -538,7 +538,7 @@ fn handle_common_function(command: &Command) -> Command {
     // > Schedule to process
 
     let json_command = serde_json::to_string(&command.command).unwrap();
-    let down_command = DownCommand::new(command.client_key.clone(), command.parity_id.clone(), command.priority, json_command);
+    let down_command = DownCommand::new(command.client_key.clone(), command.parity_id.clone(), command.priority, json_command, command.command.collect_response.clone());
 
     enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
 

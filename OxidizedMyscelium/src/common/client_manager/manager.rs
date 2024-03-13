@@ -112,6 +112,7 @@ pub enum ClientError {
     ClientDoesNotExist(String),
     ClientAlreadyExist(String),
     UnexpectedError(String),
+    InvalidCommand(String),
     ClientIsNotRunning,
     ClientNotFullyInitialized,
     NotAbleToReadClientStates,

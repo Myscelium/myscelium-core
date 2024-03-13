@@ -546,7 +546,11 @@ fn process(down_command: DownCommand) {
                 println!("CommandInstructions details: {:?}", instructions_box);
 
                 // You can now use instructions_box as Box<CommandInstructions>
-                let instruction = *instructions_box;
+                let mut instruction = *instructions_box;
+
+                // -> Overide the collect_response set it as the trigger command instruction that generate this response defined it
+                instruction.collect_response = command_instructions.collect_response.clone();
+
                 ProcessResult::CommandInstructions(instruction)
             },
             Err(e) => {

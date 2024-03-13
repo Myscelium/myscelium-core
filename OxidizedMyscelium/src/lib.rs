@@ -20,6 +20,7 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+use common::enhanced_buffer::utilities::CommandError;
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
@@ -241,7 +242,14 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         return Err(ClientError::ClientIsNotRunning);
     }
 
-    let command_instructions = CommandInstructions::from_string_hashmap(command).unwrap();
+    // TODO >>> Enhace This Error Handlings, Maybe Add a Logger Here
+
+    let command_instructions = match CommandInstructions::from_string_hashmap(command) {
+        Ok(c) => c,
+        Err(e) => match e {
+            CommandError::InvalidCommand(e) => return Err(ClientError::InvalidCommand(e)),
+        },
+    };
 
     let parity_id = match schedule(command_instructions, priority) {
         Ok(parity_id) => parity_id,

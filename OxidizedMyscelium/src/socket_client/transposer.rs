@@ -436,6 +436,11 @@ pub fn initialize_socket_client_transposer() {
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");
 
+        // -> Check if command isn't a inplace response
+        if !dow_command.auto_collect {
+            continue;
+        }
+
         logger.info(format!("Get a pool worker in transposer!"));
 
         {
