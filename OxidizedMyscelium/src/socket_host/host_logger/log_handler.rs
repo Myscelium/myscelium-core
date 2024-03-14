@@ -11,7 +11,8 @@ use std::sync::atomic::AtomicBool;
 use crate::HOST_LOG_LEVEL;
 use crate::HOST_NODE_NAME;
 
-use crate::socket_host::host_logger::register::register_manager;
+use crate::socket_host::host_logger::register::register::write_to_file;
+use serde_json::json;
 
 // TODO >>> REMOVE CALLBACK SET AND CALLBACKS SYSTEM FOR LOG FOR NOW BECAUSE WE WILL USE CUSTOM REGISTER
 
@@ -29,9 +30,9 @@ pub fn set_host_log_level(log_level: String) {
     }
 }
 
-pub fn initialize_host_logs_database_dir(path: String) {
-    register_manager::logs_register_initialize_table(path);
-}
+// pub fn initialize_host_logs_database_dir(path: String) {
+//     old_register_manager::logs_register_initialize_table(path);
+// }
 
 // pub fn set_host_logs_handler_callback(callback_pattern: HashMap<String, (Py<PyFunction>, Value)>) {
 //     {
@@ -41,62 +42,20 @@ pub fn initialize_host_logs_database_dir(path: String) {
 //     CALLBACK_SET.store(true, Ordering::Relaxed);
 // }
 
-fn log_event(
-    node_name: String,
-    log_time: f64,
-    log_name: String,
-    log_level: String,
-    log_msg: String,
-) {
-    // let function_name = "logs_handler";
+// This function takes log parameters and writes them to a file in a structured JSON format.
+fn log_event(node_name: String, log_time: f64, log_name: String, log_level: String, log_msg: String) {
+    // Serialize the log event into a JSON string.
+    let log_entry = json!({
+        "node_name": node_name,
+        "log_time": log_time,
+        "log_name": log_name,
+        "log_level": log_level,
+        "log_msg": log_msg
+    })
+    .to_string();
 
-    // let callback_patterns = LOGS_HANDLER_CALLBACK.lock().unwrap().clone();
-
-    // if !CALLBACK_SET.load(Ordering::Relaxed) {
-    //     match log_level.as_str() {
-    //         "DEBUG" | "INFO" | "WARN" => println!("Default Handler: [{}][{}] - {}", log_time, log_level, log_msg),
-    //         "EXCEPTION" => eprintln!("Default Handler: [{}][{}] - {}", log_time, log_level, log_msg),
-    //         _ => {},
-    //     }
-    //     return;
-    // }
-
-    println!("[Host][{:?}][{:?}] - {}", log_name, log_level, log_msg);
-
-    register_manager::registry_log(node_name, log_time, log_name, log_level, log_msg);
-
-    // let function = match callback_patterns.get(function_name) {
-    //     Some(function) => function.clone(),
-    //     _ => return,
-    // };
-
-    // let py;
-
-    // {
-    //     let getting_py = unsafe { Python::assume_gil_acquired() };
-
-    //     let gil_pool = unsafe { getting_py.clone().new_pool() };
-
-    //     py = gil_pool.python();
-
-    //     let kwargs = PyDict::new(py);
-
-    //     let py_node_name = &node_name.into_py(py);
-    //     let py_log_time = &log_time.into_py(py);
-    //     let py_log_name = &log_name.into_py(py);
-    //     let py_log_msg = &log_msg.into_py(py);
-
-    //     kwargs.set_item("node_name".to_string(), py_node_name).unwrap();
-    //     kwargs.set_item("log_time".to_string(), py_log_time).unwrap();
-    //     kwargs.set_item("log_name".to_string(), py_log_name).unwrap();
-    //     kwargs.set_item("log_msg".to_string(), py_log_msg).unwrap();
-
-    //     // Call the Python function with the converted arguments
-    //     let result = function.0.call(py, (), Some(kwargs)).map_err(|e| {
-    //         eprintln!("Error calling function: {:?}", e);
-    //         e
-    //     });
-    // }
+    // Write the JSON string to the log file.
+    write_to_file(log_entry);
 }
 
 pub struct Logger {
@@ -120,69 +79,29 @@ impl Logger {
 
     pub fn debug(&self, log: String) {
         if self.log_level == "DEBUG" {
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f64();
-            log_event(
-                self.node_name.clone(),
-                ts,
-                self.section.clone(),
-                "DEBUG".to_string(),
-                log.to_string(),
-            );
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+            log_event(self.node_name.clone(), ts, self.section.clone(), "DEBUG".to_string(), log.to_string());
         }
     }
 
     pub fn info(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "DEBUG") {
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f64();
-            log_event(
-                self.node_name.clone(),
-                ts,
-                self.section.clone(),
-                "INFO".to_string(),
-                log.to_string(),
-            );
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+            log_event(self.node_name.clone(), ts, self.section.clone(), "INFO".to_string(), log.to_string());
         }
     }
 
     pub fn warn(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") {
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f64();
-            log_event(
-                self.node_name.clone(),
-                ts,
-                self.section.clone(),
-                "WARN".to_string(),
-                log.to_string(),
-            );
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+            log_event(self.node_name.clone(), ts, self.section.clone(), "WARN".to_string(), log.to_string());
         }
     }
 
     pub fn exception(&self, log: String) {
-        if (self.log_level == "INFO")
-            || (self.log_level == "WARN")
-            || (self.log_level == "DEBUG")
-            || (self.log_level == "EXCEPTION")
-        {
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f64();
-            log_event(
-                self.node_name.clone(),
-                ts,
-                self.section.clone(),
-                "EXCEPTION".to_string(),
-                log.to_string(),
-            );
+        if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") || (self.log_level == "EXCEPTION") {
+            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+            log_event(self.node_name.clone(), ts, self.section.clone(), "EXCEPTION".to_string(), log.to_string());
         }
     }
 }

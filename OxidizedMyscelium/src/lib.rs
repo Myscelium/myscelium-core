@@ -547,7 +547,9 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
 // use crate::common::functions::callbacks::extract_arg_types;
 
 use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
-use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
+use crate::common::enhanced_buffer::history::register::register::initialize_buffer_history;
+use crate::socket_host::host_logger::log_handler::set_host_log_level;
+use crate::socket_host::host_logger::register::register::initialize_logs_file;
 use crate::socket_host::socket_host::get_available_commands_registered;
 use crate::socket_host::socket_host::initialize_host;
 use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
@@ -570,8 +572,9 @@ fn set_socket_host_max_connections(n_max_conns: u32) {
 }
 
 fn initialize_host_buffer_tables(path: String) {
-    initialize_host_logs_database_dir(path.clone());
     initialize_host_buffer(path.clone());
+    initialize_buffer_history(&path.clone()).unwrap();
+    initialize_logs_file(path.as_str().clone()).unwrap();
     clients_manager_initialize_table(path.clone());
 
     return;

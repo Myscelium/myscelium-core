@@ -71,7 +71,7 @@ lazy_static! {
 /// ```
 ///
 pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
-    host_logger::register::register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
+    // host_logger::register::old_register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
     let mut default_num_of_workers = NUM_WORKERS.lock();
 
     *default_num_of_workers = n_workers;
