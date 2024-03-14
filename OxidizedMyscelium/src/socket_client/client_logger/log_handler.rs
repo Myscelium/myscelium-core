@@ -8,8 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::atomic::AtomicBool;
 
-use crate::HOST_LOG_LEVEL;
-use crate::HOST_NODE_NAME;
+use crate::CLIENT_LOG_LEVEL;
+use crate::CLIENT_NODE_NAME;
 
 use crate::socket_host::host_logger::register::register::write_to_file;
 use serde_json::json;
@@ -24,9 +24,9 @@ lazy_static! {
 
 pub fn set_client_log_level(log_level: String) {
     {
-        let mut current_log_level = HOST_LOG_LEVEL.lock();
+        let mut current_log_level = CLIENT_LOG_LEVEL.lock();
         *current_log_level = log_level.clone();
-        println!("Host log levels defined to: {:?}", log_level);
+        println!("Client log levels defined to: {:?}", log_level);
     }
 }
 
@@ -68,7 +68,7 @@ impl Logger {
     pub fn new(log_level: String, section: &str) -> Self {
         // Placeholder for other initializations
 
-        let node_name: String = HOST_NODE_NAME.lock().clone();
+        let node_name: String = CLIENT_NODE_NAME.lock().clone();
 
         Logger {
             log_level: log_level.to_string(),
