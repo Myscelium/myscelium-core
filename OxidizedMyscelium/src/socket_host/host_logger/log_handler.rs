@@ -11,7 +11,7 @@ use std::sync::atomic::AtomicBool;
 use crate::HOST_LOG_LEVEL;
 use crate::HOST_NODE_NAME;
 
-use crate::socket_host::host_logger::register::register::write_to_file;
+use crate::common::logs_register::register::write_to_file;
 use serde_json::json;
 
 // TODO >>> REMOVE CALLBACK SET AND CALLBACKS SYSTEM FOR LOG FOR NOW BECAUSE WE WILL USE CUSTOM REGISTER

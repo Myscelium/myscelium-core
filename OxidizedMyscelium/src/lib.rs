@@ -143,7 +143,6 @@ pub fn stop_socket_client() {
 
 pub fn initialize_client_buffer_tables(path: &String) {
     inialize_client_status_table_table(path.clone());
-    socket_client::client_logger::register::register::initialize_logs_file(path.as_str().clone()).unwrap();
     initialize_client_buffer(path.clone());
 
     return;
@@ -498,6 +497,7 @@ pub fn change_client_to_initialized() {
 }
 
 pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
+    common::logs_register::register::initialize_logs_file(buffer_path.as_str().clone()).unwrap();
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -574,7 +574,7 @@ fn set_socket_host_max_connections(n_max_conns: u32) {
 fn initialize_host_buffer_tables(path: String) {
     initialize_host_buffer(path.clone());
     initialize_buffer_history(&path.clone()).unwrap();
-    socket_host::host_logger::register::register::initialize_logs_file(path.as_str().clone()).unwrap();
+    common::logs_register::register::initialize_logs_file(path.as_str().clone()).unwrap();
     clients_manager_initialize_table(path.clone());
 
     return;
