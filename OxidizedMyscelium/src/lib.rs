@@ -45,6 +45,7 @@ extern crate chrono;
 pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
+use crate::socket_client::client_logger::log_handler::set_client_log_level;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
@@ -109,7 +110,7 @@ macro_rules! acquire_logger {
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
+// use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
 use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
 
@@ -142,7 +143,6 @@ pub fn stop_socket_client() {
 
 pub fn initialize_client_buffer_tables(path: &String) {
     inialize_client_status_table_table(path.clone());
-    initialize_client_logs_database_dir(path.clone());
     initialize_client_buffer(path.clone());
 
     return;
@@ -497,6 +497,7 @@ pub fn change_client_to_initialized() {
 }
 
 pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
+    common::logs_register::register::initialize_logs_file(buffer_path.as_str().clone()).unwrap();
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -547,7 +548,8 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
 // use crate::common::functions::callbacks::extract_arg_types;
 
 use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
-use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
+use crate::common::enhanced_buffer::history::register::register::initialize_buffer_history;
+use crate::socket_host::host_logger::log_handler::set_host_log_level;
 use crate::socket_host::socket_host::get_available_commands_registered;
 use crate::socket_host::socket_host::initialize_host;
 use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
@@ -570,8 +572,9 @@ fn set_socket_host_max_connections(n_max_conns: u32) {
 }
 
 fn initialize_host_buffer_tables(path: String) {
-    initialize_host_logs_database_dir(path.clone());
     initialize_host_buffer(path.clone());
+    initialize_buffer_history(&path.clone()).unwrap();
+    common::logs_register::register::initialize_logs_file(path.as_str().clone()).unwrap();
     clients_manager_initialize_table(path.clone());
 
     return;

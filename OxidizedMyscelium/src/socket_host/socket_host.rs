@@ -323,10 +323,8 @@ pub fn update_last_contact(client_key: String) {
 /// # Parameters
 /// - `n_max_conns`: The desired maximum number of connections.
 pub fn set_max_conns(n_max_conns: u32) {
-    host_logger::register::register_manager::set_workers_num(n_max_conns.clone() * 7); // 7 * n because we need 7 for each
-
+    // host_logger::register::old_register_manager::set_workers_num(n_max_conns.clone() * 7); // 7 * n because we need 7 for each
     let mut default_max_conns = MAX_CONS.lock().unwrap();
-
     *default_max_conns = n_max_conns;
 }
 
