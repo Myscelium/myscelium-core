@@ -94,7 +94,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     logger.debug("Enter Scheduler".to_string());
 
-    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
 
     let mut state_manager = match ClientState::load_from_storage() {
         Ok(s) => s,
@@ -235,7 +235,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     //    drop(key)
     // }
 
-    println!("[CLIENT][GLOBAL][Release] - CLIENT_ID");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 
     let client_key = state_manager.key.clone().unwrap();
 
@@ -249,7 +249,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
 
-    println!("[CLIENT] - Scheduling: {:?}", command);
+    logger.debug(format!("[CLIENT] - Scheduling: {:?}", command));
 
     let command_to_schedule: UpCommand = UpCommand::from_command(command);
 
