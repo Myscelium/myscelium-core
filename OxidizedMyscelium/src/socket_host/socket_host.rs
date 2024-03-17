@@ -293,7 +293,7 @@ pub fn update_last_contact(client_key: String) {
 
     match client {
         Ok(c) => {
-            println!("Receive client contact!");
+            logger.debug(format!("Receive client contact!"));
             handle_manager_client_error!(c.update_last_contact());
         },
         Err(e) => match e {
@@ -438,7 +438,7 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 
     let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
 
-    println!("Client Sync Manager: {:?}", client_sync_manager);
+    logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager));
 
     // -> Make all the client related to this client need to sync again
 
@@ -449,7 +449,7 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
     // let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&client_key);
     let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&"".to_string());
 
-    println!("Nodes to update: {:?}", nodes_to_update);
+    logger.debug(format!("Nodes to update: {:?}", nodes_to_update));
 
     let mut clients_to_reset: Vec<String> = Vec::new();
     for node in nodes_to_update {
@@ -480,6 +480,7 @@ pub fn handle_client_disconnect(client_key: String) {
 /// - A `Command` object representing the response for the special function.
 fn handle_special_functions(client_key: String, function: String) -> Command {
     let command;
+    let logger = acquire_logger!("Core");
 
     if function == "C202" {
         // -> Connection conf request
@@ -499,7 +500,7 @@ fn handle_special_functions(client_key: String, function: String) -> Command {
             Ok(c) => c,
             Err(e) => {
                 // TODO >>> Handle the invalid Commands cases
-                println!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e);
+                logger.debug(format!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e));
                 return create_special_command_response!(client_key, "C207");
             },
         };
@@ -701,6 +702,7 @@ fn handle_connection(stream: &mut TcpStream) {
         let data_size = match stream.read_exact(&mut size_buffer) {
             Ok(_) => u32::from_be_bytes(size_buffer) as usize,
             Err(e) => {
+                logger.debug(format!("Failed to read from the stream: {:?}", e));
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
                 handle_client_disconnect(client_key);
@@ -713,7 +715,7 @@ fn handle_connection(stream: &mut TcpStream) {
             break; //> Close connection or handle appropriately
         }
 
-        println!("Receiving data with length: {}", data_size);
+        logger.debug(format!("Receiving data with length: {}", data_size));
 
         //> Allocate a buffer of the appropriate size
         let mut data_buffer = vec![0; data_size];
@@ -722,6 +724,7 @@ fn handle_connection(stream: &mut TcpStream) {
         let buffer_string = match stream.read_exact(&mut data_buffer) {
             Ok(_) => String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(),
             Err(e) => {
+                logger.debug(format!("Failed to read from the stream: {:?}", e));
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
                 handle_client_disconnect(client_key);
@@ -731,7 +734,7 @@ fn handle_connection(stream: &mut TcpStream) {
 
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
 
-        println!("Command received: {:?}", command);
+        // println!("Command received: {:?}", command);
         logger.debug(format!("Command received:\n{:?}\n", command));
 
         let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
@@ -784,7 +787,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     None
                 },
             };
-            println!("Clients In Sync Controller: {:?}", controller);
+            logger.debug(format!("Clients In Sync Controller: {:?}", controller));
         }
 
         update_last_contact(command.client_key.clone());
@@ -800,7 +803,7 @@ fn handle_connection(stream: &mut TcpStream) {
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
             if !sync {
-                println!("\nClient: {:?} isn't sync\n", &command.client_key);
+                logger.debug(format!("\nClient: {:?} isn't sync\n", &command.client_key));
 
                 let current_time = Utc::now();
                 let should_attempt_sync = client_last_sync.map_or(true, |last_sync| current_time - last_sync > Duration::seconds(30));
@@ -818,7 +821,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     ));
                 }
             } else {
-                println!("\nClient: {:?} is sync!\n", &command.client_key);
+                logger.debug(format!("\nClient: {:?} is sync!\n", &command.client_key));
             }
         } else {
             break;
@@ -835,10 +838,10 @@ fn handle_connection(stream: &mut TcpStream) {
                 command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
             }
 
-            println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
+            logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
 
-            println!("\nCommand.Command: {:?}", command.command);
-            println!("\nCommand.Command.function: {:?}", command.command.actf);
+            logger.debug(format!("\nCommand.Command: {:?}", command.command));
+            logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
             logger.debug(format!("Command function: {}", command.command.actf));
 
             let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]

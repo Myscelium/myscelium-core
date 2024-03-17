@@ -81,11 +81,12 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
 }
 
 pub fn set_socket_host_transposer_callbacks(key: String, callback: CallbackClosure) {
-    println!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS");
+    let logger = acquire_logger!("Transposer");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS"));
     let patterns = &HOST_CALLBACK_PATTERNS;
-    println!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS"));
     patterns.insert(key, callback);
-    println!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS"));
 }
 
 // > Transposer:
@@ -193,7 +194,7 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
                     ProcessResult::CommandInstructions(c) => c.to_value_map(),
                     ProcessResult::List(l) => {
                         // TODO >>> Handle this case maybe create a generalized function for all places that uses this
-                        println!("Reeive a unimplemented case in process_map_result!");
+                        logger.debug(format!("Reeive a unimplemented case in process_map_result!"));
                         create_special_command_instruction_response!("C210".to_string())
                     },
                     ProcessResult::Empty => {
@@ -391,7 +392,7 @@ fn process(down_command: DownCommand) {
         Ok(c) => c,
         Err(_) => {
             // TODO >>> handle this erro case
-            println!("Error converting COMMAND from down_command.");
+            logger.debug(format!("Error converting COMMAND from down_command."));
             logger.warn(format!("Error converting COMMAND from down_command."));
             return;
         },
@@ -540,10 +541,10 @@ fn process(down_command: DownCommand) {
         result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                println!("Successfully downcasted to CommandInstructions!");
+                logger.debug(format!("Successfully downcasted to CommandInstructions!"));
 
                 // Additional logging: Inspect the contents of instructions_box
-                println!("CommandInstructions details: {:?}", instructions_box);
+                logger.debug(format!("CommandInstructions details: {:?}", instructions_box));
 
                 // You can now use instructions_box as Box<CommandInstructions>
                 let mut instruction = *instructions_box;
@@ -556,7 +557,7 @@ fn process(down_command: DownCommand) {
             Err(e) => {
                 // The downcast operation failed
                 // Logging the error for more details
-                println!("Failed to downcast callback response! Error: {:?}", e);
+                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
 
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
