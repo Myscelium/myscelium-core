@@ -621,12 +621,17 @@ pub fn initialize_socket_host_transposer() {
         return;
     }
 
-    schedule.sort_by(|a, b| b.priority.cmp(&a.priority)); // put the schedule in crescent order
+    // -> Put the schedule in crescent order:
+    schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // -> Filter only auto collect == true
+    schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
 
     // logger.debug(format!("Schedule to process:\n{:?}\n", schedule));
 
     logger.info(format!("Data found in schedule!"));
 
+    // -> Process all commands
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");
         logger.info(format!("get a pool worker in transposer!"));

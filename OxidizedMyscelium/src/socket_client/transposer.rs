@@ -389,8 +389,11 @@ pub fn initialize_socket_client_transposer() {
     // Retrieve scheduled commands
     let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
 
-    // Sort commands by priority in ascending order
+    // -> Sort commands by priority in ascending order
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // -> Filter only auto collect == true
+    schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
 
     logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule));
 
