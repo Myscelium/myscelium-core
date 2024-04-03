@@ -30,6 +30,7 @@ use indexmap::IndexMap;
 #[allow(unused_variables)]
 use lazy_static::lazy_static;
 use serde_json::Value;
+use socket_client::response_watcher::watch_response;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -46,6 +47,7 @@ pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::socket_client::client_logger::log_handler::set_client_log_level;
+pub use crate::socket_client::response_watcher::WatcherError;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
@@ -297,6 +299,14 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<String,
     };
 
     Ok(parity_id)
+}
+
+/// Allows to wait a response by parity id, some conditions needs to be satisfied foe that:
+/// 1. Command needs to have auto collect == false to transposer not auto collect it
+/// 2. parity id needs to be the parity id assigned to the command, this is returned to send
+/// 3. ensure client is initialized, you can't waith a response if client isn't initialized
+pub fn client_wait_response(parity_id: String, wait_for: u64) -> Result<Command, WatcherError> {
+    watch_response(parity_id, chrono::Duration::seconds(wait_for as i64))
 }
 
 /// Sets the log level for the client.
