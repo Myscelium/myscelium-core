@@ -927,6 +927,11 @@ fn handle_connection(stream: &mut TcpStream) {
                             //* Command Target should't be the same of the Response Target
                             //*
 
+                            //* When a Client Sends a command the scheduler verify if the handler exists in itself
+                            //* Same happens for host
+
+                            // TODO >>> Add verification to cases where client is sendind a resp to host, verify if the resp_actf exists in target
+
                             // TODO >>> ADD THIS TO THE OTHER CASES< NOT ONLY TO THE CommandTarget::ClientKey
                             if let Some(response_target) = command.command.response_target.clone() {
                                 let resp_target = match response_target {
@@ -954,6 +959,7 @@ fn handle_connection(stream: &mut TcpStream) {
 
                                     //> CHECK IF THE TARGET EXISTS
                                     if !available_targets_keys.contains(&resp_target) {
+                                        // If not exists
                                         let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
                                         logger.debug(format!("Sending back: {:?}", &command));
                                         let client_key = command.client_key.clone();
@@ -966,7 +972,8 @@ fn handle_connection(stream: &mut TcpStream) {
 
                                     //> Check if the handler to response exist in target
                                     if let Some(response_actf) = command.command.response_actf.clone() {
-                                        if response_actf != "" {
+                                        if command.command.collect_response && response_actf != "" {
+                                            // Only verify if handler exists if auto collect response == true
                                             if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
                                                 let command: Command =
                                                     create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
@@ -1139,7 +1146,8 @@ fn handle_connection(stream: &mut TcpStream) {
 
                                         //> Check if the handler to response exist in target (this also will handler the case that the target isn't initialized)
                                         if let Some(response_actf) = command.command.response_actf.clone() {
-                                            if response_actf != "" {
+                                            if command.command.collect_response && response_actf != "" {
+                                                // Only verify if response actf exists if collect response == true
                                                 if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
                                                     let command: Command = create_error_command_response!(
                                                         command.client_key.clone(),

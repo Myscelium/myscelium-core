@@ -441,6 +441,7 @@ fn process(down_command: DownCommand) {
         map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
         map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
         map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
+        map.insert("auto_collect".to_string(), serde_json::to_value(&command_instructions.collect_response).unwrap());
 
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
@@ -625,7 +626,7 @@ pub fn initialize_socket_host_transposer() {
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
 
     // -> Filter only auto collect == true
-    schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
+    // schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
 
     // logger.debug(format!("Schedule to process:\n{:?}\n", schedule));
 

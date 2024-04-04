@@ -31,6 +31,7 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use socket_client::response_watcher::watch_response;
+use socket_client::scheduler::SchedulingError;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -238,6 +239,27 @@ pub fn is_client_ready() -> bool {
 //     NotAbleToReadClientStates,
 // }
 
+fn translate_scheduling_error<T>(res: Result<T, SchedulingError>) -> Result<T, ClientError> {
+    match res {
+        Ok(parity_id) => Ok(parity_id),
+        Err(e) => match e {
+            scheduler::SchedulingError::CantReadStates => {
+                return Err(ClientError::NotAbleToReadClientStates);
+            },
+            scheduler::SchedulingError::ClientIsntFullyInitialized => {
+                return Err(ClientError::ClientNotFullyInitialized);
+            },
+            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
+            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
+            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
+            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
+            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
+            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
+            scheduler::SchedulingError::UnsuportedAction(a) => return Err(ClientError::InvalidCommand(a)),
+        },
+    }
+}
+
 pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<String, ClientError> {
     if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
@@ -253,23 +275,7 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         },
     };
 
-    let parity_id = match schedule(command_instructions, priority) {
-        Ok(parity_id) => parity_id,
-        Err(e) => match e {
-            scheduler::SchedulingError::CantReadStates => {
-                return Err(ClientError::NotAbleToReadClientStates);
-            },
-            scheduler::SchedulingError::ClientIsntFullyInitialized => {
-                return Err(ClientError::ClientNotFullyInitialized);
-            },
-            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
-            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
-            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
-            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
-            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
-            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
-        },
-    };
+    let parity_id = translate_scheduling_error(schedule(command_instructions, priority))?;
 
     Ok(parity_id)
 }
@@ -280,23 +286,7 @@ pub fn client_send(command: CommandInstructions, priority: u8) -> Result<String,
         return Err(ClientError::ClientIsNotRunning);
     }
 
-    let parity_id = match schedule(command, priority) {
-        Ok(parity_id) => parity_id,
-        Err(e) => match e {
-            scheduler::SchedulingError::CantReadStates => {
-                return Err(ClientError::NotAbleToReadClientStates);
-            },
-            scheduler::SchedulingError::ClientIsntFullyInitialized => {
-                return Err(ClientError::ClientNotFullyInitialized);
-            },
-            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
-            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
-            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
-            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
-            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
-            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
-        },
-    };
+    let parity_id = translate_scheduling_error(schedule(command, priority))?;
 
     Ok(parity_id)
 }

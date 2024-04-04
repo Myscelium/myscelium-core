@@ -2,9 +2,7 @@ use lazy_static::lazy_static;
 
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
-use crate::common::sql_pool::pool::{
-    SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator,
-};
+use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
 
 use rusqlite::params;
 
@@ -65,14 +63,7 @@ pub struct UpCommand {
 }
 
 impl UpCommand {
-    pub fn from(
-        command_id: u32,
-        client_key: String,
-        parity_id: String,
-        priority: u8,
-        command: String,
-        created_time: f64,
-    ) -> Self {
+    pub fn from(command_id: u32, client_key: String, parity_id: String, priority: u8, command: String, created_time: f64) -> Self {
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
@@ -202,13 +193,10 @@ pub fn buffer_up_initialize_table(buffer_path: String) {
         match conn.execute(&sql, params![]) {
             Ok(_) => {
                 println!("Successfully dropped table ClientCommandsTosend");
-            }
+            },
             Err(e) => {
-                eprintln!(
-                    "An error occurred while dropping the table ClientCommandsTosend: {}",
-                    e
-                );
-            }
+                eprintln!("An error occurred while dropping the table ClientCommandsTosend: {}", e);
+            },
         };
         let result = conn.execute(
             "CREATE TABLE IF NOT EXISTS ClientCommandsTosend (ID INT PRIMARY KEY, ClientKey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CreatedTime NUMBER)",
@@ -218,10 +206,10 @@ pub fn buffer_up_initialize_table(buffer_path: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize ClientCommandsTosend table!");
-            }
+            },
             Err(e) => {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsTosend table: {}", e);
-            }
+            },
         };
     });
 }
@@ -230,9 +218,7 @@ fn get_registered_parity_ids(client_key: String) -> Vec<String> {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let mut parity_ids: Vec<String> = Vec::new();
 
-        let mut stmt = conn
-            .prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ? ")
-            .unwrap();
+        let mut stmt = conn.prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ? ").unwrap();
         let commands_iter = stmt
             .query_map(params![client_key], |row| {
                 let parity_id: String = row.get(2)?;
@@ -268,28 +254,16 @@ pub fn buffer_up_gen_valid_parity_id(client_key: String) -> String {
     return valid_parity_id;
 }
 
-pub fn buffer_up_get_scheduled_by_parity_id(
-    client_key: &String,
-    parity_id: &String,
-) -> Vec<UpCommand> {
+pub fn buffer_up_get_scheduled_by_parity_id(client_key: &String, parity_id: &String) -> Vec<UpCommand> {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let mut commands_schedule: Vec<UpCommand> = Vec::new();
 
         {
-            let mut smtp = conn
-                .prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?")
-                .unwrap();
+            let mut smtp = conn.prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?").unwrap();
 
             let commands_iter = smtp
                 .query_map(params![client_key, parity_id], |row| {
-                    Ok(UpCommand::from(
-                        row.get(0).unwrap(),
-                        row.get(1).unwrap(),
-                        row.get(2).unwrap(),
-                        row.get(3).unwrap(),
-                        row.get(4).unwrap(),
-                        row.get(5).unwrap(),
-                    ))
+                    Ok(UpCommand::from(row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap(), row.get(3).unwrap(), row.get(4).unwrap(), row.get(5).unwrap()))
                 })
                 .unwrap();
 
@@ -306,20 +280,11 @@ pub fn buffer_up_list_schedule_fo_client_id(client_key: String) -> Vec<UpCommand
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let mut commands_schedule: Vec<UpCommand> = Vec::new();
         {
-            let mut smtp = conn
-                .prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ?")
-                .unwrap();
+            let mut smtp = conn.prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ?").unwrap();
 
             let commands_iter = smtp
                 .query_map(params![client_key], |row| {
-                    Ok(UpCommand::from(
-                        row.get(0).unwrap(),
-                        row.get(1).unwrap(),
-                        row.get(2).unwrap(),
-                        row.get(3).unwrap(),
-                        row.get(4).unwrap(),
-                        row.get(5).unwrap(),
-                    ))
+                    Ok(UpCommand::from(row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap(), row.get(3).unwrap(), row.get(4).unwrap(), row.get(5).unwrap()))
                 })
                 .unwrap();
 
@@ -339,14 +304,7 @@ pub fn buffer_up_list_schedule() -> Vec<UpCommand> {
 
             let commands_iter = smtp
                 .query_map(params![], |row| {
-                    Ok(UpCommand::from(
-                        row.get(0).unwrap(),
-                        row.get(1).unwrap(),
-                        row.get(2).unwrap(),
-                        row.get(3).unwrap(),
-                        row.get(4).unwrap(),
-                        row.get(5).unwrap(),
-                    ))
+                    Ok(UpCommand::from(row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap(), row.get(3).unwrap(), row.get(4).unwrap(), row.get(5).unwrap()))
                 })
                 .unwrap();
 
@@ -359,19 +317,12 @@ pub fn buffer_up_list_schedule() -> Vec<UpCommand> {
 }
 
 pub fn buffer_up_schedule(command: UpCommand) {
-    BufferHistory::new("UP").log_add_operation(
-        &command.client_key,
-        &command.parity_id,
-        command.command_id.as_ref(),
-        &command.command,
-    );
+    BufferHistory::new("UP").log_add_operation(&command.client_key, &command.parity_id, command.command_id.as_ref(), &command.command);
 
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let registered_ids = get_registred_ids(conn);
 
-        let mut id_generator = UniqueIdGenerator {
-            registered_ids: registered_ids,
-        };
+        let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
 
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
@@ -384,10 +335,10 @@ pub fn buffer_up_schedule(command: UpCommand) {
         match result {
             Ok(_) => {
                 println!("Successfully schedule Command in ClientCommandsTosend");
-            }
+            },
             Err(e) => {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsTosend table: {}", e);
-            }
+            },
         };
     });
 }
@@ -397,9 +348,7 @@ pub fn check_if_parity_id_is_registered(parity_id: String, client_key: String) -
         let mut ids: Vec<Result<String, _>> = Vec::new();
 
         {
-            let mut smtp = conn
-                .prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ?")
-                .unwrap();
+            let mut smtp = conn.prepare("SELECT * FROM ClientCommandsTosend WHERE ClientKey = ?").unwrap();
             let commands_iter = smtp
                 .query_map(params![client_key], |row| {
                     let id: String = row.get(2).unwrap();
@@ -418,10 +367,10 @@ pub fn check_if_parity_id_is_registered(parity_id: String, client_key: String) -
                     if parity_id == id {
                         return false;
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("An error occurred while check if parity_id is registred in the ClientCommandsTosend table: {}", e);
-                }
+                },
             }
         }
 
@@ -429,13 +378,7 @@ pub fn check_if_parity_id_is_registered(parity_id: String, client_key: String) -
     })
 }
 
-pub fn buffer_up_update_schedule(
-    id: i32,
-    client_key: String,
-    parity_id: String,
-    priority: i32,
-    command: String,
-) {
+pub fn buffer_up_update_schedule(id: i32, client_key: String, parity_id: String, priority: i32, command: String) {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let result = conn.execute(
             "Update ClientCommandsTosend set ClientKey = ?, ParityId = ?, Priority = ?, Command = ? where ID = ?",
@@ -445,18 +388,17 @@ pub fn buffer_up_update_schedule(
         match result {
             Ok(_) => {
                 println!("Successfully update Command in ClientCommandsTosend");
-            }
+            },
             Err(e) => {
                 eprintln!("An error occurred while update the command in the ClientCommandsTosend table: {}", e);
-            }
+            },
         };
     });
 }
 
 pub fn buffer_up_clear_old_commands() {
     let now = Utc::now();
-    let current_timestamp =
-        now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
+    let current_timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
     let schedule = buffer_up_list_schedule();
 
@@ -470,12 +412,7 @@ pub fn buffer_up_clear_old_commands() {
         let time_difference = (current_timestamp - command_timestamp);
 
         if time_difference >= 240.0 {
-            BufferHistory::new("UP").log_remove_operation(
-                &up_command.client_key,
-                &up_command.parity_id,
-                up_command.command_id.as_ref(),
-                &up_command.command,
-            );
+            BufferHistory::new("UP").log_remove_operation(&up_command.client_key, &up_command.parity_id, up_command.command_id.as_ref(), &up_command.command);
             buffer_up_remove_schedule_by_id(up_command.command_id.unwrap());
             println!("\nCommand received from host: {} from client: {}, too old, clearing from the buffer up schedule!\n", up_command.parity_id, up_command.client_key);
         }
@@ -483,54 +420,38 @@ pub fn buffer_up_clear_old_commands() {
 }
 
 pub fn buffer_up_remove_schedule_by_id(id: u32) {
-    BufferHistory::new("UP").log_remove_operation(
-        &"".to_string(),
-        &"".to_string(),
-        Some(id).as_ref(),
-        &format!("Remove ID: {}", id),
-    );
+    BufferHistory::new("UP").log_remove_operation(&"".to_string(), &"".to_string(), Some(id).as_ref(), &format!("Remove ID: {}", id));
 
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let result = conn.execute("DELETE from ClientCommandsTosend where ID = ?", params![id]);
 
         match result {
             Ok(_) => {
-                println!(
-                    "Successfully removed scheduled Command of id: {} in ClientCommandsTosend",
-                    id
-                );
-            }
+                println!("Successfully removed scheduled Command of id: {} in ClientCommandsTosend", id);
+            },
             Err(e) => {
                 eprintln!("An error occurred while removing the scheduled the command of id: {} in the ClientCommandsTosend table: {}", id, e);
-            }
+            },
         };
     });
 }
 
 pub fn buffer_up_remove_schedule_by_parity_id(client_key: &String, parity_id: &String) {
-    BufferHistory::new("UP").log_remove_operation(
-        &client_key,
-        &parity_id,
-        None.as_ref(),
-        &"Remove From Schedule".to_string(),
-    );
+    BufferHistory::new("UP").log_remove_operation(&client_key, &parity_id, None.as_ref(), &"Remove From Schedule".to_string());
 
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
-        let result = conn.execute(
-            "DELETE from ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?",
-            params![client_key, parity_id],
-        );
+        let result = conn.execute("DELETE from ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?", params![client_key, parity_id]);
 
         match result {
             Ok(_) => {
                 println!("Successfully remove schedule Command in ClientCommandsTosend where ClientKey = {} AND ParityID = {}", client_key, parity_id);
-            }
+            },
             Err(e) => {
                 eprintln!(
                     "An error occurred while removing scheduled command of parity_id: {} from client: {} in the ClientCommandsTosend table: {}",
                     client_key, parity_id, e
                 );
-            }
+            },
         };
     });
 }
