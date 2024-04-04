@@ -137,6 +137,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     Some(ResponseType::DirectFunction),
                     Some(ResponseTarget::Origin),
                     None, // Not required in this case
+                    true,
                 );
 
                 // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
@@ -161,6 +162,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     Some(ResponseType::DirectFunction),
                     Some(ResponseTarget::Origin),
                     None, // Not required in this case
+                    true,
                 );
 
                 let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
@@ -210,6 +212,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 c.response_type.clone(),
                 c.response_target.clone(),
                 c.response_actf.clone(),
+                true,
             );
 
             let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());

@@ -20,6 +20,7 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+use common::enhanced_buffer::utilities::CommandError;
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
@@ -29,6 +30,8 @@ use indexmap::IndexMap;
 #[allow(unused_variables)]
 use lazy_static::lazy_static;
 use serde_json::Value;
+use socket_client::response_watcher::watch_response;
+use socket_client::scheduler::SchedulingError;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -44,6 +47,8 @@ extern crate chrono;
 pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
+use crate::socket_client::client_logger::log_handler::set_client_log_level;
+pub use crate::socket_client::response_watcher::WatcherError;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
@@ -108,7 +113,7 @@ macro_rules! acquire_logger {
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
+// use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
 use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
 
@@ -141,7 +146,6 @@ pub fn stop_socket_client() {
 
 pub fn initialize_client_buffer_tables(path: &String) {
     inialize_client_status_table_table(path.clone());
-    initialize_client_logs_database_dir(path.clone());
     initialize_client_buffer(path.clone());
 
     return;
@@ -235,16 +239,9 @@ pub fn is_client_ready() -> bool {
 //     NotAbleToReadClientStates,
 // }
 
-pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<(), ClientError> {
-    if !is_client_ready() {
-        println!("Error, client isn't running, pls run the client before try to send something!");
-        return Err(ClientError::ClientIsNotRunning);
-    }
-
-    let command_instructions = CommandInstructions::from_string_hashmap(command).unwrap();
-
-    let _ = match schedule(command_instructions, priority) {
-        Ok(o) => o,
+fn translate_scheduling_error<T>(res: Result<T, SchedulingError>) -> Result<T, ClientError> {
+    match res {
+        Ok(parity_id) => Ok(parity_id),
         Err(e) => match e {
             scheduler::SchedulingError::CantReadStates => {
                 return Err(ClientError::NotAbleToReadClientStates);
@@ -258,37 +255,48 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
             scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
             scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
             scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
+            scheduler::SchedulingError::UnsuportedAction(a) => return Err(ClientError::InvalidCommand(a)),
         },
-    };
-
-    Ok(())
+    }
 }
 
-pub fn client_send(command: CommandInstructions, priority: u8) -> Result<(), ClientError> {
+pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Result<String, ClientError> {
     if !is_client_ready() {
         println!("Error, client isn't running, pls run the client before try to send something!");
         return Err(ClientError::ClientIsNotRunning);
     }
 
-    let _ = match schedule(command, priority) {
-        Ok(o) => o,
+    // TODO >>> Enhace This Error Handlings, Maybe Add a Logger Here
+
+    let command_instructions = match CommandInstructions::from_string_hashmap(command) {
+        Ok(c) => c,
         Err(e) => match e {
-            scheduler::SchedulingError::CantReadStates => {
-                return Err(ClientError::NotAbleToReadClientStates);
-            },
-            scheduler::SchedulingError::ClientIsntFullyInitialized => {
-                return Err(ClientError::ClientNotFullyInitialized);
-            },
-            scheduler::SchedulingError::CantScheduleCommandsToItself => return Err(ClientError::ClientNotFullyInitialized),
-            scheduler::SchedulingError::HandlerDoesntExist => return Err(ClientError::HandlerDoesntExist),
-            scheduler::SchedulingError::HostCantSendResponseToItself => return Err(ClientError::HostCantSendResponseToItself),
-            scheduler::SchedulingError::ResponseHandlerDoesntExist => return Err(ClientError::ResponseHandlerDoesntExist),
-            scheduler::SchedulingError::TargetCantSendResponseToItself => return Err(ClientError::TargetCantSendResponseToItself),
-            scheduler::SchedulingError::TargetDoesntExists => return Err(ClientError::TargetDoesntExists),
+            CommandError::InvalidCommand(e) => return Err(ClientError::InvalidCommand(e)),
         },
     };
 
-    Ok(())
+    let parity_id = translate_scheduling_error(schedule(command_instructions, priority))?;
+
+    Ok(parity_id)
+}
+
+pub fn client_send(command: CommandInstructions, priority: u8) -> Result<String, ClientError> {
+    if !is_client_ready() {
+        println!("Error, client isn't running, pls run the client before try to send something!");
+        return Err(ClientError::ClientIsNotRunning);
+    }
+
+    let parity_id = translate_scheduling_error(schedule(command, priority))?;
+
+    Ok(parity_id)
+}
+
+/// Allows to wait a response by parity id, some conditions needs to be satisfied foe that:
+/// 1. Command needs to have auto collect == false to transposer not auto collect it
+/// 2. parity id needs to be the parity id assigned to the command, this is returned to send
+/// 3. ensure client is initialized, you can't waith a response if client isn't initialized
+pub fn client_wait_response(parity_id: String, wait_for: u64) -> Result<Command, WatcherError> {
+    watch_response(parity_id, chrono::Duration::seconds(wait_for as i64))
 }
 
 /// Sets the log level for the client.
@@ -489,6 +497,7 @@ pub fn change_client_to_initialized() {
 }
 
 pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
+    common::logs_register::register::initialize_logs_file(buffer_path.as_str().clone()).unwrap();
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -539,7 +548,8 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
 // use crate::common::functions::callbacks::extract_arg_types;
 
 use crate::common::client_manager::manager::{clients_manager_initialize_table, set_host_clients_manager__pool_workers_num};
-use crate::socket_host::host_logger::log_handler::{initialize_host_logs_database_dir, set_host_log_level};
+use crate::common::enhanced_buffer::history::register::register::initialize_buffer_history;
+use crate::socket_host::host_logger::log_handler::set_host_log_level;
 use crate::socket_host::socket_host::get_available_commands_registered;
 use crate::socket_host::socket_host::initialize_host;
 use crate::socket_host::socket_host::{initialize_host_buffer, set_max_conns};
@@ -562,8 +572,9 @@ fn set_socket_host_max_connections(n_max_conns: u32) {
 }
 
 fn initialize_host_buffer_tables(path: String) {
-    initialize_host_logs_database_dir(path.clone());
     initialize_host_buffer(path.clone());
+    initialize_buffer_history(&path.clone()).unwrap();
+    common::logs_register::register::initialize_logs_file(path.as_str().clone()).unwrap();
     clients_manager_initialize_table(path.clone());
 
     return;

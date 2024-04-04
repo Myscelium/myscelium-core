@@ -98,6 +98,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 Some(ResponseType::DirectFunction),
                 Some(ResponseTarget::Host),
                 None, // Not required in this case
+                true,
             );
 
             return ProcessResult::CommandInstructions(new_command_instructions);
@@ -172,6 +173,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                             Some(ResponseType::DirectFunction),
                             Some(ResponseTarget::Host),
                             None, // Not required in this case
+                            true,
                         );
 
                         return ProcessResult::CommandInstructions(new_command_instructions);
@@ -204,6 +206,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 None, // Not required in this case
                 None, // Not required in this case
                 None, // Not required in this case
+                true,
             );
 
             responses.push(ProcessResult::CommandInstructions(new_command_instructions));
@@ -254,6 +257,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                     Some(ResponseType::DirectFunction),
                     Some(ResponseTarget::Host),
                     None, // Not required in this case
+                    true,
                 );
 
                 responses.push(ProcessResult::CommandInstructions(new_command_instructions));
@@ -353,6 +357,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 command.response_type,
                 command.response_target,
                 command.response_actf,
+                command.collect_response,
             );
 
             logger.info(format!("Successfully add a client: {}!", new_client.client_key));
@@ -454,6 +459,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         command.response_type,
                         command.response_target,
                         command.response_actf,
+                        command.collect_response,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key));
@@ -528,6 +534,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         command.response_type,
                         command.response_target,
                         command.response_actf,
+                        command.collect_response,
                     );
 
                     logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key));

@@ -110,6 +110,7 @@ pub struct CommandInstructions {
     pub response_type: Option<ResponseType>,
     pub response_target: Option<ResponseTarget>,
     pub response_actf: Option<String>,
+    pub collect_response: bool,
 }
 
 #[derive(Debug)]
@@ -130,6 +131,7 @@ impl CommandInstructions {
         response_type: Option<ResponseType>,
         response_target: Option<ResponseTarget>,
         response_actf: Option<String>,
+        collect_response: bool,
     ) -> Self {
         Self {
             mode,
@@ -143,6 +145,7 @@ impl CommandInstructions {
             response_type,
             response_target,
             response_actf,
+            collect_response,
         }
     }
 
@@ -254,6 +257,8 @@ impl CommandInstructions {
 
         let response_actf = map.get("response_actf").and_then(Value::as_str).map(String::from).ok_or_else(|| CommandError::InvalidCommand("Missing respnse_actf!".to_string()))?;
 
+        let collect_response = map.get("collect_response").and_then(Value::as_bool).ok_or_else(|| CommandError::InvalidCommand("Missing response_actf!".to_string()))?;
+
         println!("Converted kwargs value object to Map: {:?}", kwargs);
 
         // TODO >>> See if the response target and the response actf need to have a None parser
@@ -270,6 +275,7 @@ impl CommandInstructions {
             response_type: Some(response_type),
             response_target: Some(response_target),
             response_actf: Some(response_actf),
+            collect_response,
         })
     }
 
@@ -376,6 +382,15 @@ impl CommandInstructions {
 
         let response_actf = map.get("response_actf").cloned().ok_or_else(|| CommandError::InvalidCommand("Missing response actf".to_string()))?;
 
+        let collect_response = map
+            .get("collect_response")
+            .and_then(|s| match s.as_str() {
+                "1" => Some(true),
+                "0" => Some(false),
+                _ => None,
+            })
+            .ok_or_else(|| CommandError::InvalidCommand("Missing or invalid collect_response!".to_string()))?;
+
         // TODO >>> See if the response target and the response actf need to have a None parser
 
         Ok(CommandInstructions {
@@ -390,6 +405,7 @@ impl CommandInstructions {
             response_type: Some(response_type),
             response_target: Some(response_target),
             response_actf: Some(response_actf),
+            collect_response,
         })
     }
 }

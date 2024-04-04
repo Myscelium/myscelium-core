@@ -58,14 +58,15 @@ lazy_static! {
 /// # Arguments
 /// - `n_workers`: The desired number of worker threads for the transposer.
 pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
+    let logger = acquire_logger!("Transposer");
     {
-        println!("[CLIENT][GLOBAL][Try Lock] - NUM_WORKERS");
+        logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - NUM_WORKERS"));
         let mut default_num_of_workers = NUM_WORKERS.lock();
-        println!("[CLIENT][GLOBAL][Lock] - NUM_WORKERS");
+        logger.debug(format!("[CLIENT][GLOBAL][Lock] - NUM_WORKERS"));
         *default_num_of_workers = n_workers;
     }
 
-    println!("[CLIENT][GLOBAL][Release] - NUM_WORKERS");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - NUM_WORKERS"));
 
     enhanced_buffer::buffer_down_manager::set_workers_num(n_workers);
     enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
@@ -81,11 +82,12 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
 pub fn set_socket_client_transposer_callbacks(key: String, callback: Box<CallbackClosure>) {
-    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS");
+    let logger = acquire_logger!("Transposer");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS"));
     let patterns = &CLIENT_CALLBACK_PATTERNS;
-    println!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS"));
     patterns.insert(key, callback);
-    println!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS"));
 }
 
 // Transposer:
@@ -174,7 +176,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     let translated_command: Command = match Command::from_down_command(down_command) {
         Ok(c) => c.clone(),
         Err(e) => {
-            println!("error converting down_command into command: {:?}", e);
+            logger.debug(format!("error converting down_command into command: {:?}", e));
             return Err(ProcessError::Error(format!("{:?}", e)));
         },
     };
@@ -189,21 +191,21 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
     let client_key = translated_command.client_key.clone();
 
-    println!("Client key is: {:?}", client_key);
+    logger.debug(format!("Client key is: {:?}", client_key));
 
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
 
     let resp: ProcessResult;
 
-    println!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction");
+    logger.debug(format!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction"));
 
     if translated_command.command.command_type == "DirectFunction" {
-        println!("Command is a direct function!");
+        logger.debug(format!("Command is a direct function!"));
         logger.info(format!("Command function: {} is a valid function!", translated_command.command.actf));
         resp = handle_direct_function(&translated_command.command, &client_key, command_id)?.clone(); // This cloen avoids locking
-        println!("Direct Function Result: {:?}", resp);
+        logger.debug(format!("Direct Function Result: {:?}", resp));
     } else {
-        println!("Command isn't a direct function");
+        logger.debug(format!("Command isn't a direct function"));
 
         logger.debug(format!("Calling the callback!\n"));
         // Execute the associated Python callback for the command
@@ -232,7 +234,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let mut kwargs = command_instructions.kwargs.clone();
             kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
 
-            println!("kwargs to pass to external function: {:?}", kwargs);
+            logger.debug(format!("kwargs to pass to external function: {:?}", kwargs));
 
             //> Get the Node Configs, Here in client we can directly acess it
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
@@ -299,7 +301,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         resp = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                println!("Successfully downcasted!");
+                logger.debug(format!("Successfully downcasted!"));
                 // You can now use instructions_box as Box<CommandInstructions>
                 let instruction = *instructions_box;
                 ProcessResult::CommandInstructions(instruction)
@@ -322,7 +324,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
     match resp {
         ProcessResult::CommandInstructions(c) => {
-            println!("Received response: {:?}", c);
+            logger.debug(format!("Received response: {:?}", c));
             let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
             let up_command: UpCommand = UpCommand::from_command(command);
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
@@ -332,13 +334,13 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             for c in l {
                 match c {
                     ProcessResult::Error(e) => {
-                        println!("Receive a error: {:?}", e);
+                        logger.debug(format!("Receive a error: {:?}", e));
                     },
                     ProcessResult::Empty => {
-                        println!("Response is empty, continuing!");
+                        logger.debug(format!("Response is empty, continuing!"));
                     },
                     ProcessResult::List(_) => {
-                        println!("Receive a ilegal process Result List inside a Process Resul List!");
+                        logger.debug(format!("Receive a ilegal process Result List inside a Process Resul List!"));
                     },
                     ProcessResult::CommandInstructions(c) => {
                         let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
@@ -350,11 +352,11 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             }
         },
         ProcessResult::Error(e) => {
-            println!("Receive a error: {:?}", e);
+            logger.debug(format!("Receive a error: {:?}", e));
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
         },
         ProcessResult::Empty => {
-            println!("Response is empty, continuing!");
+            logger.debug(format!("Response is empty, continuing!"));
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
         },
     }
@@ -387,8 +389,11 @@ pub fn initialize_socket_client_transposer() {
     // Retrieve scheduled commands
     let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
 
-    // Sort commands by priority in ascending order
+    // -> Sort commands by priority in ascending order
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // -> Filter only auto collect == true
+    schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
 
     logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule));
 
@@ -402,9 +407,9 @@ pub fn initialize_socket_client_transposer() {
         return;
     } else {
         if schedule_len > 1 {
-            println!("Find {} commands to process", schedule_len)
+            logger.debug(format!("Find {} commands to process", schedule_len))
         } else {
-            println!("Find {} command to process", 1)
+            logger.debug(format!("Find {} command to process", 1))
         }
     }
 
@@ -413,13 +418,13 @@ pub fn initialize_socket_client_transposer() {
     // Validate the command against known command patterns
     let client_key;
 
-    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY"));
     {
         let client_n = CLIENT_NODE_KEY.lock();
-        println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY");
+        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY"));
         client_key = client_n.clone();
     }
-    println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY"));
 
     // let callbacks_patterns;
 
@@ -435,6 +440,11 @@ pub fn initialize_socket_client_transposer() {
     // Process each scheduled command
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");
+
+        // -> Check if command isn't a inplace response
+        if !dow_command.auto_collect {
+            continue;
+        }
 
         logger.info(format!("Get a pool worker in transposer!"));
 

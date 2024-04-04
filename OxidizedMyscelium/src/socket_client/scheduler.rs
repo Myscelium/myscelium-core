@@ -77,6 +77,7 @@ pub enum SchedulingError {
     CantScheduleCommandsToItself,
     HostCantSendResponseToItself,
     TargetCantSendResponseToItself,
+    UnsuportedAction(String),
 }
 
 /// Schedules a command for processing.
@@ -89,12 +90,14 @@ pub enum SchedulingError {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<(), SchedulingError> {
+pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
+    let mut command_instructions: CommandInstructions = command_instructions;
+
     let logger: Logger = acquire_logger!("Core - Scheduler");
 
     logger.debug("Enter Scheduler".to_string());
 
-    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
 
     let mut state_manager = match ClientState::load_from_storage() {
         Ok(s) => s,
@@ -178,13 +181,19 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                             },
                         };
 
-                        if let Some(response_actf) = command_instructions.response_actf.clone() {
-                            if response_actf != "".to_string() {
-                                //> See if this node has the expected handler
-                                if !this_node_handlers.contains_key(&response_actf) {
-                                    return Err(SchedulingError::ResponseHandlerDoesntExist);
+                        if command_instructions.collect_response {
+                            // Only verify if response_actf exist is collect response is true
+                            if let Some(response_actf) = command_instructions.response_actf.clone() {
+                                if response_actf != "".to_string() {
+                                    //> See if this node has the expected handler
+                                    if !this_node_handlers.contains_key(&response_actf) {
+                                        return Err(SchedulingError::ResponseHandlerDoesntExist);
+                                    }
                                 }
                             }
+                        } else {
+                            command_instructions.response_actf = Some("".to_string());
+                            // If !collect_response resp_actf = ""
                         }
                     }
                 },
@@ -194,14 +203,20 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         return Err(SchedulingError::TargetCantSendResponseToItself);
                     }
 
-                    if let Some(response_actf) = command_instructions.response_actf.clone() {
-                        if response_actf != "".to_string() {
-                            if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
-                                return Err(SchedulingError::HandlerDoesntExist);
+                    if command_instructions.collect_response {
+                        // Only verify if response_actf exist is collect response is true
+                        if let Some(response_actf) = command_instructions.response_actf.clone() {
+                            if response_actf != "".to_string() {
+                                if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
+                                    return Err(SchedulingError::HandlerDoesntExist);
+                                }
                             }
+                        } else {
+                            //* Response actf is none then response will be ignored
                         }
                     } else {
-                        //* Response actf is none then response will be ignored
+                        command_instructions.response_actf = Some("".to_string());
+                        // If !collect_response resp_actf = ""
                     }
                 },
                 ResponseTarget::Host => {
@@ -210,14 +225,19 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         return Err(SchedulingError::HostCantSendResponseToItself);
                     }
 
-                    if let Some(response_actf) = command_instructions.response_actf.clone() {
-                        if response_actf != "".to_string() {
-                            if !network_map.handler_exists_in("host", response_actf.as_str()) {
-                                return Err(SchedulingError::HandlerDoesntExist);
+                    if command_instructions.collect_response {
+                        // Only verify if response_actf exist is collect response is true
+                        if let Some(response_actf) = command_instructions.response_actf.clone() {
+                            if response_actf != "".to_string() {
+                                if !network_map.handler_exists_in("host", response_actf.as_str()) {
+                                    return Err(SchedulingError::HandlerDoesntExist);
+                                }
                             }
+                        } else {
+                            //* Response actf is none then response will be ignored
                         }
                     } else {
-                        //* Response actf is none then response will be ignored
+                        return Err(SchedulingError::UnsuportedAction("Can't send not autocollect response to host, it doesn't suports it yet!".to_string()));
                     }
                 },
             }
@@ -235,7 +255,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     //    drop(key)
     // }
 
-    println!("[CLIENT][GLOBAL][Release] - CLIENT_ID");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 
     let client_key = state_manager.key.clone().unwrap();
 
@@ -247,9 +267,9 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 
-    let command = Command::new(client_key, parity_id, priority, command_instructions);
+    let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
 
-    println!("[CLIENT] - Scheduling: {:?}", command);
+    logger.debug(format!("[CLIENT] - Scheduling: {:?}", command));
 
     let command_to_schedule: UpCommand = UpCommand::from_command(command);
 
@@ -257,5 +277,5 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     logger.info(format!("Command: {:?} scheduled!", command_to_schedule));
 
-    Ok(())
+    Ok(parity_id)
 }

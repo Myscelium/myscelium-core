@@ -66,6 +66,7 @@ pub fn request_client_available_commands(client_key: String) {
         Some(ResponseType::DirectFunction),
         Some(ResponseTarget::Host),
         Some("update_client_commands_ref".to_string()),
+        true,
     );
 
     schedule(&command_instructions, 11, client_key, "itisaspecialcase".to_string())
@@ -124,6 +125,7 @@ pub fn send_network_available_commands(client_key: String) {
         Some(ResponseType::DirectFunction),
         Some(ResponseTarget::Host),
         None, // Not required in this case
+        true,
     );
 
     schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string())

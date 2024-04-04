@@ -71,7 +71,7 @@ lazy_static! {
 /// ```
 ///
 pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
-    host_logger::register::register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
+    // host_logger::register::old_register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
     let mut default_num_of_workers = NUM_WORKERS.lock();
 
     *default_num_of_workers = n_workers;
@@ -81,11 +81,12 @@ pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
 }
 
 pub fn set_socket_host_transposer_callbacks(key: String, callback: CallbackClosure) {
-    println!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS");
+    let logger = acquire_logger!("Transposer");
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS"));
     let patterns = &HOST_CALLBACK_PATTERNS;
-    println!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS"));
     patterns.insert(key, callback);
-    println!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS");
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS"));
 }
 
 // > Transposer:
@@ -104,6 +105,7 @@ macro_rules! create_special_command_instruction_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         new_command_instructions.to_value_map()
@@ -124,6 +126,7 @@ macro_rules! error_response {
             None, // Not required here
             None, // Not required here
             None, // Not required here
+            true,
         );
 
         new_command_instructions.to_value_map()
@@ -191,7 +194,7 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
                     ProcessResult::CommandInstructions(c) => c.to_value_map(),
                     ProcessResult::List(l) => {
                         // TODO >>> Handle this case maybe create a generalized function for all places that uses this
-                        println!("Reeive a unimplemented case in process_map_result!");
+                        logger.debug(format!("Reeive a unimplemented case in process_map_result!"));
                         create_special_command_instruction_response!("C210".to_string())
                     },
                     ProcessResult::Empty => {
@@ -389,7 +392,7 @@ fn process(down_command: DownCommand) {
         Ok(c) => c,
         Err(_) => {
             // TODO >>> handle this erro case
-            println!("Error converting COMMAND from down_command.");
+            logger.debug(format!("Error converting COMMAND from down_command."));
             logger.warn(format!("Error converting COMMAND from down_command."));
             return;
         },
@@ -438,6 +441,7 @@ fn process(down_command: DownCommand) {
         map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
         map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
         map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
+        map.insert("auto_collect".to_string(), serde_json::to_value(&command_instructions.collect_response).unwrap());
 
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
@@ -538,19 +542,23 @@ fn process(down_command: DownCommand) {
         result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                println!("Successfully downcasted to CommandInstructions!");
+                logger.debug(format!("Successfully downcasted to CommandInstructions!"));
 
                 // Additional logging: Inspect the contents of instructions_box
-                println!("CommandInstructions details: {:?}", instructions_box);
+                logger.debug(format!("CommandInstructions details: {:?}", instructions_box));
 
                 // You can now use instructions_box as Box<CommandInstructions>
-                let instruction = *instructions_box;
+                let mut instruction = *instructions_box;
+
+                // -> Overide the collect_response set it as the trigger command instruction that generate this response defined it
+                instruction.collect_response = command_instructions.collect_response.clone();
+
                 ProcessResult::CommandInstructions(instruction)
             },
             Err(e) => {
                 // The downcast operation failed
                 // Logging the error for more details
-                println!("Failed to downcast callback response! Error: {:?}", e);
+                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
 
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
@@ -614,12 +622,17 @@ pub fn initialize_socket_host_transposer() {
         return;
     }
 
-    schedule.sort_by(|a, b| b.priority.cmp(&a.priority)); // put the schedule in crescent order
+    // -> Put the schedule in crescent order:
+    schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // -> Filter only auto collect == true
+    // schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
 
     // logger.debug(format!("Schedule to process:\n{:?}\n", schedule));
 
     logger.info(format!("Data found in schedule!"));
 
+    // -> Process all commands
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");
         logger.info(format!("get a pool worker in transposer!"));
