@@ -226,7 +226,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             map.insert("status".to_string(), serde_json::to_value(&command_instructions.status).unwrap());
             map.insert("origin".to_string(), serde_json::to_value(&command_instructions.origin).unwrap());
             map.insert("message".to_string(), serde_json::to_value(&command_instructions.message).unwrap());
-
+            map.insert("auto_collect".to_string(), serde_json::to_value(&command_instructions.collect_response).unwrap());
             map.insert("response_actf".to_string(), serde_json::to_value(&command_instructions.response_actf).unwrap());
             map.insert("response_type".to_string(), serde_json::to_value(&command_instructions.response_type).unwrap());
             map.insert("response_target".to_string(), serde_json::to_value(&command_instructions.response_target).unwrap());
@@ -306,8 +306,9 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
                 let instruction = *instructions_box;
                 ProcessResult::CommandInstructions(instruction)
             },
-            Err(_) => {
+            Err(e) => {
                 // The downcast operation failed
+                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
@@ -392,8 +393,8 @@ pub fn initialize_socket_client_transposer() {
     // -> Sort commands by priority in ascending order
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
 
-    // -> Filter only auto collect == true
-    schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
+    // -> Filter only auto collect == true or any that is diferent of a Response (Only responses have auto collect == false)
+    schedule = schedule.into_iter().filter(|s| s.command_mode != "Response" || s.auto_collect).collect();
 
     logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule));
 
@@ -442,7 +443,7 @@ pub fn initialize_socket_client_transposer() {
         let logger = acquire_logger!("Transposer");
 
         // -> Check if command isn't a inplace response
-        if !dow_command.auto_collect {
+        if dow_command.command_mode == "Response" && !dow_command.auto_collect {
             continue;
         }
 

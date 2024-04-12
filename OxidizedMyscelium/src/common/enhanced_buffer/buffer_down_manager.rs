@@ -30,6 +30,8 @@ use crate::common::enhanced_buffer::history::buffer_history::BufferHistory;
 
 use std::fmt;
 
+use super::utilities::CommandMode;
+
 lazy_static! {
     static ref BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
@@ -75,6 +77,7 @@ pub struct DownCommand {
     pub parity_id: String,
     pub priority: u8,
     pub command: String,
+    pub command_mode: CommandMode,
     pub created_time: f64,
     pub auto_collect: bool,
 }
@@ -96,9 +99,11 @@ impl fmt::Display for DownCommand {
 }
 
 impl DownCommand {
-    pub fn from(command_id: u32, client_key: String, parity_id: String, priority: u8, command: String, created_time: f64, auto_collect: bool) -> Self {
+    pub fn from(command_id: u32, client_key: String, parity_id: String, priority: u8, command: String, command_type: String, created_time: f64, auto_collect: bool) -> Self {
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
+
+        let command_mode_downcast: CommandMode = serde_json::from_str(&command_type).unwrap();
 
         Self {
             command_id: Some(command_id),
@@ -106,12 +111,13 @@ impl DownCommand {
             parity_id,
             priority,
             command,
+            command_mode: command_mode_downcast,
             created_time,
             auto_collect,
         }
     }
 
-    pub fn new(client_key: String, parity_id: String, priority: u8, command: String, auto_collect: bool) -> Self {
+    pub fn new(client_key: String, parity_id: String, priority: u8, command: String, command_mode: CommandMode, auto_collect: bool) -> Self {
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
@@ -121,6 +127,7 @@ impl DownCommand {
             parity_id,
             priority,
             command,
+            command_mode,
             created_time: timestamp,
             auto_collect,
         }
@@ -130,7 +137,8 @@ impl DownCommand {
         let client_key = command.client_key;
         let parity_id = command.parity_id;
         let priority = command.priority;
-        let auto_collect = command.command.collect_response;
+        let auto_collect = command.command.collect_response.clone();
+        let command_mode = command.command.mode.clone();
         let command = serde_json::to_string(&command.command).unwrap();
 
         let now = Utc::now();
@@ -142,6 +150,7 @@ impl DownCommand {
             parity_id,
             priority,
             command,
+            command_mode,
             created_time: timestamp,
             auto_collect,
         }
@@ -219,7 +228,7 @@ pub fn buffer_down_initialize_table(buffer_path: String) {
         };
 
         let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS ClientCommandsReceived (ID INT PRIMARY KEY, Clientkey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CreatedTime NUMBER, CollectIt BOOL)",
+            "CREATE TABLE IF NOT EXISTS ClientCommandsReceived (ID INT PRIMARY KEY, Clientkey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CommandMode TEXT, CreatedTime NUMBER, CollectIt BOOL)",
             params![],
         );
 
@@ -281,6 +290,7 @@ pub fn buffer_down_get_scheduled_by_parity_id(client_key: String, parity_id: Str
                         row.get(4).unwrap(),
                         row.get(5).unwrap(),
                         row.get(6).unwrap(),
+                        row.get(7).unwrap(),
                     ))
                 })
                 .unwrap();
@@ -310,6 +320,7 @@ pub fn buffer_down_list_schedule() -> Vec<DownCommand> {
                         row.get(4).unwrap(),
                         row.get(5).unwrap(),
                         row.get(6).unwrap(),
+                        row.get(7).unwrap(),
                     ))
                 })
                 .unwrap();
@@ -337,9 +348,11 @@ pub fn buffer_down_schedule(command: &DownCommand) {
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
+        let command_mode: String = serde_json::to_string(&command.command_mode).unwrap();
+
         let result = conn.execute(
-            "INSERT INTO ClientCommandsReceived (ID, Clientkey, ParityId, Priority, Command, CreatedTime, CollectIt) VALUES (?, ?, ?, ?, ?, ?, ?);",
-            params![id_generator.gen(), command.client_key, command.parity_id, command.priority, command.command, timestamp, command.auto_collect],
+            "INSERT INTO ClientCommandsReceived (ID, Clientkey, ParityId, Priority, Command, CommandMode, CreatedTime, CollectIt) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+            params![id_generator.gen(), command.client_key, command.parity_id, command.priority, command.command, command_mode, timestamp, command.auto_collect],
         );
 
         match result {
@@ -388,11 +401,11 @@ pub fn check_if_parity_id_is_registred(parity_id: &String) -> bool {
     })
 }
 
-pub fn buffer_down_update_schedule(id: i32, client_key: String, parity_id: String, priority: i32, command: String, auto_collect: bool) {
+pub fn buffer_down_update_schedule(id: i32, client_key: String, parity_id: String, priority: i32, command: String, command_type: String, auto_collect: bool) {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let result = conn.execute(
-            "UPDATE ClientCommandsReceived SET Clientkey = ?, ParityId = ?, Priority = ?, Command = ?, CollectIt = ? WHERE ID = ?",
-            params![client_key, parity_id, priority, command, command, auto_collect, id],
+            "UPDATE ClientCommandsReceived SET Clientkey = ?, ParityId = ?, Priority = ?, Command = ?, CommandMode = ?, CollectIt = ? WHERE ID = ?",
+            params![client_key, parity_id, priority, command, command, command_type, auto_collect, id],
         );
 
         match result {

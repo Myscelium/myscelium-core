@@ -74,7 +74,7 @@ pub enum CommandStatus {
 // }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-
+#[serde(tag = "type", content = "content")]
 pub enum CommandTarget {
     Origin,
     ClientKey(String),
@@ -82,6 +82,7 @@ pub enum CommandTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content")]
 pub enum ResponseTarget {
     Origin,
     ClientKey(String),
@@ -91,6 +92,7 @@ pub enum ResponseTarget {
 impl_stringfiable_for_enum!(CommandMode, CommandType, CommandStatus, CommandTarget, ResponseType, ResponseTarget);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content")]
 pub enum CommandOrigin {
     Host,
     ClientKey(String),
