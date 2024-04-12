@@ -2,6 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use syn::token::Do;
 
 use super::client_logger::log_handler::Logger;
@@ -21,12 +22,16 @@ macro_rules! acquire_logger {
     }};
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherError {
     MaxTimeExceeded(String),
     CommandNotFinded(String),
 }
 
-pub fn watch_response(parity_id: String, max_time: chrono::Duration) -> Result<Command, WatcherError> {
+pub fn watch_response(
+    parity_id: String,
+    max_time: chrono::Duration,
+) -> Result<Command, WatcherError> {
     let logger = acquire_logger!("Transposer");
 
     let mut finded = false;
@@ -36,7 +41,8 @@ pub fn watch_response(parity_id: String, max_time: chrono::Duration) -> Result<C
 
     loop {
         // Retrieve scheduled commands
-        let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+        let mut schedule: Vec<DownCommand> =
+            enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
 
         // -> Sort commands by priority in ascending order
         schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
