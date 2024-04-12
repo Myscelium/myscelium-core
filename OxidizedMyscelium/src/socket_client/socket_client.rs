@@ -812,7 +812,16 @@ pub fn initialize_client(address: String) -> Option<String> {
                 Err(error) => {
                     match error {
                         CommandError::InvalidCommand(e) => {
-                            logger.debug(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
+                            logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
+                        },
+                        CommandError::DeserializationError(e) => {
+                            logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
+                        },
+                        CommandError::InvalidResponse(e) => {
+                            logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
+                        },
+                        CommandError::NotAJsonObject => {
+                            logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
                         },
                     }
 

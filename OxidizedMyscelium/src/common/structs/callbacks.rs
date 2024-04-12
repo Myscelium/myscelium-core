@@ -113,7 +113,7 @@ impl MyCallbacks {
 
             // Convert Box<dyn Any> to &[&dyn Any] for callback
             let args_refs: Vec<&dyn Any> = args.iter().map(|arg| &**arg).collect();
-            Ok(closure(args))
+            Ok(closure(args)) // Call the callback and return the response
         } else {
             Err(CallbackError::CallbackDoNotExist(key.to_string()))
         }
