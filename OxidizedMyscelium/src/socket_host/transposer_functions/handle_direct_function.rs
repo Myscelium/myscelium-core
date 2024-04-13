@@ -119,7 +119,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 },
             };
 
-            let client_handlers;
+            let client_handlers; // Client Handlers contain a Value wrapped Node
 
             // Check if 'client_handlers' exists within 'kwargs'
             if let Some(handlers) = command.kwargs.get("client_handlers") {
@@ -193,6 +193,12 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
             logger.info(format!("Receive client: {} handlers, retransmitting to: {:?}", client_key, clients).to_string());
 
+            // TODO >>> The trigerring client remais without sync, this is a issue cause by the case where the last client that connects
+            // Get remains without an update about the other nodes, the info sended to him is the last one the one were all the other clients
+            // are with status require sync because the action of this triggering client connects make the other clients that have access to
+            // it become not sync, to solve this is necessary to create a delay mechanism that can send this new info for this client when the
+            // other ones finishes sync.
+
             // Generate confirmation to triggering client
             let new_command_instructions = CommandInstructions::new(
                 CommandMode::Response,
@@ -210,6 +216,12 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             );
 
             responses.push(ProcessResult::CommandInstructions(new_command_instructions));
+
+            // Change the other nodes status to not sync
+            // {
+            //     let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+            //     actual_patterns.change_nodes_status_except_node_with_key(client_key, NodeStatus::NotSyncYet)
+            // }
 
             // -> Send the updated info for all the clients
             for client in clients {
@@ -267,6 +279,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
             return ProcessResult::List(responses);
         },
+
         "restrictive_update_client_commands_ref" => {
             logger.info(format!("Receive restrictive_update_client_commands_ref in host!"));
 

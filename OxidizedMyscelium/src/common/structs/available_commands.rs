@@ -277,6 +277,13 @@ impl NetworkMap {
         nodes_mirror
     }
 
+    pub fn change_nodes_status_except_node_with_key(&mut self, key: &String, new_status: NodeStatus) {
+        let nodes = &mut self.get_all_nodes_except_node_with_key(key);
+        for node in nodes {
+            node.change_node_status(new_status.clone());
+        }
+    }
+
     pub fn get_all_nodes_except_node_with_name(&self, name: String) -> Vec<Node> {
         let mut nodes_mirror = self.nodes.clone();
         if let Some(index) = nodes_mirror.iter().position(|x| x.name == Some(name.clone())) {
