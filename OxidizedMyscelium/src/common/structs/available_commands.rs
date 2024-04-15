@@ -8,14 +8,14 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{from_value, Map, Value};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum HandlerStatus {
     Working,
     NotImplemented,
     NotTested,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeHandler {
     pub name: String,
     pub parameters: IndexMap<String, String>,
@@ -56,7 +56,7 @@ impl NodeHandler {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum VersionIndentifier {
     ReleaseCandidate,
     Alpha,
@@ -66,7 +66,7 @@ pub enum VersionIndentifier {
     Release,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeVersion {
     major: u32,
     minor: u32,
@@ -225,6 +225,41 @@ impl Node {
         self.description = Some(description);
         self.version = Some(version);
         self.handlers = Some(handlers);
+    }
+}
+
+impl Node {
+    pub fn nodes_are_different(&self, other: &Node) -> bool {
+        // Compare names
+        self.name != other.name ||
+        // Compare keys
+        self.key != other.key ||
+        // Compare statuses
+        self.status != other.status ||
+        // Compare descriptions
+        self.description != other.description ||
+        // Compare versions
+        self.version != other.version ||
+        // Compare handlers (compares both length and content)
+        self.handlers_differ(&other.handlers) ||
+        // Compare network knowledge (recursive comparison)
+        self.network_know_differ(&other.known_network)
+    }
+
+    fn handlers_differ(&self, other: &Option<Vec<NodeHandler>>) -> bool {
+        match (&self.handlers, other) {
+            (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x != y),
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    fn network_know_differ(&self, other: &Option<Vec<Node>>) -> bool {
+        match (&self.known_network, other) {
+            (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x.nodes_are_different(y)),
+            (None, None) => false,
+            _ => true,
+        }
     }
 }
 
