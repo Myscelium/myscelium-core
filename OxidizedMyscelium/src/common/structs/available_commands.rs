@@ -229,23 +229,20 @@ impl Node {
 }
 
 impl Node {
+    /// Deeply compare each node and see if they are diferent, if they are diferent
+    /// then return true, if they are equal then return false.
     pub fn nodes_are_different(&self, other: &Node) -> bool {
-        // Compare names
-        self.name != other.name ||
-        // Compare keys
-        self.key != other.key ||
-        // Compare statuses
-        self.status != other.status ||
-        // Compare descriptions
-        self.description != other.description ||
-        // Compare versions
-        self.version != other.version ||
-        // Compare handlers (compares both length and content)
-        self.handlers_differ(&other.handlers) ||
-        // Compare network knowledge (recursive comparison)
-        self.network_know_differ(&other.known_network)
+        self.name != other.name
+            || self.key != other.key
+            || self.status != other.status
+            || self.description != other.description
+            || self.version != other.version
+            || self.handlers_differ(&other.handlers)
+            || self.network_know_differ(&other.known_network)
     }
 
+    /// This function was created to simplify the node comparation by deeply compare the nodes
+    /// this comparator function will return true if the handlers are diferent and false if not
     fn handlers_differ(&self, other: &Option<Vec<NodeHandler>>) -> bool {
         match (&self.handlers, other) {
             (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x != y),
@@ -254,7 +251,10 @@ impl Node {
         }
     }
 
-    fn network_know_differ(&self, other: &Option<Vec<Node>>) -> bool {
+    /// Allows to compare one network know with another, if the network known by the node is diferent than
+    /// what it should be then it will say that the networks are diferent by a true value, if they are equal
+    /// the value will be false because they aren't diferent.
+    pub fn network_know_differ(&self, other: &Option<Vec<Node>>) -> bool {
         match (&self.known_network, other) {
             (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x.nodes_are_different(y)),
             (None, None) => false,
