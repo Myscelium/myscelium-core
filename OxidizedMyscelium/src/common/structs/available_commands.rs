@@ -111,6 +111,7 @@ pub struct Node {
     description: Option<String>,
     version: Option<NodeVersion>,
     handlers: Option<Vec<NodeHandler>>,
+    known_network: Option<Vec<Node>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -144,6 +145,7 @@ impl Node {
             description: None,
             version: None,
             handlers: None,
+            known_network: None,
         }
     }
 
@@ -155,6 +157,7 @@ impl Node {
             description: Some(description),
             version: Some(version),
             handlers: Some(handlers),
+            known_network: None,
         }
     }
 
@@ -166,6 +169,7 @@ impl Node {
             description: description,
             version: version,
             handlers: handlers,
+            known_network: None,
         }
     }
 
