@@ -78,6 +78,15 @@ impl Client {
         self.sync_attempts = 0;
     }
 
+    /// This reinitializes the sync status to the first possible,
+    /// this is used handle the events or node restart or shutdown.
+    pub fn reinitialize(&mut self) {
+        self.sync_status = false;
+        self.is_first_sync = true; // It need to first sync before anything
+        self.sync_attempts = 0;
+        self.last_sync_request = -1; // To mark as never sync
+    }
+
     pub fn get_last_sync_attempt(&mut self) -> i64 {
         self.last_sync_request
     }

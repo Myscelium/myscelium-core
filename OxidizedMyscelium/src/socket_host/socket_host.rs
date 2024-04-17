@@ -440,6 +440,10 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 
     logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager));
 
+    //> Reinitialize the status of the client that disconnects, so when it reconnects the
+    //> First sync can occur naturally.
+    client_sync_manager.get_client(&client_key).unwrap().reinitialize();
+
     // -> Make all the client related to this client need to sync again
 
     // TODO
