@@ -38,7 +38,7 @@ impl Client {
         Self {
             max_sync_attempts,
             sync_status: false,
-            is_first_sync: false,
+            is_first_sync: true, // It need to first sync before anything
             sync_attempts: 0,
             last_sync_request: -1, // To mark as never sync
             key: client_key,
@@ -69,6 +69,9 @@ impl Client {
         return Ok(());
     }
 
+    /// It don't changes the is_first_syn
+    /// this resets the sync status so that if
+    /// try to sync again.
     pub fn reset_sync(&mut self) {
         self.sync_status = false;
         self.last_sync_request = -1;
@@ -89,6 +92,9 @@ impl Client {
 
     pub fn update_sync_status(&mut self, new_status: bool) {
         self.sync_status = new_status;
+        if new_status {
+            self.is_first_sync = false;
+        }
     }
 
     pub fn get_sync_status(&mut self) -> bool {
