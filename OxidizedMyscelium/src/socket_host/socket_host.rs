@@ -811,6 +811,16 @@ fn handle_connection(stream: &mut TcpStream) {
             }
         }
 
+        // TODO >>> Implement the mechanism that changes the client state or sutdown if it refuses to sync
+
+        // > Check if the max sync was reached
+        // > if is first sync and yes, diconnect client
+        // > if is not first sync and yes,change client status to not sync
+
+        // TODO >>> Create a mechanism that compares the client current network with the av network, and change status to not sync if not sync
+
+        // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
+
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
             if !sync {
