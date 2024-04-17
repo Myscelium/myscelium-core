@@ -19,6 +19,7 @@ use std::time;
 pub struct Client {
     max_sync_attempts: u32,
     sync_status: bool,
+    is_first_sync: bool,
     sync_attempts: u32,
     last_sync_request: i64,
     key: String,
@@ -37,6 +38,7 @@ impl Client {
         Self {
             max_sync_attempts,
             sync_status: false,
+            is_first_sync: false,
             sync_attempts: 0,
             last_sync_request: -1, // To mark as never sync
             key: client_key,
@@ -46,6 +48,7 @@ impl Client {
     pub fn update_client(new_client: Client) -> Self {
         Self {
             max_sync_attempts: new_client.max_sync_attempts,
+            is_first_sync: new_client.is_first_sync,
             sync_status: new_client.sync_status,
             sync_attempts: new_client.sync_attempts,
             last_sync_request: new_client.last_sync_request,

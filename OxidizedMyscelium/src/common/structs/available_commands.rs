@@ -104,37 +104,6 @@ pub enum NodeError {
     NodeNotInitializedYet,
 }
 
-pub struct Order {
-    target: String,
-    completed: bool,
-    created: DateTime<Utc>,
-}
-
-impl Order {
-    pub fn new(target: String) -> Self {
-        let current_time = Utc::now();
-        Self {
-            target,
-            completed: false,
-            created: current_time,
-        }
-    }
-
-    pub fn mark_as_completed(&mut self) {
-        self.completed = true;
-    }
-
-    pub fn it_expired(&self, timeout: Duration) -> bool {
-        let current_time = Utc::now();
-        return (current_time - &self.created >= timeout);
-    }
-}
-
-pub struct SyncOrdersController {
-    orders: Vec<Order>,
-    timeout: f64,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     name: Option<String>,
