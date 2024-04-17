@@ -823,6 +823,16 @@ fn handle_connection(stream: &mut TcpStream) {
                     logger.info(format!("Try to sync with: {}", command.client_key));
                     send_network_available_commands(command.client_key.clone());
                     update_client_sync_attempt(&command.client_key, &logger);
+                    // TODO >>> Remove this change_client_node_status_and_stream, replace it with the new system
+                    //> The new system should only stream that the node connect here and is trying to sync so this new
+                    //> node is with NotSyncYet status.
+                    //> Then wen this node connects we should change the status to Sync. If node isn't able to sync, we should
+                    //> change it to offline and disconnect it. Also another thing that we can do is impl a new Idle status that can be
+                    //> represented as a pulsating orange color.
+
+                    // TODO >>> Add a mechanism to stream important status o dependent nodes, but also allow silent sync
+                    // TODO >>> Create a mechanism to turn the clients that isn't being able to sync in some amount of time into state NotSyncYet and only then send this status to the other ones
+                    // TODO >>> Create a mechanism that if the client continue to refuse to sync it will be disconnected or if it already was connected put into Idle or NotReachable, some new status.
                     change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.info(format!(
