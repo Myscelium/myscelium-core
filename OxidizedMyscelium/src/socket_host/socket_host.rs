@@ -806,10 +806,39 @@ fn handle_connection(stream: &mut TcpStream) {
         // Helper function to update client sync attempt
         fn update_client_sync_attempt(client_key: &String, logger: &Logger) {
             let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+
+            let client = controller.get_client(client_key).unwrap();
+
+            {
+                let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+
+                // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
+                if client.get_sync_attempts() >= (client.get_max_sync_attempts() / 2) {
+                    actual_patterns.get_node_by_key(client_key).unwrap().change_node_status(NodeStatus::NotSyncYet)
+                }
+            }
+
+            // > This function auto handles the error of max attempt reached too
             if let Err(e) = controller.update_client_sync_attempt(client_key) {
-                handle_client_controller_error!(e, client_key, logger);
+                handle_client_controller_error!(e.clone(), client_key, logger); // This only logs the error
+                match e {
+                    ClientStatusPoolError::ClientAlreadyExist(_) => unreachable!(),
+                    ClientStatusPoolError::ClientDoesNotExist(_) => unreachable!(),
+                    ClientStatusPoolError::MaxSyncAttemptsReached(_) => {
+                        handle_client_disconnect(client_key.clone()); // Disconnect the client, what should trigger sync in all dependent ones
+                    },
+                    ClientStatusPoolError::ClientAlreadySync(_) => {
+                        // Just pass since it is already sync
+                    },
+                }
             }
         }
+
+        // logger.debug(format!("Failed to read from the stream: {:?}", e));
+        // eprintln!("Failed to read from the stream: {:?}", e);
+        // //> Handle the error, e.g., by returning from the function or taking corrective action
+        // handle_client_disconnect(client_key);
+        // return; //> or handle differently
 
         // TODO >>> Implement the mechanism that changes the client state or sutdown if it refuses to sync
 

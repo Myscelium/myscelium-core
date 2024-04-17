@@ -69,6 +69,10 @@ impl Client {
         return Ok(());
     }
 
+    pub fn is_first_sync(&self) -> bool {
+        self.is_first_sync
+    }
+
     /// It don't changes the is_first_syn
     /// this resets the sync status so that if
     /// try to sync again.
