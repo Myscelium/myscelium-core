@@ -33,6 +33,7 @@ pub fn sync_verifier() {
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
                 controller.get_client(&client.client_key).unwrap().update_sync_status(false)
+                // This should trigger sync to the client
             }
         };
     }

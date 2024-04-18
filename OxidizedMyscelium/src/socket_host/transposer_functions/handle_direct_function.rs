@@ -104,6 +104,15 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             return ProcessResult::CommandInstructions(new_command_instructions);
         },
         "update_client_commands_ref" => {
+            // TODO >>> This should't anymore trigger sync to other clients nor send the sync commands to the other clients
+
+            //> The client's that depends on this node that is being updated will be changed to sync = false by the sync_analiser
+            //> This will only update this node and change it to sync, also will mark the sync = true signalising that this node is now sync
+
+            //> The update of the known network by the client will be defined in the scheduler, when sended it will be updtaed
+            //>
+            //>
+
             logger.info(format!("Receive update_client_commands_ref in host!"));
 
             // -> get the client by the client key

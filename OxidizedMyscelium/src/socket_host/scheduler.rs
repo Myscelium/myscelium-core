@@ -75,6 +75,15 @@ pub fn request_client_available_commands(client_key: String) {
 pub fn send_network_available_commands(client_key: String) {
     let logger = acquire_logger!("Scheduler");
 
+    // TODO >>> Update the network known in the node since we are sending the new network know
+
+    // -> CONSIDERATIONS:
+
+    //> This will guarantee that the node is sync because the node will have the sync mark in sync controler
+    //> when a node is defined as not sync in the controller it will attempt to sync eveen if the network known
+    //> status is updted since now it is marked as not sync yet. Also if this isn't syncing the controller
+    //> changes the sync status to NotSyncYet, if it persists it will be changed to Offline.
+
     logger.info(format!("Send update_available_host_commands to client trying to sync!"));
 
     // Lock the HOST_COMMAND_PATTERNS and insert the new map
