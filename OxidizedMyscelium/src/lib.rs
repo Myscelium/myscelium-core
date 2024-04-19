@@ -756,19 +756,14 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         println!("Socket host exited successfully!");
     });
 
-    thread::spawn(|| {
-        ctrlc::set_handler(move || {
-            if HOST_IS_RUNNING.load(Ordering::SeqCst) {
-                println!("\nreceived Ctrl+C!\n");
-                stop_socket_host();
-            }
-        })
-        .expect("Error setting Ctrl-C handler");
-
-        loop {
-            sync_verifier();
-            thread::sleep(Duration::from_secs(3));
+    thread::spawn(|| loop {
+        if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
+            println!("\nreceived Ctrl+C!\n");
+            break;
         }
+
+        sync_verifier();
+        thread::sleep(Duration::from_secs(3));
     });
 
     loop {

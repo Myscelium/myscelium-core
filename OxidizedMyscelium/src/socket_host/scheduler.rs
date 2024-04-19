@@ -88,11 +88,20 @@ pub fn send_network_available_commands(client_key: String) {
 
     // Lock the HOST_COMMAND_PATTERNS and insert the new map
 
-    let mut actual_patterns: NetworkMap = NetworkMap::new(Vec::new());
+    let mut filtered_commands: HashMap<String, Value> = HashMap::new();
 
     {
-        let command_patterns = HOST_COMMAND_PATTERNS.lock();
-        actual_patterns = command_patterns.clone()
+        let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
+
+        // -> Get the known network that this node should know (updated one)
+        let nodes: Vec<Node> = command_patterns.get_all_nodes_except_node_with_key(&client_key);
+
+        // -> Update the known network of this node
+        let mut actual_node = command_patterns.get_node_by_key(&client_key).unwrap();
+        actual_node.update_known_network(nodes.clone());
+
+        // -> Save to deliver to the node
+        filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
     }
 
     // // -> get the client by the client key
@@ -111,10 +120,6 @@ pub fn send_network_available_commands(client_key: String) {
     // };
 
     // let client_name: String = client.ge();
-
-    let nodes: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client_key);
-    let mut filtered_commands: HashMap<String, Value> = HashMap::new();
-    filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
 
     // logger.info(format!("Successfully actualize the host available commands!"));
 

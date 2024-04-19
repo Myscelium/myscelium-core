@@ -23,16 +23,40 @@ pub fn sync_verifier() {
     }
 
     for client in clients {
-        let expected_know_network: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
+        let mut expected_know_network: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
+
+        // Erase the known network of the nodes here just for comparison, this evoids infinite nested known network entities
+        for node in &mut expected_know_network {
+            node.erase_known_network()
+        }
+
         let comparison_node = actual_patterns.get_node_by_key(&client.client_key).unwrap();
-        if comparison_node.network_know_differ(&Some(expected_know_network)) {
+        if comparison_node.network_know_differ(&Some(expected_know_network.clone())) {
             //> If the network know by the client is diferent of what is should be, then change
             //> the sync controller status to not Sync without change the client status to NotSyncYet
             //> since this will be done automatically by the sync controller mechanism in the socket_host
             //> if for some reason client refuse to sync in halth of the max sync allowed.
+
+            println!(
+                "\n\n[SYNC ANALISER][HOST] - Node {:?}, isn't sync with current network!\nCurrent network {:?}\nExpected: {:?}",
+                &client.client_key,
+                comparison_node.get_known_network(),
+                expected_know_network
+            );
+
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-                controller.get_client(&client.client_key).unwrap().update_sync_status(false)
+                controller.get_client(&client.client_key).unwrap().update_sync_status(false);
+                client.change_sync_to(false);
+                client.save_into_db();
+                // This should trigger sync to the client
+            }
+        } else {
+            {
+                let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+                controller.get_client(&client.client_key).unwrap().update_sync_status(true);
+                client.change_sync_to(true);
+                client.save_into_db();
                 // This should trigger sync to the client
             }
         };

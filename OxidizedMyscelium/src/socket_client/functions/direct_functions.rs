@@ -2,7 +2,7 @@ use crate::common::structs::available_commands::CommandPatterns;
 use crate::common::structs::results_structs::ResultType;
 
 use crate::socket_client::states_manager::manager::{ClientState, StateManagerError};
-use crate::{CLIENT_NODE_CONFIGS, CLIENT_STATE_MANAGER};
+use crate::{NodeStatus, CLIENT_NODE_CONFIGS, CLIENT_STATE_MANAGER};
 
 use crate::socket_client::transposer::ProcessError;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
@@ -56,6 +56,8 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
 
             println!("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS");
 
+            let mut filtered_commands_map = HashMap::new();
+
             {
                 let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock();
                 println!("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS");
@@ -99,76 +101,79 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                         },
                     },
                 };
+
+                println!("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS");
+                let actual_patterns: Value;
+                println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+
+                {
+                    let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
+                    println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
+                    logger.info(format!("Lock In Host Command Patterns!"));
+                    command_patterns.change_node_status(NodeStatus::Online);
+                    command_patterns.update_known_network(host_allowed_commands.get_all_nodes_except_node_with_key(&"".to_string()).clone());
+                    actual_patterns = command_patterns.to_value();
+                }
+
+                println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+
+                logger.info(format!("Successfully actualize the host available commands!"));
+
+                // TODO >>> Change this to use NetworkMap instead of commands
+                filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
             }
 
-            println!("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS");
-            let actual_patterns: Value;
-            println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+            // -> Only return this 'update_client_commands_ref' in case that is the first sync of the client
 
-            {
-                let command_patterns = CLIENT_NODE_CONFIGS.lock();
-                println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
-                logger.info(format!("Lock In Host Command Patterns!"));
-                actual_patterns = command_patterns.to_value();
-            }
+            // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
+            let new_command_instructions = CommandInstructions::new(
+                CommandMode::Function,
+                CommandType::DirectFunction,
+                CommandTarget::Host,
+                CommandStatus::Success,
+                CommandOrigin::ClientKey(client_key.clone()),
+                "update_client_commands_ref".to_string(),
+                filtered_commands_map,
+                "".to_string(),
+                Some(ResponseType::DirectFunction),
+                Some(ResponseTarget::Origin),
+                None, // Not required in this case
+                true,
+            );
 
-            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+            // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
+            // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
-            logger.info(format!("Successfully actualize the host available commands!"));
+            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+            let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 
-            // TODO >>> Change this to use NetworkMap instead of commands
-            let mut filtered_commands_map = HashMap::new();
-            filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
+            // //> VERIFY IF IS CLIENT FIRST SYNC
+            // if !CLIENT_IS_SYNC.load(Ordering::SeqCst) {
 
-            //> VERIFY IF IS CLIENT FIRST SYNC
-            if !CLIENT_IS_SYNC.load(Ordering::SeqCst) {
-                // -> Only return this 'update_client_commands_ref' in case that is the first sync of the client
+            // } else {
+            //     // -> Only return this 'restrictive_update_client_commands_ref' in case that isn't the first sync of the client to avoid network status loops
 
-                // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
-                let new_command_instructions = CommandInstructions::new(
-                    CommandMode::Function,
-                    CommandType::DirectFunction,
-                    CommandTarget::Host,
-                    CommandStatus::Success,
-                    CommandOrigin::ClientKey(client_key.clone()),
-                    "update_client_commands_ref".to_string(),
-                    filtered_commands_map,
-                    "".to_string(),
-                    Some(ResponseType::DirectFunction),
-                    Some(ResponseTarget::Origin),
-                    None, // Not required in this case
-                    true,
-                );
+            //     // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
+            //     let new_command_instructions = CommandInstructions::new(
+            //         CommandMode::Function,
+            //         CommandType::DirectFunction,
+            //         CommandTarget::Host,
+            //         CommandStatus::Success,
+            //         CommandOrigin::ClientKey(client_key.clone()),
+            //         "restrictive_update_client_commands_ref".to_string(),
+            //         filtered_commands_map,
+            //         "".to_string(),
+            //         Some(ResponseType::DirectFunction),
+            //         Some(ResponseTarget::Origin),
+            //         None, // Not required in this case
+            //         true,
+            //     );
 
-                // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
-                // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
-
-                let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-                let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
-                enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-            } else {
-                // -> Only return this 'restrictive_update_client_commands_ref' in case that isn't the first sync of the client to avoid network status loops
-
-                // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
-                let new_command_instructions = CommandInstructions::new(
-                    CommandMode::Function,
-                    CommandType::DirectFunction,
-                    CommandTarget::Host,
-                    CommandStatus::Success,
-                    CommandOrigin::ClientKey(client_key.clone()),
-                    "restrictive_update_client_commands_ref".to_string(),
-                    filtered_commands_map,
-                    "".to_string(),
-                    Some(ResponseType::DirectFunction),
-                    Some(ResponseTarget::Origin),
-                    None, // Not required in this case
-                    true,
-                );
-
-                let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-                let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
-                enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-            }
+            //     let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+            //     let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
+            //     enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+            // }
 
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);

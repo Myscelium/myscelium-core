@@ -220,6 +220,20 @@ impl Node {
         self.handlers = Some(handlers)
     }
 
+    pub fn update_known_network(&mut self, new_network: Vec<Node>) {
+        // -> Turn the sub nodes know know network None to avoid infinite nest
+        let mut new_network = new_network;
+        for node in &mut new_network {
+            node.known_network = None;
+        }
+        // -> Update the self know network
+        self.known_network = Some(new_network);
+    }
+
+    pub fn erase_known_network(&mut self) {
+        self.known_network = None;
+    }
+
     pub fn update(&mut self, name: String, key: String, description: String, version: NodeVersion, handlers: Vec<NodeHandler>) {
         self.name = Some(name);
         self.key = Some(key);
@@ -230,6 +244,10 @@ impl Node {
 }
 
 impl Node {
+    pub fn get_known_network(&self) -> Option<Vec<Node>> {
+        self.known_network.clone()
+    }
+
     /// Deeply compare each node and see if they are diferent, if they are diferent
     /// then return true, if they are equal then return false.
     pub fn nodes_are_different(&self, other: &Node) -> bool {
@@ -536,7 +554,16 @@ impl NetworkMap {
         // -> UPDATE EXISTING NODE:
         for node in &mut self.nodes {
             if new_node.key == node.key {
-                *node = new_node;
+                // *node = new_node;
+
+                node.name = new_node.name;
+                node.status = new_node.status;
+                node.description = new_node.description;
+                node.version = new_node.version;
+                node.handlers = new_node.handlers;
+
+                // known_network: Option<Vec<Node>>,
+
                 return;
             } else {
                 continue;

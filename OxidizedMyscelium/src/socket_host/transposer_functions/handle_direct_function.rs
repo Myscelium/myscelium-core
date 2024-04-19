@@ -155,52 +155,55 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
                 client_node.change_node_status(NodeStatus::Online);
                 actual_patterns.add_or_update_if_exists(client_node);
+
+                // client.update_handlers(client_node.get_node_handlers().unwrap()); // TODO >> Update the type of the hanlders to client
+                client.change_sync_to(true);
+                client.save_into_db();
             }
 
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
                 let status = controller.update_client_sync_status(client_key, true);
-                // TODO >>> Add a mechanism to set all the other clients state to sync = false
             }
 
-            // -> Try to get the clients registred in the database
-            let mut clients = match get_all_clients() {
-                Ok(c) => c,
-                Err(e) => match e {
-                    _ => {
-                        // TODO >>> Create a better error handling for this, there is no need to return this to any client
+            // // -> Try to get the clients registred in the database
+            // let mut clients = match get_all_clients() {
+            //     Ok(c) => c,
+            //     Err(e) => match e {
+            //         _ => {
+            //             // TODO >>> Create a better error handling for this, there is no need to return this to any client
 
-                        let new_command_instructions = CommandInstructions::new(
-                            CommandMode::Function,
-                            CommandType::DirectFunction,
-                            CommandTarget::Origin,
-                            CommandStatus::Failure,
-                            CommandOrigin::Host,
-                            "update_available_host_commands".to_string(),
-                            HashMap::new(),
-                            "unexpect error getting clients to redirect the update commands".to_string(),
-                            Some(ResponseType::DirectFunction),
-                            Some(ResponseTarget::Host),
-                            None, // Not required in this case
-                            true,
-                        );
+            //             let new_command_instructions = CommandInstructions::new(
+            //                 CommandMode::Function,
+            //                 CommandType::DirectFunction,
+            //                 CommandTarget::Origin,
+            //                 CommandStatus::Failure,
+            //                 CommandOrigin::Host,
+            //                 "update_available_host_commands".to_string(),
+            //                 HashMap::new(),
+            //                 "unexpect error getting clients to redirect the update commands".to_string(),
+            //                 Some(ResponseType::DirectFunction),
+            //                 Some(ResponseTarget::Host),
+            //                 None, // Not required in this case
+            //                 true,
+            //             );
 
-                        return ProcessResult::CommandInstructions(new_command_instructions);
-                    },
-                },
-            };
+            //             return ProcessResult::CommandInstructions(new_command_instructions);
+            //         },
+            //     },
+            // };
 
-            // -> Filter the actual client from the list cause it alwready was handled
-            for (index, client) in clients.iter().enumerate() {
-                if client.client_key == client_key.clone() {
-                    clients.remove(index);
-                    break;
-                }
-            }
+            // // -> Filter the actual client from the list cause it alwready was handled
+            // for (index, client) in clients.iter().enumerate() {
+            //     if client.client_key == client_key.clone() {
+            //         clients.remove(index);
+            //         break;
+            //     }
+            // }
 
             let mut responses: Vec<ProcessResult> = Vec::new();
 
-            logger.info(format!("Receive client: {} handlers, retransmitting to: {:?}", client_key, clients).to_string());
+            // logger.info(format!("Receive client: {} handlers, retransmitting to: {:?}", client_key, clients).to_string());
 
             // TODO >>> The trigerring client remais without sync, this is a issue cause by the case where the last client that connects
             // Get remains without an update about the other nodes, the info sended to him is the last one the one were all the other clients
@@ -224,7 +227,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 true,
             );
 
-            responses.push(ProcessResult::CommandInstructions(new_command_instructions));
+            // responses.push();
 
             // Change the other nodes status to not sync
             // {
@@ -232,61 +235,61 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             //     actual_patterns.change_nodes_status_except_node_with_key(client_key, NodeStatus::NotSyncYet)
             // }
 
-            // -> Send the updated info for all the clients
-            for client in clients {
-                //> See if client has some alive signal in the last 30s:
+            // // -> Send the updated info for all the clients
+            // for client in clients {
+            //     //> See if client has some alive signal in the last 30s:
 
-                // Split into seconds and nanoseconds
-                let seconds = client.last_contact.trunc() as i64;
-                let nanoseconds = (client.last_contact.fract() * 1e9).round() as u32; // Or *1_000_000_000.0
+            //     // Split into seconds and nanoseconds
+            //     let seconds = client.last_contact.trunc() as i64;
+            //     let nanoseconds = (client.last_contact.fract() * 1e9).round() as u32; // Or *1_000_000_000.0
 
-                // Convert to DateTime<Utc>
-                let last_contact = Utc.timestamp_opt(seconds, nanoseconds).unwrap();
+            //     // Convert to DateTime<Utc>
+            //     let last_contact = Utc.timestamp_opt(seconds, nanoseconds).unwrap();
 
-                let current_time = Utc::now();
-                if current_time - last_contact > Duration::seconds(30) {
-                    continue;
-                }
+            //     let current_time = Utc::now();
+            //     if current_time - last_contact > Duration::seconds(30) {
+            //         continue;
+            //     }
 
-                //> Redirect new commands to client if changed:
+            //     //> Redirect new commands to client if changed:
 
-                let mut nodes: Vec<Node> = Vec::new();
+            //     let mut nodes: Vec<Node> = Vec::new();
 
-                // TODO >>> Add a mechanism to see what handlers the client will ahve permission to activate
-                //* Any mechanism that will see the client permissions to each command may be placed here
+            //     // TODO >>> Add a mechanism to see what handlers the client will ahve permission to activate
+            //     //* Any mechanism that will see the client permissions to each command may be placed here
 
-                // > Schedule a redirect to the other clients
-                let client_key_to_redirect: String = client.client_key.clone();
+            //     // > Schedule a redirect to the other clients
+            //     let client_key_to_redirect: String = client.client_key.clone();
 
-                {
-                    let actual_patterns = HOST_COMMAND_PATTERNS.lock();
-                    // TODO >>> Change to get all nodes except for node x
-                    nodes = actual_patterns.get_all_nodes_except_node_with_key(&client_key_to_redirect);
-                }
+            //     {
+            //         let actual_patterns = HOST_COMMAND_PATTERNS.lock();
+            //         // TODO >>> Change to get all nodes except for node x
+            //         nodes = actual_patterns.get_all_nodes_except_node_with_key(&client_key_to_redirect);
+            //     }
 
-                let mut filtered_commands: HashMap<String, Value> = HashMap::new();
-                filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
-                let new_command_instructions = CommandInstructions::new(
-                    CommandMode::Response,
-                    CommandType::DirectFunction,
-                    CommandTarget::ClientKey(client_key_to_redirect),
-                    CommandStatus::Success,
-                    CommandOrigin::Host,
-                    "update_available_host_commands".to_string(),
-                    filtered_commands,
-                    "".to_string(),
-                    Some(ResponseType::DirectFunction),
-                    Some(ResponseTarget::Host),
-                    None, // Not required in this case
-                    true,
-                );
+            //     let mut filtered_commands: HashMap<String, Value> = HashMap::new();
+            //     filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
+            //     let new_command_instructions = CommandInstructions::new(
+            //         CommandMode::Response,
+            //         CommandType::DirectFunction,
+            //         CommandTarget::ClientKey(client_key_to_redirect),
+            //         CommandStatus::Success,
+            //         CommandOrigin::Host,
+            //         "update_available_host_commands".to_string(),
+            //         filtered_commands,
+            //         "".to_string(),
+            //         Some(ResponseType::DirectFunction),
+            //         Some(ResponseTarget::Host),
+            //         None, // Not required in this case
+            //         true,
+            //     );
 
-                responses.push(ProcessResult::CommandInstructions(new_command_instructions));
+            //     responses.push(ProcessResult::CommandInstructions(new_command_instructions));
 
-                return ProcessResult::List(responses);
-            }
+            //     return ProcessResult::List(responses);
+            // }
 
-            return ProcessResult::List(responses);
+            return ProcessResult::CommandInstructions(new_command_instructions);
         },
 
         "restrictive_update_client_commands_ref" => {

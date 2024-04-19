@@ -872,7 +872,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     // TODO >>> Add a mechanism to stream important status o dependent nodes, but also allow silent sync
                     // TODO >>> Create a mechanism to turn the clients that isn't being able to sync in some amount of time into state NotSyncYet and only then send this status to the other ones
                     // TODO >>> Create a mechanism that if the client continue to refuse to sync it will be disconnected or if it already was connected put into Idle or NotReachable, some new status.
-                    change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
+                    // change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.info(format!(
                         "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
