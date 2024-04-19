@@ -763,7 +763,7 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         }
 
         sync_verifier();
-        thread::sleep(Duration::from_secs(3));
+        thread::sleep(Duration::from_secs(1));
     });
 
     loop {

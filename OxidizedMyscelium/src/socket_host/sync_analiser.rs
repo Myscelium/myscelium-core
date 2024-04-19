@@ -1,6 +1,7 @@
 use core::panic;
 use std::collections::HashMap;
 
+use crate::NodeStatus;
 use rusqlite::types::Value;
 
 use crate::{common::client_manager::manager::get_all_clients, handle_manager_client_error, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
@@ -22,7 +23,22 @@ pub fn sync_verifier() {
         actual_patterns = command_patterns.clone()
     }
 
+    let mut cli_nodes = actual_patterns.get_all_nodes_except_node_with_key(&"".to_string());
+    let mut node_map: HashMap<String, NodeStatus> = HashMap::new();
+
+    for cli_node in &mut cli_nodes {
+        if let Some(key) = cli_node.key.clone() {
+            node_map.insert(key, cli_node.get_node_status());
+        };
+    }
+
     for client in clients {
+        let cli_status = node_map.get(&client.client_key).unwrap();
+
+        if (*cli_status == NodeStatus::NotImplemented || *cli_status == NodeStatus::Offline) || *cli_status == NodeStatus::NotSyncYet {
+            continue; // -> We don't have any reasons to check node sync status for these cases (this will save hardware ressources)
+        }
+
         let mut expected_know_network: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
 
         // Erase the known network of the nodes here just for comparison, this evoids infinite nested known network entities
