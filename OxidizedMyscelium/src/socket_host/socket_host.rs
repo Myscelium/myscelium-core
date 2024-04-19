@@ -812,9 +812,20 @@ fn handle_connection(stream: &mut TcpStream) {
             {
                 let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
 
+                let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
+
                 // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
                 if client.get_sync_attempts() >= (client.get_max_sync_attempts() / 2) {
-                    actual_patterns.get_node_by_key(client_key).unwrap().change_node_status(NodeStatus::NotSyncYet)
+                    ref_node.change_node_status(NodeStatus::NotSyncYet)
+                }
+
+                // -> If is the first time that the node is connecting, change it's status to not sync, this is important
+                // -> to dependent clies know that it is in sync process, and since it will only happen the first time,
+                // -> it will not trigger massive loops of sync because it don't change other nodes status to NotSyncYet, only this
+                // -> node iteself and only in the first time that it is tring to sync, this will help other nodes awaits,
+                // -> know that the node is initializing and this will make them wait to give an exception or send someting to this one.
+                if ref_node.get_node_status() == NodeStatus::NotImplemented {
+                    ref_node.change_node_status(NodeStatus::NotSyncYet)
                 }
             }
 

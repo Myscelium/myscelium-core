@@ -94,11 +94,16 @@ pub fn send_network_available_commands(client_key: String) {
         let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
 
         // -> Get the known network that this node should know (updated one)
-        let nodes: Vec<Node> = command_patterns.get_all_nodes_except_node_with_key(&client_key);
+        let mut nodes: Vec<Node> = command_patterns.get_all_nodes_except_node_with_key(&client_key);
 
         // -> Update the known network of this node
         let mut actual_node = command_patterns.get_node_by_key(&client_key).unwrap();
         actual_node.update_known_network(nodes.clone());
+
+        //> Erase the network know of the nodes since this info is restrict to host and not need to be sended to the client
+        for node in &mut nodes {
+            node.erase_known_network();
+        }
 
         // -> Save to deliver to the node
         filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
