@@ -978,17 +978,20 @@ fn handle_connection(stream: &mut TcpStream) {
                             }
 
                             //> SEE IF THE HANDLER EXIST IN THE TARGET
-                            if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
-                                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                logger.debug(format!("Sending back: {:?}", &command));
-                                let client_key = command.client_key.clone();
-                                match send(stream, command) {
-                                    Ok(_) => {},
-                                    Err(e) => handle_send_error!(e, logger, client_key),
+
+                            if command.command.mode == "Function" {
+                                if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
+                                    let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                    logger.debug(format!("Sending back: {:?}", &command));
+                                    let client_key = command.client_key.clone();
+                                    match send(stream, command) {
+                                        Ok(_) => {},
+                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                    };
+                                    handle_client_disconnect(client_key);
+                                    return;
                                 };
-                                handle_client_disconnect(client_key);
-                                return;
-                            };
+                            }
 
                             // TODO >>> See if the client has permission to send commands to this target
 
@@ -1041,22 +1044,24 @@ fn handle_connection(stream: &mut TcpStream) {
                                         handle_client_disconnect(client_key);
                                     }
 
-                                    //> Check if the handler to response exist in target
-                                    if let Some(response_actf) = command.command.response_actf.clone() {
-                                        if command.command.collect_response && response_actf != "" {
-                                            // Only verify if handler exists if auto collect response == true
-                                            if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                                                let command: Command =
-                                                    create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                                logger.debug(format!("Sending back: {:?}", &command));
-                                                let client_key = command.client_key.clone();
-                                                match send(stream, command) {
-                                                    Ok(_) => {},
-                                                    Err(e) => handle_send_error!(e, logger, client_key),
+                                    //> Check if the handler to response exist in target (ONLY IF AUTO COLLECT == True)
+                                    if command.command.collect_response {
+                                        if let Some(response_actf) = command.command.response_actf.clone() {
+                                            if command.command.collect_response && response_actf != "" {
+                                                // Only verify if handler exists if auto collect response == true
+                                                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
+                                                    let command: Command =
+                                                        create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                                    logger.debug(format!("Sending back: {:?}", &command));
+                                                    let client_key = command.client_key.clone();
+                                                    match send(stream, command) {
+                                                        Ok(_) => {},
+                                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                                    };
+                                                    handle_client_disconnect(client_key);
+                                                    return;
                                                 };
-                                                handle_client_disconnect(client_key);
-                                                return;
-                                            };
+                                            }
                                         }
                                     }
                                 }
