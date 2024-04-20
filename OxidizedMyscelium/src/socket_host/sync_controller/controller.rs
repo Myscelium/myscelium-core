@@ -107,6 +107,8 @@ impl Client {
         self.sync_status = new_status;
         if new_status {
             self.is_first_sync = false;
+            self.sync_attempts = 0; // reset sync attempts
+            self.last_sync_request = -1; // Reset last sync request timestamp
         }
     }
 
