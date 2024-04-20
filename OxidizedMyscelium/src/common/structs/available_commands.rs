@@ -1,6 +1,7 @@
 use crate::common::enhanced_buffer::utilities::CommandType;
 use crate::common::structs::results_structs::ResultType;
 
+use chrono::{DateTime, Duration, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,14 +9,14 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{from_value, Map, Value};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum HandlerStatus {
     Working,
     NotImplemented,
     NotTested,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeHandler {
     pub name: String,
     pub parameters: IndexMap<String, String>,
@@ -56,7 +57,7 @@ impl NodeHandler {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum VersionIndentifier {
     ReleaseCandidate,
     Alpha,
@@ -66,7 +67,7 @@ pub enum VersionIndentifier {
     Release,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NodeVersion {
     major: u32,
     minor: u32,
@@ -111,6 +112,7 @@ pub struct Node {
     description: Option<String>,
     version: Option<NodeVersion>,
     handlers: Option<Vec<NodeHandler>>,
+    known_network: Option<Vec<Node>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -144,6 +146,7 @@ impl Node {
             description: None,
             version: None,
             handlers: None,
+            known_network: None,
         }
     }
 
@@ -155,6 +158,7 @@ impl Node {
             description: Some(description),
             version: Some(version),
             handlers: Some(handlers),
+            known_network: None,
         }
     }
 
@@ -166,6 +170,7 @@ impl Node {
             description: description,
             version: version,
             handlers: handlers,
+            known_network: None,
         }
     }
 
@@ -215,12 +220,65 @@ impl Node {
         self.handlers = Some(handlers)
     }
 
+    pub fn update_known_network(&mut self, new_network: Vec<Node>) {
+        // -> Turn the sub nodes know know network None to avoid infinite nest
+        let mut new_network = new_network;
+        for node in &mut new_network {
+            node.known_network = None;
+        }
+        // -> Update the self know network
+        self.known_network = Some(new_network);
+    }
+
+    pub fn erase_known_network(&mut self) {
+        self.known_network = None;
+    }
+
     pub fn update(&mut self, name: String, key: String, description: String, version: NodeVersion, handlers: Vec<NodeHandler>) {
         self.name = Some(name);
         self.key = Some(key);
         self.description = Some(description);
         self.version = Some(version);
         self.handlers = Some(handlers);
+    }
+}
+
+impl Node {
+    pub fn get_known_network(&self) -> Option<Vec<Node>> {
+        self.known_network.clone()
+    }
+
+    /// Deeply compare each node and see if they are diferent, if they are diferent
+    /// then return true, if they are equal then return false.
+    pub fn nodes_are_different(&self, other: &Node) -> bool {
+        self.name != other.name
+            || self.key != other.key
+            || self.status != other.status
+            || self.description != other.description
+            || self.version != other.version
+            || self.handlers_differ(&other.handlers)
+            || self.network_know_differ(&other.known_network)
+    }
+
+    /// This function was created to simplify the node comparation by deeply compare the nodes
+    /// this comparator function will return true if the handlers are diferent and false if not
+    fn handlers_differ(&self, other: &Option<Vec<NodeHandler>>) -> bool {
+        match (&self.handlers, other) {
+            (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x != y),
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    /// Allows to compare one network know with another, if the network known by the node is diferent than
+    /// what it should be then it will say that the networks are diferent by a true value, if they are equal
+    /// the value will be false because they aren't diferent.
+    pub fn network_know_differ(&self, other: &Option<Vec<Node>>) -> bool {
+        match (&self.known_network, other) {
+            (Some(a), Some(b)) => a.len() != b.len() || a.iter().zip(b.iter()).any(|(x, y)| x.nodes_are_different(y)),
+            (None, None) => false,
+            _ => true,
+        }
     }
 }
 
@@ -496,7 +554,16 @@ impl NetworkMap {
         // -> UPDATE EXISTING NODE:
         for node in &mut self.nodes {
             if new_node.key == node.key {
-                *node = new_node;
+                // *node = new_node;
+
+                node.name = new_node.name;
+                node.status = new_node.status;
+                node.description = new_node.description;
+                node.version = new_node.version;
+                node.handlers = new_node.handlers;
+
+                // known_network: Option<Vec<Node>>,
+
                 return;
             } else {
                 continue;

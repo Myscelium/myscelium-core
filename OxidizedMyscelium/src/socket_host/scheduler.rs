@@ -75,15 +75,38 @@ pub fn request_client_available_commands(client_key: String) {
 pub fn send_network_available_commands(client_key: String) {
     let logger = acquire_logger!("Scheduler");
 
+    // TODO >>> Update the network known in the node since we are sending the new network know
+
+    // -> CONSIDERATIONS:
+
+    //> This will guarantee that the node is sync because the node will have the sync mark in sync controler
+    //> when a node is defined as not sync in the controller it will attempt to sync eveen if the network known
+    //> status is updted since now it is marked as not sync yet. Also if this isn't syncing the controller
+    //> changes the sync status to NotSyncYet, if it persists it will be changed to Offline.
+
     logger.info(format!("Send update_available_host_commands to client trying to sync!"));
 
     // Lock the HOST_COMMAND_PATTERNS and insert the new map
 
-    let mut actual_patterns: NetworkMap = NetworkMap::new(Vec::new());
+    let mut filtered_commands: HashMap<String, Value> = HashMap::new();
 
     {
-        let command_patterns = HOST_COMMAND_PATTERNS.lock();
-        actual_patterns = command_patterns.clone()
+        let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
+
+        // -> Get the known network that this node should know (updated one)
+        let mut nodes: Vec<Node> = command_patterns.get_all_nodes_except_node_with_key(&client_key);
+
+        // -> Update the known network of this node
+        let mut actual_node = command_patterns.get_node_by_key(&client_key).unwrap();
+        actual_node.update_known_network(nodes.clone());
+
+        //> Erase the network know of the nodes since this info is restrict to host and not need to be sended to the client
+        for node in &mut nodes {
+            node.erase_known_network();
+        }
+
+        // -> Save to deliver to the node
+        filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
     }
 
     // // -> get the client by the client key
@@ -102,10 +125,6 @@ pub fn send_network_available_commands(client_key: String) {
     // };
 
     // let client_name: String = client.ge();
-
-    let nodes: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client_key);
-    let mut filtered_commands: HashMap<String, Value> = HashMap::new();
-    filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
 
     // logger.info(format!("Successfully actualize the host available commands!"));
 

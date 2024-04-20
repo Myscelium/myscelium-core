@@ -1,4 +1,5 @@
 mod channel_manager;
+pub mod functions;
 pub mod host_logger;
 pub mod permissions_manager;
 pub mod scheduler;
