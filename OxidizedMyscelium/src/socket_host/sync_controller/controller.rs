@@ -19,6 +19,7 @@ use std::time;
 pub struct Client {
     max_sync_attempts: u32,
     sync_status: bool,
+    is_first_sync: bool,
     sync_attempts: u32,
     last_sync_request: i64,
     key: String,
@@ -37,6 +38,7 @@ impl Client {
         Self {
             max_sync_attempts,
             sync_status: false,
+            is_first_sync: true, // It need to first sync before anything
             sync_attempts: 0,
             last_sync_request: -1, // To mark as never sync
             key: client_key,
@@ -46,6 +48,7 @@ impl Client {
     pub fn update_client(new_client: Client) -> Self {
         Self {
             max_sync_attempts: new_client.max_sync_attempts,
+            is_first_sync: new_client.is_first_sync,
             sync_status: new_client.sync_status,
             sync_attempts: new_client.sync_attempts,
             last_sync_request: new_client.last_sync_request,
@@ -66,10 +69,26 @@ impl Client {
         return Ok(());
     }
 
+    pub fn is_first_sync(&self) -> bool {
+        self.is_first_sync
+    }
+
+    /// It don't changes the is_first_syn
+    /// this resets the sync status so that if
+    /// try to sync again.
     pub fn reset_sync(&mut self) {
         self.sync_status = false;
         self.last_sync_request = -1;
         self.sync_attempts = 0;
+    }
+
+    /// This reinitializes the sync status to the first possible,
+    /// this is used handle the events or node restart or shutdown.
+    pub fn reinitialize(&mut self) {
+        self.sync_status = false;
+        self.is_first_sync = true; // It need to first sync before anything
+        self.sync_attempts = 0;
+        self.last_sync_request = -1; // To mark as never sync
     }
 
     pub fn get_last_sync_attempt(&mut self) -> i64 {
@@ -86,6 +105,11 @@ impl Client {
 
     pub fn update_sync_status(&mut self, new_status: bool) {
         self.sync_status = new_status;
+        if new_status {
+            self.is_first_sync = false;
+            self.sync_attempts = 0; // reset sync attempts
+            self.last_sync_request = -1; // Reset last sync request timestamp
+        }
     }
 
     pub fn get_sync_status(&mut self) -> bool {

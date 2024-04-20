@@ -38,13 +38,38 @@ macro_rules! impl_stringfiable_for_enum {
     }
 }
 
+#[derive(Debug)]
+pub enum CommandError {
+    InvalidResponse(String),
+    InvalidCommand(String),
+    NotAJsonObject,
+    DeserializationError(serde_json::Error),
+}
+
+impl From<serde_json::Error> for CommandError {
+    fn from(err: serde_json::Error) -> Self {
+        CommandError::DeserializationError(err)
+    }
+}
+
+impl fmt::Display for CommandError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CommandError::InvalidResponse(ref msg) => write!(f, "Invalid response: {}", msg),
+            CommandError::InvalidCommand(ref msg) => write!(f, "Invalid Command: {}", msg),
+            CommandError::NotAJsonObject => write!(f, "The value is not a JSON object!"),
+            CommandError::DeserializationError(ref err) => write!(f, "Deserialization error: {}", err),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CommandMode {
     Function,
     Response,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum CommandType {
     SpecialFunction,
     DirectFunction,
@@ -76,6 +101,7 @@ pub enum CommandStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CommandTarget {
     Origin,
+    #[serde(rename = "ClientKey")]
     ClientKey(String),
     Host,
 }
@@ -83,6 +109,7 @@ pub enum CommandTarget {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResponseTarget {
     Origin,
+    #[serde(rename = "ClientKey")]
     ClientKey(String),
     Host,
 }
@@ -92,6 +119,7 @@ impl_stringfiable_for_enum!(CommandMode, CommandType, CommandStatus, CommandTarg
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CommandOrigin {
     Host,
+    #[serde(rename = "ClientKey")]
     ClientKey(String),
 }
 
@@ -110,11 +138,6 @@ pub struct CommandInstructions {
     pub response_target: Option<ResponseTarget>,
     pub response_actf: Option<String>,
     pub collect_response: bool,
-}
-
-#[derive(Debug)]
-pub enum CommandError {
-    InvalidCommand(String),
 }
 
 impl CommandInstructions {
@@ -197,7 +220,7 @@ impl CommandInstructions {
             Some("Host") => CommandTarget::Host,
             Some("Origin") => CommandTarget::Origin,
             Some(c) => {
-                if c != "" {
+                if c == "" {
                     return Err(CommandError::InvalidCommand("Invalid or missing target".to_string()));
                 }
 
@@ -216,7 +239,13 @@ impl CommandInstructions {
 
         let origin = match map.get("origin").and_then(Value::as_str) {
             Some("Host") => CommandOrigin::Host,
-            Some(client_id) => CommandOrigin::ClientKey(client_id.to_string()),
+            Some(c) => {
+                if c == "" {
+                    return Err(CommandError::InvalidCommand("Invalid or missing response target".to_string()));
+                }
+
+                CommandOrigin::ClientKey(c.to_string())
+            },
             _ => return Err(CommandError::InvalidCommand("Invalid or missing origin".to_string())),
         };
 
@@ -243,7 +272,7 @@ impl CommandInstructions {
             Some("Host") => ResponseTarget::Host,
             Some("Origin") => ResponseTarget::Origin,
             Some(c) => {
-                if c != "" {
+                if c == "" {
                     return Err(CommandError::InvalidCommand("Invalid or missing response target".to_string()));
                 }
 
@@ -259,8 +288,6 @@ impl CommandInstructions {
         let collect_response = map.get("collect_response").and_then(Value::as_bool).ok_or_else(|| CommandError::InvalidCommand("Missing response_actf!".to_string()))?;
 
         println!("Converted kwargs value object to Map: {:?}", kwargs);
-
-        // TODO >>> See if the response target and the response actf need to have a None parser
 
         Ok(CommandInstructions {
             mode,

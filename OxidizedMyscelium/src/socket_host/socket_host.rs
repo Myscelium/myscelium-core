@@ -42,6 +42,7 @@ use chrono::Duration;
 use crate::HOST_IS_RUNNING;
 use std::sync::atomic::Ordering;
 
+use super::functions::sync_analiser::sync_verifier;
 use super::host_logger;
 use super::host_logger::log_handler::Logger;
 use crate::HOST_LOG_LEVEL;
@@ -429,40 +430,30 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
     let mut node = network_map.get_node_by_key(&client_key).unwrap();
 
-    if node.get_node_status() == new_status {
-        logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
-        return;
+    // if node.get_node_status() == new_status {
+    //     logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
+    //     return;
+    // }
+
+    if new_status == NodeStatus::Offline {
+        let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
+
+        logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager));
+
+        //> Reinitialize the status of the client that disconnects, so when it reconnects the
+        //> First sync can occur naturally.
+        client_sync_manager.get_client(&client_key).unwrap().reinitialize();
     }
 
+    // -> Make all the client related to this client need to sync again by change this node status to Offline
     node.change_node_status(new_status);
-
-    let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
-
-    logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager));
-
-    // -> Make all the client related to this client need to sync again
-
-    // TODO
-    //> When implement the mechanism of permissions change this to only set the nodes that the node
-    //> that disconnected have access to, so only the nodes that this clients depends can be turn off
-
-    // let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&client_key);
-    let nodes_to_update = network_map.get_all_nodes_except_node_with_key(&"".to_string());
-
-    logger.debug(format!("Nodes to update: {:?}", nodes_to_update));
-
-    let mut clients_to_reset: Vec<String> = Vec::new();
-    for node in nodes_to_update {
-        if let Some(key) = node.key {
-            clients_to_reset.push(key);
-        }
-    }
-
-    client_sync_manager.reset_sync_for_clients(clients_to_reset).unwrap();
 }
 
-pub fn handle_client_disconnect(client_key: String) {
-    change_client_node_status_and_stream(client_key, crate::NodeStatus::Offline)
+pub fn handle_client_disconnect(client_key: &String) {
+    change_client_node_status_and_stream(client_key.clone(), NodeStatus::Offline);
+
+    // > Verify the nodes that needs to be notified of this update (restrictivety without cause waves of unecessary updates)
+    sync_verifier();
 }
 
 // > Socket main structure:
@@ -712,8 +703,8 @@ fn handle_connection(stream: &mut TcpStream) {
                 logger.debug(format!("Failed to read from the stream: {:?}", e));
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
-                handle_client_disconnect(client_key);
-                return; //> or handle differently
+                handle_client_disconnect(&client_key);
+                break; //> or handle differently
             },
         };
 
@@ -734,8 +725,8 @@ fn handle_connection(stream: &mut TcpStream) {
                 logger.debug(format!("Failed to read from the stream: {:?}", e));
                 eprintln!("Failed to read from the stream: {:?}", e);
                 //> Handle the error, e.g., by returning from the function or taking corrective action
-                handle_client_disconnect(client_key);
-                return; //> or handle differently
+                handle_client_disconnect(&client_key);
+                break; //> or handle differently
             },
         };
 
@@ -800,12 +791,63 @@ fn handle_connection(stream: &mut TcpStream) {
         update_last_contact(command.client_key.clone());
 
         // Helper function to update client sync attempt
-        fn update_client_sync_attempt(client_key: &String, logger: &Logger) {
+        fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
             let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-            if let Err(e) = controller.update_client_sync_attempt(client_key) {
-                handle_client_controller_error!(e, client_key, logger);
+
+            let client = controller.get_client(client_key).unwrap();
+
+            {
+                let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+
+                let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
+
+                // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
+                if client.get_sync_attempts() >= (client.get_max_sync_attempts() / 2) {
+                    ref_node.change_node_status(NodeStatus::NotSyncYet)
+                }
+
+                // -> If is the first time that the node is connecting, change it's status to not sync, this is important
+                // -> to dependent clies know that it is in sync process, and since it will only happen the first time,
+                // -> it will not trigger massive loops of sync because it don't change other nodes status to NotSyncYet, only this
+                // -> node iteself and only in the first time that it is tring to sync, this will help other nodes awaits,
+                // -> know that the node is initializing and this will make them wait to give an exception or send someting to this one.
+                if ref_node.get_node_status() == NodeStatus::NotImplemented || ref_node.get_node_status() == NodeStatus::Offline {
+                    ref_node.change_node_status(NodeStatus::NotSyncYet)
+                }
             }
+
+            // > This function auto handles the error of max attempt reached too
+            if let Err(e) = controller.update_client_sync_attempt(client_key) {
+                handle_client_controller_error!(e.clone(), client_key, logger); // This only logs the error
+                match e {
+                    ClientStatusPoolError::ClientAlreadyExist(_) => unreachable!(),
+                    ClientStatusPoolError::ClientDoesNotExist(_) => unreachable!(),
+                    ClientStatusPoolError::MaxSyncAttemptsReached(_) => {
+                        handle_client_disconnect(&client_key); // Disconnect the client, what should trigger sync in all dependent ones
+                        return true;
+                    },
+                    ClientStatusPoolError::ClientAlreadySync(_) => change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online),
+                }
+            }
+
+            return false;
         }
+
+        // logger.debug(format!("Failed to read from the stream: {:?}", e));
+        // eprintln!("Failed to read from the stream: {:?}", e);
+        // //> Handle the error, e.g., by returning from the function or taking corrective action
+        // handle_client_disconnect(client_key);
+        // return; //> or handle differently
+
+        // TODO >>> Implement the mechanism that changes the client state or sutdown if it refuses to sync
+
+        // > Check if the max sync was reached
+        // > if is first sync and yes, diconnect client
+        // > if is not first sync and yes,change client status to not sync
+
+        // TODO >>> Create a mechanism that compares the client current network with the av network, and change status to not sync if not sync
+
+        // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
@@ -818,8 +860,20 @@ fn handle_connection(stream: &mut TcpStream) {
                 if should_attempt_sync {
                     logger.info(format!("Try to sync with: {}", command.client_key));
                     send_network_available_commands(command.client_key.clone());
-                    update_client_sync_attempt(&command.client_key, &logger);
-                    change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
+                    if update_client_sync_attempt(&command.client_key, &logger) {
+                        break;
+                    };
+                    // TODO >>> Remove this change_client_node_status_and_stream, replace it with the new system
+                    //> The new system should only stream that the node connect here and is trying to sync so this new
+                    //> node is with NotSyncYet status.
+                    //> Then wen this node connects we should change the status to Sync. If node isn't able to sync, we should
+                    //> change it to offline and disconnect it. Also another thing that we can do is impl a new Idle status that can be
+                    //> represented as a pulsating orange color.
+
+                    // TODO >>> Add a mechanism to stream important status o dependent nodes, but also allow silent sync
+                    // TODO >>> Create a mechanism to turn the clients that isn't being able to sync in some amount of time into state NotSyncYet and only then send this status to the other ones
+                    // TODO >>> Create a mechanism that if the client continue to refuse to sync it will be disconnected or if it already was connected put into Idle or NotReachable, some new status.
+                    // change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.info(format!(
                         "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
@@ -892,8 +946,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
-                                handle_client_disconnect(client_key);
-                                return;
+                                handle_client_disconnect(&client_key);
+                                break;
                             }
 
                             //> VERIFY IF THE TARGET IS SYNC
@@ -909,22 +963,25 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
-                                handle_client_disconnect(client_key);
-                                return;
+                                handle_client_disconnect(&client_key);
+                                break;
                             }
 
                             //> SEE IF THE HANDLER EXIST IN THE TARGET
-                            if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
-                                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                logger.debug(format!("Sending back: {:?}", &command));
-                                let client_key = command.client_key.clone();
-                                match send(stream, command) {
-                                    Ok(_) => {},
-                                    Err(e) => handle_send_error!(e, logger, client_key),
+
+                            if command.command.mode == "Function" {
+                                if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
+                                    let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                    logger.debug(format!("Sending back: {:?}", &command));
+                                    let client_key = command.client_key.clone();
+                                    match send(stream, command) {
+                                        Ok(_) => {},
+                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                    };
+                                    handle_client_disconnect(&client_key);
+                                    break;
                                 };
-                                handle_client_disconnect(client_key);
-                                return;
-                            };
+                            }
 
                             // TODO >>> See if the client has permission to send commands to this target
 
@@ -956,7 +1013,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                         Ok(_) => {},
                                         Err(e) => handle_send_error!(e, logger, client_key),
                                     };
-                                    handle_client_disconnect(client_key);
+                                    handle_client_disconnect(&client_key);
+                                    break;
                                 }
 
                                 //> If resp target isn't origin, nor host then:
@@ -974,25 +1032,28 @@ fn handle_connection(stream: &mut TcpStream) {
                                             Ok(_) => {},
                                             Err(e) => handle_send_error!(e, logger, client_key),
                                         };
-                                        handle_client_disconnect(client_key);
+                                        handle_client_disconnect(&client_key);
+                                        break;
                                     }
 
-                                    //> Check if the handler to response exist in target
-                                    if let Some(response_actf) = command.command.response_actf.clone() {
-                                        if command.command.collect_response && response_actf != "" {
-                                            // Only verify if handler exists if auto collect response == true
-                                            if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                                                let command: Command =
-                                                    create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                                logger.debug(format!("Sending back: {:?}", &command));
-                                                let client_key = command.client_key.clone();
-                                                match send(stream, command) {
-                                                    Ok(_) => {},
-                                                    Err(e) => handle_send_error!(e, logger, client_key),
+                                    //> Check if the handler to response exist in target (ONLY IF AUTO COLLECT == True)
+                                    if command.command.collect_response {
+                                        if let Some(response_actf) = command.command.response_actf.clone() {
+                                            if command.command.collect_response && response_actf != "" {
+                                                // Only verify if handler exists if auto collect response == true
+                                                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
+                                                    let command: Command =
+                                                        create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                                                    logger.debug(format!("Sending back: {:?}", &command));
+                                                    let client_key = command.client_key.clone();
+                                                    match send(stream, command) {
+                                                        Ok(_) => {},
+                                                        Err(e) => handle_send_error!(e, logger, client_key),
+                                                    };
+                                                    handle_client_disconnect(&client_key);
+                                                    break;
                                                 };
-                                                handle_client_disconnect(client_key);
-                                                return;
-                                            };
+                                            }
                                         }
                                     }
                                 }
@@ -1064,8 +1125,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                     Ok(_) => {},
                                     Err(e) => handle_send_error!(e, logger, client_key),
                                 };
-                                handle_client_disconnect(client_key);
-                                return;
+                                handle_client_disconnect(&client_key);
+                                break;
                             };
 
                             // > VERIFY IF ALREADY PROCESSED:
@@ -1117,8 +1178,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                             Ok(_) => {},
                                             Err(e) => handle_send_error!(e, logger, client_key),
                                         };
-                                        handle_client_disconnect(client_key);
-                                        return;
+                                        handle_client_disconnect(&client_key);
+                                        break;
                                     }
 
                                     //> If resp target isn't origin, nor host then:
@@ -1135,7 +1196,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                                 Ok(_) => {},
                                                 Err(e) => handle_send_error!(e, logger, client_key),
                                             };
-                                            handle_client_disconnect(client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
                                         }
 
                                         //> Check if the target is ready
@@ -1148,7 +1210,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                                 Ok(_) => {},
                                                 Err(e) => handle_send_error!(e, logger, client_key),
                                             };
-                                            handle_client_disconnect(client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
                                         }
 
                                         //> Check if the handler to response exist in target (this also will handler the case that the target isn't initialized)
@@ -1167,8 +1230,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                                         Ok(_) => {},
                                                         Err(e) => handle_send_error!(e, logger, client_key),
                                                     };
-                                                    handle_client_disconnect(client_key);
-                                                    return;
+                                                    handle_client_disconnect(&client_key);
+                                                    break;
                                                 };
                                             }
                                         }
@@ -1198,8 +1261,8 @@ fn handle_connection(stream: &mut TcpStream) {
                                 Ok(_) => {},
                                 Err(e) => handle_send_error!(e, logger, client_key),
                             };
-                            handle_client_disconnect(client_key);
-                            return;
+                            handle_client_disconnect(&client_key);
+                            break;
                         },
                     }
                 },
@@ -1207,7 +1270,7 @@ fn handle_connection(stream: &mut TcpStream) {
         }
     }
 
-    handle_client_disconnect(client_key);
+    handle_client_disconnect(&client_key);
 
     // -> Change client sync status to not sync
     //if let Some(cli) = client {

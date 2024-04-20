@@ -20,7 +20,6 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
-use common::enhanced_buffer::utilities::CommandError;
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
@@ -50,6 +49,7 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::socket_client::client_logger::log_handler::set_client_log_level;
 pub use crate::socket_client::response_watcher::WatcherError;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
+pub use common::enhanced_buffer::utilities::CommandError;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
 pub use common::enhanced_buffer::utilities::CommandType;
 pub use common::structs::available_commands::{HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier};
@@ -272,6 +272,9 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         Ok(c) => c,
         Err(e) => match e {
             CommandError::InvalidCommand(e) => return Err(ClientError::InvalidCommand(e)),
+            CommandError::DeserializationError(e) => return Err(ClientError::InvalidCommand(e.to_string())),
+            CommandError::InvalidResponse(e) => unreachable!("Unexpecte Error: {:?}", e),
+            CommandError::NotAJsonObject => unimplemented!("Unexpecte Error: Not a json object!"),
         },
     };
 
