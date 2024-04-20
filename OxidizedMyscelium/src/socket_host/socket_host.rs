@@ -42,6 +42,7 @@ use chrono::Duration;
 use crate::HOST_IS_RUNNING;
 use std::sync::atomic::Ordering;
 
+use super::functions::sync_analiser::sync_verifier;
 use super::host_logger;
 use super::host_logger::log_handler::Logger;
 use crate::HOST_LOG_LEVEL;
@@ -449,7 +450,10 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 }
 
 pub fn handle_client_disconnect(client_key: &String) {
-    change_client_node_status_and_stream(client_key.clone(), NodeStatus::Offline)
+    change_client_node_status_and_stream(client_key.clone(), NodeStatus::Offline);
+
+    // > Verify the nodes that needs to be notified of this update (restrictivety without cause waves of unecessary updates)
+    sync_verifier();
 }
 
 // > Socket main structure:

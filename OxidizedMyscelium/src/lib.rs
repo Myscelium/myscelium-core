@@ -48,7 +48,6 @@ pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::socket_client::client_logger::log_handler::set_client_log_level;
 pub use crate::socket_client::response_watcher::WatcherError;
-use crate::socket_host::sync_analiser::sync_verifier;
 pub use common::client_network_controller::availability_controller::AllowedNetWorkController;
 pub use common::enhanced_buffer::utilities::CommandError;
 pub use common::enhanced_buffer::utilities::CommandInstructions;
@@ -754,16 +753,6 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
 
         initialize_host(address, client_id);
         println!("Socket host exited successfully!");
-    });
-
-    thread::spawn(|| loop {
-        if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
-            println!("\nreceived Ctrl+C!\n");
-            break;
-        }
-
-        sync_verifier();
-        thread::sleep(Duration::from_secs(1));
     });
 
     loop {

@@ -9,6 +9,7 @@ use crate::common::structs::available_commands::{CommandPatterns, Node};
 use crate::common::structs::results_structs::ResultType;
 use crate::handle_manager_client_error;
 use crate::socket_client::transposer::ProcessError;
+use crate::socket_host::functions::sync_analiser::sync_verifier;
 use crate::socket_host::host_logger::log_handler::Logger;
 use crate::socket_host::sync_controller::controller::Clients;
 use crate::socket_host::transposer_functions::helpers::cast_new_client;
@@ -227,67 +228,8 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 true,
             );
 
-            // responses.push();
-
-            // Change the other nodes status to not sync
-            // {
-            //     let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
-            //     actual_patterns.change_nodes_status_except_node_with_key(client_key, NodeStatus::NotSyncYet)
-            // }
-
-            // // -> Send the updated info for all the clients
-            // for client in clients {
-            //     //> See if client has some alive signal in the last 30s:
-
-            //     // Split into seconds and nanoseconds
-            //     let seconds = client.last_contact.trunc() as i64;
-            //     let nanoseconds = (client.last_contact.fract() * 1e9).round() as u32; // Or *1_000_000_000.0
-
-            //     // Convert to DateTime<Utc>
-            //     let last_contact = Utc.timestamp_opt(seconds, nanoseconds).unwrap();
-
-            //     let current_time = Utc::now();
-            //     if current_time - last_contact > Duration::seconds(30) {
-            //         continue;
-            //     }
-
-            //     //> Redirect new commands to client if changed:
-
-            //     let mut nodes: Vec<Node> = Vec::new();
-
-            //     // TODO >>> Add a mechanism to see what handlers the client will ahve permission to activate
-            //     //* Any mechanism that will see the client permissions to each command may be placed here
-
-            //     // > Schedule a redirect to the other clients
-            //     let client_key_to_redirect: String = client.client_key.clone();
-
-            //     {
-            //         let actual_patterns = HOST_COMMAND_PATTERNS.lock();
-            //         // TODO >>> Change to get all nodes except for node x
-            //         nodes = actual_patterns.get_all_nodes_except_node_with_key(&client_key_to_redirect);
-            //     }
-
-            //     let mut filtered_commands: HashMap<String, Value> = HashMap::new();
-            //     filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
-            //     let new_command_instructions = CommandInstructions::new(
-            //         CommandMode::Response,
-            //         CommandType::DirectFunction,
-            //         CommandTarget::ClientKey(client_key_to_redirect),
-            //         CommandStatus::Success,
-            //         CommandOrigin::Host,
-            //         "update_available_host_commands".to_string(),
-            //         filtered_commands,
-            //         "".to_string(),
-            //         Some(ResponseType::DirectFunction),
-            //         Some(ResponseTarget::Host),
-            //         None, // Not required in this case
-            //         true,
-            //     );
-
-            //     responses.push(ProcessResult::CommandInstructions(new_command_instructions));
-
-            //     return ProcessResult::List(responses);
-            // }
+            // > Verify the nodes that needs to be notified of this update in this client node (restrictivety without cause waves of unecessary updates)
+            sync_verifier();
 
             return ProcessResult::CommandInstructions(new_command_instructions);
         },
