@@ -52,7 +52,6 @@ use crate::common::structs::available_commands::CommandPatterns;
 use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
 
 use crate::CLIENTS_SYNC_CONTROLLER;
-
 use crate::HOST_COMMAND_PATTERNS;
 
 lazy_static! {
@@ -346,7 +345,6 @@ pub fn initialize_host_buffer(buffer_location: String) {
     initialize_buffer_history(&buffer_location);
 
     enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone());
-
     enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone());
 
     logger.info(format!("All buffer initialized successfully!"));
@@ -401,7 +399,6 @@ pub fn initialize_host(address: String, client_key: String) {
         }
 
         // No need to wait for all threads here. The main loop should be able to immediately proceed.
-        // thread::sleep(Duration::from_secs(1));  // Consider removing this sleep.
     }
 }
 
@@ -517,14 +514,7 @@ fn handle_special_functions(client_key: String, function: String) -> Command {
 /// # Returns
 /// - A `Command` object representing the response for the common command.
 fn handle_common_function(command: &Command) -> Command {
-    // let actual_client_id = CLIENT_ID.lock().unwrap();
-
-    // let mut command_map = HashMap::new();
-    // command_map.insert("function".to_string(), Value::String("C210".to_string()));
-
-    // let response_command = Command::new(command.client_key.clone(), "itisaspecialcase".to_string(), 11, command_map);
-
-    // >----------
+    // >--------------------------------------------------------------------------------------------------------------
     // > Schedule to process
 
     let json_command = serde_json::to_string(&command.command).unwrap();
@@ -539,24 +529,10 @@ fn handle_common_function(command: &Command) -> Command {
 
     enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
 
-    // >----------
+    // >--------------------------------------------------------------------------------------------------------------
     // > Send receive conf
 
-    // let mut command_map = HashMap::new();
-    // command_map.insert("command_type".to_string(), Value::String("special_function".to_string()));
-    // command_map.insert("function".to_string(), Value::String("C210".to_string()));
-
-    // TODO >>> Change the CommandInStructions case to use the new method!
-
     let kwargs: HashMap<String, Value> = HashMap::new();
-
-    // command_map.insert("mode".to_string(), Value::String("function".to_string()));
-    // command_map.insert("command_type".to_string(), Value::String("special_function".to_string()));
-    // command_map.insert("target".to_string(), Value::String("origin".to_string()));
-    // command_map.insert("status".to_string(), Value::String("success".to_string()));
-    // command_map.insert("actf".to_string(), Value::String("C210".to_string()));
-    // command_map.insert("kwargs".to_string(), serde_json::to_value(&kwargs).unwrap());
-    // command_map.insert("message".to_string(), Value::String("".to_string()));
 
     let command_instructions: CommandInstructions = CommandInstructions::new(
         CommandMode::Function,
@@ -663,6 +639,54 @@ fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
     Ok(())
 }
 
+/// This function updates the node sync status attempt
+/// > Important! - This function require globals:
+/// - HOST_COMMAND_PATTERNS
+/// - CLIENT_SYNC_CONTROLLER
+/// Make sure to have them free before try to call this function to avoid blockages
+fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
+    let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+
+    let client = controller.get_client(client_key).unwrap();
+
+    {
+        let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+
+        let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
+
+        // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
+        if client.get_sync_attempts() >= (client.get_max_sync_attempts() / 2) {
+            ref_node.change_node_status(NodeStatus::NotSyncYet)
+        }
+
+        // -> If is the first time that the node is connecting, change it's status to not sync, this is important
+        // -> to dependent clies know that it is in sync process, and since it will only happen the first time,
+        // -> it will not trigger massive loops of sync because it don't change other nodes status to NotSyncYet, only this
+        // -> node iteself and only in the first time that it is tring to sync, this will help other nodes awaits,
+        // -> know that the node is initializing and this will make them wait to give an exception or send someting to this one.
+
+        if ref_node.get_node_status() == NodeStatus::NotImplemented || ref_node.get_node_status() == NodeStatus::Offline {
+            ref_node.change_node_status(NodeStatus::NotSyncYet)
+        }
+    }
+
+    // > This function auto handles the error of max attempt reached too
+    if let Err(e) = controller.update_client_sync_attempt(client_key) {
+        handle_client_controller_error!(e.clone(), client_key, logger); // This only logs the error
+        match e {
+            ClientStatusPoolError::ClientAlreadyExist(_) => unreachable!(),
+            ClientStatusPoolError::ClientDoesNotExist(_) => unreachable!(),
+            ClientStatusPoolError::MaxSyncAttemptsReached(_) => {
+                handle_client_disconnect(&client_key); // Disconnect the client, what should trigger sync in all dependent ones
+                return true;
+            },
+            ClientStatusPoolError::ClientAlreadySync(_) => change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online),
+        }
+    }
+
+    return false;
+}
+
 /// Handles an individual connection to the server.
 ///
 /// This function is responsible for managing the lifecycle of a client connection to the server.
@@ -731,17 +755,13 @@ fn handle_connection(stream: &mut TcpStream) {
         };
 
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
-
-        // println!("Command received: {:?}", command);
         logger.debug(format!("Command received:\n{:?}\n", command));
-
         let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
 
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
 
             let response: Command = create_error_command_response!(command.client_key, command.parity_id, "Your client isn't registered in the whitelist!");
-
             logger.exception(format!("WARNING: Client isn't registered, sending back: {:?}", response));
 
             match send(stream, response) {
@@ -790,63 +810,9 @@ fn handle_connection(stream: &mut TcpStream) {
 
         update_last_contact(command.client_key.clone());
 
-        // Helper function to update client sync attempt
-        fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
-            let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-
-            let client = controller.get_client(client_key).unwrap();
-
-            {
-                let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
-
-                let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
-
-                // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
-                if client.get_sync_attempts() >= (client.get_max_sync_attempts() / 2) {
-                    ref_node.change_node_status(NodeStatus::NotSyncYet)
-                }
-
-                // -> If is the first time that the node is connecting, change it's status to not sync, this is important
-                // -> to dependent clies know that it is in sync process, and since it will only happen the first time,
-                // -> it will not trigger massive loops of sync because it don't change other nodes status to NotSyncYet, only this
-                // -> node iteself and only in the first time that it is tring to sync, this will help other nodes awaits,
-                // -> know that the node is initializing and this will make them wait to give an exception or send someting to this one.
-                if ref_node.get_node_status() == NodeStatus::NotImplemented || ref_node.get_node_status() == NodeStatus::Offline {
-                    ref_node.change_node_status(NodeStatus::NotSyncYet)
-                }
-            }
-
-            // > This function auto handles the error of max attempt reached too
-            if let Err(e) = controller.update_client_sync_attempt(client_key) {
-                handle_client_controller_error!(e.clone(), client_key, logger); // This only logs the error
-                match e {
-                    ClientStatusPoolError::ClientAlreadyExist(_) => unreachable!(),
-                    ClientStatusPoolError::ClientDoesNotExist(_) => unreachable!(),
-                    ClientStatusPoolError::MaxSyncAttemptsReached(_) => {
-                        handle_client_disconnect(&client_key); // Disconnect the client, what should trigger sync in all dependent ones
-                        return true;
-                    },
-                    ClientStatusPoolError::ClientAlreadySync(_) => change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online),
-                }
-            }
-
-            return false;
-        }
-
-        // logger.debug(format!("Failed to read from the stream: {:?}", e));
-        // eprintln!("Failed to read from the stream: {:?}", e);
-        // //> Handle the error, e.g., by returning from the function or taking corrective action
-        // handle_client_disconnect(client_key);
-        // return; //> or handle differently
-
-        // TODO >>> Implement the mechanism that changes the client state or sutdown if it refuses to sync
-
         // > Check if the max sync was reached
         // > if is first sync and yes, diconnect client
         // > if is not first sync and yes,change client status to not sync
-
-        // TODO >>> Create a mechanism that compares the client current network with the av network, and change status to not sync if not sync
-
         // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
         // -> Refactored SYNC CONTROLLER:
@@ -863,17 +829,11 @@ fn handle_connection(stream: &mut TcpStream) {
                     if update_client_sync_attempt(&command.client_key, &logger) {
                         break;
                     };
-                    // TODO >>> Remove this change_client_node_status_and_stream, replace it with the new system
-                    //> The new system should only stream that the node connect here and is trying to sync so this new
+                    //> The new system only stream that the node connect here and is trying to sync so this new
                     //> node is with NotSyncYet status.
-                    //> Then wen this node connects we should change the status to Sync. If node isn't able to sync, we should
+                    //> Then wen this node connects we change the status to Sync. If node isn't able to sync, we
                     //> change it to offline and disconnect it. Also another thing that we can do is impl a new Idle status that can be
                     //> represented as a pulsating orange color.
-
-                    // TODO >>> Add a mechanism to stream important status o dependent nodes, but also allow silent sync
-                    // TODO >>> Create a mechanism to turn the clients that isn't being able to sync in some amount of time into state NotSyncYet and only then send this status to the other ones
-                    // TODO >>> Create a mechanism that if the client continue to refuse to sync it will be disconnected or if it already was connected put into Idle or NotReachable, some new status.
-                    // change_client_node_status_and_stream(command.client_key.clone(), NodeStatus::NotSyncYet);
                 } else if let Some(last_sync) = client_last_sync {
                     logger.info(format!(
                         "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
@@ -989,8 +949,6 @@ fn handle_connection(stream: &mut TcpStream) {
                             //> Response Target Rules
 
                             //* Command Target should't be the same of the Response Target
-                            //*
-
                             //* When a Client Sends a command the scheduler verify if the handler exists in itself
                             //* Same happens for host
 
@@ -1271,9 +1229,4 @@ fn handle_connection(stream: &mut TcpStream) {
     }
 
     handle_client_disconnect(&client_key);
-
-    // -> Change client sync status to not sync
-    //if let Some(cli) = client {
-    //    let _ = cli.change_sync_to(false);
-    //}
 }
