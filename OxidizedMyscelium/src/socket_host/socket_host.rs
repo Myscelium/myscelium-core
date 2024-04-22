@@ -756,7 +756,6 @@ fn handle_connection(stream: &mut TcpStream) {
 
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
         logger.debug(format!("Command received:\n{:?}\n", command));
-        let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
 
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
@@ -870,18 +869,25 @@ fn handle_connection(stream: &mut TcpStream) {
                 .map(|s| s.to_string())
                 .collect();
 
+            fn special_fn_handling(stream: &mut TcpStream, command: &Command) {
+                let logger = acquire_logger!("Core");
+                let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
+
+                if special_functions.contains(&command.command.actf) {
+                    let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone());
+                    logger.debug(format!("Sending back: {:?}", response));
+
+                    match send(stream, response) {
+                        Ok(_) => {},
+                        Err(e) => handle_send_error!(e, logger, command.client_key),
+                    };
+                }
+            }
+
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
-                    if special_functions.contains(&command.command.actf) {
-                        let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone());
-                        logger.debug(format!("Sending back: {:?}", response));
-
-                        match send(stream, response) {
-                            Ok(_) => {},
-                            Err(e) => handle_send_error!(e, logger, command.client_key),
-                        };
-                    }
+                    special_fn_handling(stream, &command)
                 },
                 _ => {
                     // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
