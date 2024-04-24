@@ -215,7 +215,8 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                             //* Response actf is none then response will be ignored
                         }
                     } else {
-                        command_instructions.response_actf = Some("".to_string());
+                        return Err(SchedulingError::UnsuportedAction(format!("Can't send not autocollect response to {:?}, you can only send inplace responses to Origin!", k)));
+                        // command_instructions.response_actf = Some("".to_string());
                         // If !collect_response resp_actf = ""
                     }
                 },
