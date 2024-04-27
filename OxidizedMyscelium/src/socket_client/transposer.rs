@@ -42,7 +42,6 @@ use std::boxed::Box;
 type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
-
 use crate::CLIENT_CALLBACK_PATTERNS;
 
 lazy_static! {
@@ -183,20 +182,14 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
 
     logger.debug(format!("Translated command: {:?}", translated_command));
 
-    // let client_name;
-
-    // TODO >>> Veriy if the problem of random client disconnect isn't here
-
     // logger.info(format!("Command function: {} is a valid function!", activation_key));
 
     let client_key = translated_command.client_key.clone();
-
     logger.debug(format!("Client key is: {:?}", client_key));
 
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
 
     let resp: ProcessResult;
-
     logger.debug(format!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction"));
 
     if translated_command.command.command_type == "DirectFunction" {
@@ -262,42 +255,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             };
         }
 
-        // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
-        // fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
-        //     result
-        //         .downcast::<Value>()
-        //         .map(|boxed_value| *boxed_value) // Extract the Value from the Box
-        //         .map_err(|_| "Returned value is not a serde_json::Value".to_string())
-        // }
-
         // -> PROCESS CALLBACK RESPONSE:
-        // resp = match extract_json_value(response) {
-        //     Ok(value) => {
-        //         // Check if the Value is None
-        //         if value == Value::Null {
-        //             // Handle the None case
-        //             ProcessResult::Empty
-        //         } else if let Some(obj) = value.as_object() {
-        //             // Existing logic to handle the object
-        //             match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
-        //                 Ok(c) => ProcessResult::CommandInstructions(c.clone()),
-        //                 Err(_) => {
-        //                     println!("Callback returned a non-valid response!");
-        //                     return Err(ProcessError::Error("callback returned a non-valid response!".to_string()));
-        //                 },
-        //             }
-        //         } else {
-        //             println!("The value is not a JSON object!");
-        //             return Err(ProcessError::Error("The value is not a JSON object!".to_string()));
-        //         }
-        //     },
-        //     Err(e) => {
-        //         // Existing logic to handle the error
-        //         logger.exception(format!("Response isn't compatible with json, error: {:?}", e));
-        //         return Err(ProcessError::Error(format!("{:?}", e)));
-        //     },
-        // };
-
         resp = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
