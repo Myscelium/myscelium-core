@@ -252,12 +252,8 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
 // TODO >>> Remake this doc string
 fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) {
     let logger = acquire_logger!("Transposer - Process");
-
     let response: Value; // Errors are attached in the response and sent in the same way
-
     let mut client_to_send_back: String;
-
-    // TODO >>> Change from ResultType to ProcessResult
 
     match resulttype_command {
         // TODO >>> Implement change of response here
@@ -489,54 +485,10 @@ fn process(down_command: DownCommand) {
                     }
 
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-
                     return;
                 },
             };
         }
-
-        // response = match call_callback(
-        //     translated_command.command.actf.as_str(),
-        //     translated_command.command.kwargs,
-        //     callback,
-        // ) {
-        //     Ok(r) => r,
-        //     Err(e) => {
-        //         // Existing logic to handle the error
-        //         logger.exception(format!("Callback error: {:?}", e));
-        //         let result = ProcessResult::Error(format!("{:?}", e));
-        //         let client_key = down_command.client_key.clone();
-        //         if let Some(c_id) = down_command.command_id {
-        //             process_response_and_schedule(
-        //                 result,
-        //                 client_key,
-        //                 &down_command.parity_id,
-        //                 &down_command.priority,
-        //                 c_id,
-        //             );
-        //         } else {
-        //             logger.warn("Can't process a command that doesn't have command id".to_string())
-        //         }
-
-        //         enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
-        //             command_id.clone(),
-        //         );
-
-        //         return;
-        //     }
-        // };
-
-        // -> PROCESS CALLBACK RESPONSE
-
-        // Assuming `result` is the Box<dyn Any> you want to check and extract the Value from
-        // fn extract_json_value(result: Box<dyn Any>) -> Result<Value, String> {
-        //     result
-        //         .downcast::<Value>()
-        //         .map(|boxed_value| *boxed_value) // Extract the Value from the Box
-        //         .map_err(|_| "Returned value is not a serde_json::Value".to_string())
-        // }
-
-        // Attempt to convert it back to CommandInstructions
 
         // -> PROCESS CALLBACK RESPONSE:
         result = match response.downcast::<CommandInstructions>() {
@@ -563,33 +515,6 @@ fn process(down_command: DownCommand) {
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
-
-        // result = match extract_json_value(response) {
-        //     Ok(value) => {
-        //         // let value: Value = extract_pyobject(py, r);
-        //         println!("Value map extracted from callback response: {:?}", value);
-
-        //         // Check if the Value is an object and convert it to HashMap
-        //         if let Some(obj) = value.as_object() {
-        //             match CommandInstructions::from_value_map(obj.clone().into_iter().collect()) {
-        //                 Ok(c) => ProcessResult::CommandInstructions(c),
-        //                 Err(e) => {
-        //                     // TODO >>> Handle this error case
-        //                     ProcessResult::Error("callback return a non valid response!".to_string())
-        //                 },
-        //             }
-        //         } else {
-        //             // TODO >>> Handle this error case
-        //             ProcessResult::Error("The value is not a JSON object!".to_string())
-        //         }
-        //     },
-        //     Err(e) => {
-        //         // Handle the error or log it
-        //         logger.exception(format!("Python error: {:?}", e));
-        //         // You can return a default value or propagate the error further
-        //         ProcessResult::Error(format!("{:?}", e))
-        //     },
-        // };
     }
 
     logger.debug(format!("Callback call response converted to rust: {:?}", result));
