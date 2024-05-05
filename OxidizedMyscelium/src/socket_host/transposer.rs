@@ -552,7 +552,6 @@ pub fn initialize_socket_host_transposer() {
 
     // -> Filter only auto collect == true
     // schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
-
     // logger.debug(format!("Schedule to process:\n{:?}\n", schedule));
 
     logger.info(format!("Data found in schedule!"));

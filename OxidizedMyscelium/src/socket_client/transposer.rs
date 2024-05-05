@@ -385,17 +385,6 @@ pub fn initialize_socket_client_transposer() {
     }
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY"));
 
-    // let callbacks_patterns;
-
-    // {
-    //     println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS");
-    //     let callback_patt = CLIENT_CALLBACK_PATTERNS.lock();
-    //     println!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS");
-    //     callbacks_patterns = callback_patt.clone();
-    //     println!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS");
-    //     drop(callback_patt)
-    // }
-
     // Process each scheduled command
     for dow_command in schedule {
         let logger = acquire_logger!("Transposer");

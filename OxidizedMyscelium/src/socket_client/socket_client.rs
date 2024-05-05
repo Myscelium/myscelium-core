@@ -164,34 +164,6 @@ enum Response {
     None,
 }
 
-// macro_rules! create_error_command {
-//     ($client_key:expr, $parity_id:expr, $error:expr) => {{
-//         let mut command_map = HashMap::new();
-
-//         let kwargs: HashMap<String, Value> = HashMap::new();
-
-//         command_map.insert("mode".to_string(), Value::String("function".to_string()));
-//         command_map.insert("command_type".to_string(), Value::String("direct_function".to_string()));
-//         command_map.insert("target".to_string(), Value::String("origin".to_string()));
-//         command_map.insert("status".to_string(), Value::String("failure".to_string()));
-//         command_map.insert("actf".to_string(), Value::String("error_handler".to_string()));
-//         command_map.insert("kwargs".to_string(), serde_json::to_value(&kwargs).unwrap());
-//         command_map.insert("message".to_string(), Value::String($error.to_string()));
-
-//         // TODO >>> Change this for the descriptive form!
-
-//         let command_instructions: CommandInstructions = CommandInstructions::from_value_map(command_map).unwrap();
-
-//         let command = Command {
-//             client_key: $client_key.to_string(),
-//             parity_id: $parity_id.to_string(),
-//             priority: 11,
-//             command: command_instructions,
-//         };
-//         command
-//     }};
-// }
-
 macro_rules! create_special_command {
     ($client_key:expr, $command_mode:expr, $special_command:expr) => {{
         let command_instructions = CommandInstructions::new(
@@ -408,29 +380,6 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
         },
     };
     println!("Received binary data");
-
-    // let command: Command = match read_json_from_stream(&mut stream) {
-    //     Ok(command) => {
-    //         // Process the command
-    //         println!("Received command: {:?}", command);
-    //         command
-    //     },
-    //     Err(e) => {
-    //         if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-    //             // Handle IO-specific errors
-    //             eprintln!("IO error occurred: {}", io_err);
-    //             return Response::None;
-    //         } else if let Some(json_err) = e.downcast_ref::<serde_json::Error>() {
-    //             // Handle JSON-specific errors
-    //             eprintln!("JSON parsing error: {}", json_err);
-    //             return Response::None;
-    //         } else {
-    //             // Handle other errors
-    //             eprintln!("An error occurred: {}", e);
-    //             return Response::None;
-    //         }
-    //     },
-    // };
 
     let command: Command = serde_json::from_str(&buffer_string).unwrap();
 

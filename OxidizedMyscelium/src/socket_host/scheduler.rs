@@ -109,25 +109,6 @@ pub fn send_network_available_commands(client_key: String) {
         filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
     }
 
-    // // -> get the client by the client key
-    // let client = match Client::get_by_key(&client_key) {
-    //     Ok(c) => c,
-    //     Err(e) => match e {
-    //         ClientError::ClientDoesNotExist(_) => {
-    //             // return ResultType::Error(format!("unknow client_key: {:?}", client_key));
-    //             return;
-    //         },
-    //         _ => {
-    //             // return ResultType::Error(format!("Get a error {:?}, obtaining client: {:?}", e, client_key));
-    //             return;
-    //         },
-    //     },
-    // };
-
-    // let client_name: String = client.ge();
-
-    // logger.info(format!("Successfully actualize the host available commands!"));
-
     //> Sync mechanism don't uses the response_actf dinamic system cause it is splicity configured and has diferent cases in the sync flow
     //> for example in the first sync the `update_available_host_commands` response is: `update_client_commands_ref` the consectuvie times
     //> is

@@ -30,18 +30,6 @@ pub fn set_host_log_level(log_level: String) {
     }
 }
 
-// pub fn initialize_host_logs_database_dir(path: String) {
-//     old_register_manager::logs_register_initialize_table(path);
-// }
-
-// pub fn set_host_logs_handler_callback(callback_pattern: HashMap<String, (Py<PyFunction>, Value)>) {
-//     {
-//         let mut heart_beat_callback = LOGS_HANDLER_CALLBACK.lock().unwrap();
-//         *heart_beat_callback = callback_pattern;
-//     }
-//     CALLBACK_SET.store(true, Ordering::Relaxed);
-// }
-
 // This function takes log parameters and writes them to a file in a structured JSON format.
 fn log_event(node_name: String, log_time: f64, log_name: String, log_level: String, log_msg: String) {
     // Serialize the log event into a JSON string.
