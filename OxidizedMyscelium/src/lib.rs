@@ -20,6 +20,7 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+use common::enhanced_buffer::utilities::CommandOrigin;
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
@@ -266,8 +267,21 @@ pub fn client_send_hashmap(command: HashMap<String, String>, priority: u8) -> Re
         return Err(ClientError::ClientIsNotRunning);
     }
 
+    // > Add the origin to the command: (this points to the self uid)
+    let mut command = command;
+    let mut client_uid: String = "".to_string();
+    {
+        let node = CLIENT_NODE_CONFIGS.lock();
+        if let Some(key) = &node.key {
+            client_uid = key.clone()
+        }
+    }
+
+    command.insert("origin".to_string(), format!("ClientKey({})", client_uid));
+
     // TODO >>> Enhace This Error Handlings, Maybe Add a Logger Here
 
+    // -> Downcast the command:
     let command_instructions = match CommandInstructions::from_string_hashmap(command) {
         Ok(c) => c,
         Err(e) => match e {

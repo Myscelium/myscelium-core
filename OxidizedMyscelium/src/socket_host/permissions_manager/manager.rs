@@ -33,28 +33,6 @@ pub fn set_workers_num(n_workers: u32) {
     *default_num_of_workers = n_workers;
 }
 
-// > Permission Rules
-
-// allowed_callbacks: Vec<String>,
-// allow_create_new_clients: bool,
-// allow_create_sub_channels: bool,
-
-// max_sub_channels_allowed: bool,
-
-// allow_redirect: bool,
-// allowed_to_redirect_are_blacklist: bool,
-// allow_to_redirect: Vec<Client>,
-
-// allow_file_transfer: bool,
-// allow_transfer_to_are_blacklist: bool,
-// allow_transfer_to: Vec<Client>,
-
-// > Permission Groups
-// group_id: u32,
-// group_name: String,
-// clients_allowed: Vec<Client>,
-// permissions: Vec<PermissionRule>,
-
 pub fn groups_mananger_initialize_table(buffer_path: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);
@@ -95,54 +73,6 @@ pub fn groups_mananger_initialize_table(buffer_path: String) {
         };
     });
 }
-
-// #[derive(Debug, Clone)]
-// struct PermissionRule {
-//     allowed_callbacks: Vec<String>,
-//     allow_create_new_clients: bool,
-//     allow_create_sub_channels: bool,
-
-//     max_sub_channels_allowed: bool,
-
-//     allow_redirect: bool,
-//     allowed_to_redirect_are_blacklist: bool,
-//     allow_to_redirect: Vec<Client>,
-
-//     allow_file_transfer: bool,
-//     allow_transfer_to_are_blacklist: bool,
-//     allow_transfer_to: Vec<Client>,
-// }
-
-// impl PermissionRule {
-//     fn new(
-//         allowed_callbacks: Vec<String>,
-//         allow_create_new_clients: bool,
-//         allow_create_sub_channels: bool,
-//         max_sub_channels_allowed: bool,
-//         allow_redirect: bool,
-//         allowed_to_redirect_are_blacklist: bool,
-//         allow_to_redirect: Vec<Client>,
-//         allow_file_transfer: bool,
-//         allow_transfer_to_are_blacklist: bool,
-//         allow_transfer_to: Vec<Client>,
-//     ) -> Self {
-//         Self {
-//             allowed_callbacks,
-//             allow_create_new_clients,
-//             allow_create_sub_channels,
-
-//             max_sub_channels_allowed,
-
-//             allow_redirect,
-//             allowed_to_redirect_are_blacklist,
-//             allow_to_redirect,
-
-//             allow_file_transfer,
-//             allow_transfer_to_are_blacklist,
-//             allow_transfer_to,
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone)]
 pub enum GroupError {

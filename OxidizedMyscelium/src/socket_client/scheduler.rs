@@ -31,43 +31,6 @@ macro_rules! acquire_logger {
     }};
 }
 
-/// Sets the global client ID to the specified value.
-///
-/// The client ID is a unique identifier that represents the client in the communication process.
-/// This function updates the global `CLIENT_ID` variable to the provided value.
-///
-/// # Arguments
-/// - `client_uid`: The new client ID to be set.
-//pub fn set_client_id(client_uid: String) {
-//    println!("Setting client_id to: {:?}", client_uid.clone());
-//
-//    // let client_key_storage = &CLIENT_ID;
-//    // smart_lock(client_key_storage, |key: &mut String| {
-//    //     *key = client_uid;
-//    // });
-//
-//    println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID");
-//    {
-//        let mut key = CLIENT_ID.lock(); // TODO > This is using parking lot, see if need to change to smart-lock
-//        println!("[CLIENT][GLOBAL][Lock] - CLIENT_ID");
-//        *key = client_uid
-//    }
-//    println!("[CLIENT][GLOBAL][Release] -  CLIENT_ID");
-//}
-
-/// Requests the available commands that are registered on the host.
-///
-/// This function prepares a command request for the host to retrieve the list of
-/// registered commands. The constructed request is then scheduled for processing.
-// pub fn request_host_available_commands() {
-//     let mut request_host_commands: HashMap<String, String> = HashMap::new();
-//     request_host_commands.insert("function".to_string(), "get_registered_commands".to_string());
-//     request_host_commands.insert("command_type".to_string(), "function".to_string());
-//     request_host_commands.insert("kwargs".to_string(), "{}".to_string());
-
-//     schedule(request_host_commands, 11)
-// }
-
 pub enum SchedulingError {
     ClientIsntFullyInitialized,
     CantReadStates,
