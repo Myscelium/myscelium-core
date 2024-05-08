@@ -67,12 +67,9 @@ pub use crate::socket_host::transposer_functions::handle_direct_function::Proces
 pub use socket_host::socket_host::set_heartbeat_callback;
 
 lazy_static! {
-
     // Crate
-
     pub static ref CLIENT_VERSION: NodeVersion = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
     pub static ref HOST_VERSION: NodeVersion = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
-
 
     // CLIENT
     pub static ref CLIENT_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
