@@ -1,7 +1,7 @@
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget};
 use crate::common::functions::callbacks::call_callback;
 use crate::common::structs::available_commands::NetworkMap;
 use crate::socket_client::functions::direct_functions::handle_direct_function;
@@ -187,6 +187,8 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     let client_key = translated_command.client_key.clone();
     logger.debug(format!("Client key is: {:?}", client_key));
 
+    let starter_command_origin = translated_command.command.origin.clone();
+
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
 
     let resp: ProcessResult;
@@ -261,7 +263,8 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
                 logger.debug(format!("Successfully downcasted!"));
                 // You can now use instructions_box as Box<CommandInstructions>
-                let instruction = *instructions_box;
+                let mut instruction = *instructions_box;
+
                 ProcessResult::CommandInstructions(instruction)
             },
             Err(e) => {
