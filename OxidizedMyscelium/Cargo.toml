@@ -12,10 +12,11 @@ opt-level = 3
 rustflags = ["-A", "warnings"]
 
 [dependencies]
+thiserror = "1.0.60"
 oxidized_myscelium_macros = { path = "../oxidized_myscelium_macros" }
 proc-macro2 = "1.0"
 indexmap = { version = "2.2.3", features = ["serde"] }
-syn = "1.0"
+syn = "2.0.61"
 quote = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -24,4 +25,4 @@ lazy_static = "1.4.0"
 rand = "0.8.5"
 chrono = "0.4"
 ctrlc = "3.1.9"
-parking_lot = { version = "0.11", features = ["deadlock_detection"] }
+parking_lot = { version = "0.12.2", features = ["deadlock_detection"] }
