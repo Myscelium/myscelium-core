@@ -86,6 +86,10 @@ pub struct NodesTaskManager {
 
 //Manage Nodes
 impl NodesTaskManager {
+    pub fn new_empty() -> Self {
+        Self { tasks: HashMap::new() }
+    }
+
     pub fn add_node(&mut self, new_node_key: String) -> Result<(), TaskManagerError> {
         if self.tasks.contains_key(&new_node_key) {
             return Err(TaskManagerError::NodeAlreadyExists(new_node_key));

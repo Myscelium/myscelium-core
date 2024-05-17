@@ -63,6 +63,7 @@ pub use crate::common::client_manager::manager::check_if_client_key_exists;
 pub use crate::common::client_manager::manager::registry_new_client;
 pub use crate::common::client_manager::manager::Client;
 pub use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
+use crate::socket_host::task_manager::manager::NodesTaskManager;
 pub use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 pub use socket_host::socket_host::set_heartbeat_callback;
 
@@ -92,6 +93,7 @@ lazy_static! {
     pub static ref HOST_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
+    pub static ref HOST_TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;
