@@ -40,13 +40,16 @@ extern crate chrono;
 use chrono::{DateTime, TimeZone, Utc};
 
 fn ts_to_float(ts: DateTime<Utc>) -> f64 {
-    return ts.timestamp() as f64 + (ts.timestamp_subsec_nanos() as f64) / 1_000_000_000.0;
+    return ts.timestamp() as f64 + (ts.timestamp_subsec_nanos() as f64) / 1e9f64;
 }
+
+// 1e9    -> 1_000_000_000      cause 1x10^9    == 1_000_000_000
+// 1e9f64 -> 1_000_000_000.0    cause 1.0x10^9  == 1_000_000_000.0
 
 fn float_to_ts(f: f64) -> DateTime<Utc> {
     // Convert f64 back to DateTime<Utc>
     let seconds = f.trunc() as i64;
-    let nanos = ((f.fract() * 1_000_000_000.0).round() as u32) % 1_000_000_000;
+    let nanos = ((f.fract() * 1e9f64).round() as u32) % 1e9 as u32;
     let reconstructed_time = Utc.timestamp(seconds, nanos);
     return reconstructed_time;
 }
@@ -129,3 +132,17 @@ impl NodesTaskManager {
         Ok(())
     }
 }
+
+//* The idea:
+//* - Use this system to registry a task to some node when receive a data to redirect, and registry
+//*   a task to self host when received one task to self host.
+//*
+//* - When some node send back a response to redirect to origin, use the task ref to locate origin
+//*   based in the command that generated this task that will be able to be finded using the client id
+//*   and the parity id of this task.
+//*
+//* -
+//*
+//*
+//*
+//*
