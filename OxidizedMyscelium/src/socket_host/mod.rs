@@ -1,4 +1,5 @@
 mod channel_manager;
+pub mod command_handler;
 pub mod functions;
 pub mod host_logger;
 pub mod permissions_manager;
