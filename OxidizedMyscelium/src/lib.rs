@@ -93,7 +93,7 @@ lazy_static! {
     pub static ref HOST_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
-    pub static ref HOST_TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
+    pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;
@@ -195,7 +195,6 @@ pub fn is_target_ready(node_key: String) -> bool {
     } else {
         return false;
     }
-
     return true;
 }
 
