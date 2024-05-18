@@ -401,41 +401,41 @@ pub fn host_commands_processing(command: &Command) -> Command {
         }
 
         //> If resp target isn't origin, nor host then:
-        if !vec!["origin", "host"].contains(&resp_target.as_str()) {
-            let available_targets_map = command_patterns.get_node_keys().unwrap();
-            let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+        if vec!["origin", "host"].contains(&resp_target.as_str()) {
+            response = handle_common_function(&command);
+            return response;
+        }
 
-            //> CHECK IF THE TARGET EXISTS
-            if !available_targets_keys.contains(&resp_target) {
-                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
-                logger.debug(format!("Sending back: {:?}", &command));
-                let client_key = command.client_key.clone();
-                return command;
-            }
+        let available_targets_map = command_patterns.get_node_keys().unwrap();
+        let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
 
-            //> Check if the target is ready
-            // TODO >>> Possible waith to target become ready
-            if !command_patterns.target_is_ready(&resp_target).unwrap() {
-                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
-                logger.debug(format!("Sending back: {:?}", &command));
-                let client_key = command.client_key.clone();
-                return command;
-            }
+        //> CHECK IF THE TARGET EXISTS
+        if !available_targets_keys.contains(&resp_target) {
+            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
+            logger.debug(format!("Sending back: {:?}", &command));
+            return command;
+        }
 
-            //> Check if the handler to response exist in target (this also will handler the case that the target isn't initialized)
-            if let Some(response_actf) = command.command.response_actf.clone() {
-                if command.command.collect_response && response_actf != "" {
-                    // Only verify if response actf exists if collect response == true
-                    if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                        let command: Command = create_error_command_response!(
-                            command.client_key.clone(),
-                            command.parity_id,
-                            format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, resp_target)
-                        );
-                        logger.debug(format!("Sending back: {:?}", &command));
-                        let client_key = command.client_key.clone();
-                        return command;
-                    };
+        //> Check if the target is ready
+        // TODO >>> Possible wait to target become ready
+        if !command_patterns.target_is_ready(&resp_target).unwrap() {
+            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
+            logger.debug(format!("Sending back: {:?}", &command));
+            return command;
+        }
+
+        //> Check if the handler to response exist in target (this also will handle the case that the target isn't initialized)
+        if let Some(response_actf) = command.command.response_actf.clone() {
+            if command.command.collect_response && response_actf != "" {
+                // Only verify if response actf exists if collect response == true
+                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
+                    let command: Command = create_error_command_response!(
+                        command.client_key.clone(),
+                        command.parity_id,
+                        format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, resp_target)
+                    );
+                    logger.debug(format!("Sending back: {:?}", &command));
+                    return command;
                 }
             }
         }
