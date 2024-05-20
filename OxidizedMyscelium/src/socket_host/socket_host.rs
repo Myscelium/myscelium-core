@@ -836,13 +836,34 @@ fn handle_connection(stream: &mut TcpStream) {
                 _ => {},
             }
 
-            // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
+            /// Updates the tasks in the task table based in the
+            /// incomming commands and the outcome tasks.
+            fn update_task_table(command: &Command, incoming: bool) {
+                match command.command.mode {
+                    CommandMode::Function => {
+                        if incoming {
+                            // TODO >>> Add the command to the tasks
+                        }
+                    },
+                    CommandMode::Response => {
+                        if !incoming {
+                            // TODO >>> Verify isn't just a confirmation
+                            // TODO >>> Verify if the response matches some command
+                            // TODO >>> Remove the command of the taskss
+                        }
+                    },
+                }
+            }
 
+            update_task_table(&command, true);
+
+            // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
             match &command.command.target {
                 //->  Redirect cases:
                 CommandTarget::ClientKey(target) => {
                     // WARNING: This locks command_patterns!
                     let res: Command = redirect_commands_processing(&command, target);
+                    update_task_table(&res, false);
                     match send(stream, res) {
                         Ok(_) => {},
                         Err(e) => handle_send_error!(e, logger, client_key),
@@ -854,6 +875,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                     // WARNING: This locks command_patterns!
                     let res: Command = host_commands_processing(&command);
+                    update_task_table(&res, false);
                     logger.debug(format!("Sending back: {:?}", res));
                     match send(stream, res) {
                         Ok(_) => {},
@@ -862,14 +884,15 @@ fn handle_connection(stream: &mut TcpStream) {
                 },
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
-                    let command: Command = create_error_command_response!(
+                    let res: Command = create_error_command_response!(
                         command.client_key.clone(),
                         command.parity_id,
                         format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
                     );
-                    logger.debug(format!("Sending back: {:?}", &command));
-                    let client_key = command.client_key.clone();
-                    match send(stream, command) {
+                    update_task_table(&res, false);
+                    logger.debug(format!("Sending back: {:?}", &res));
+                    let client_key = res.client_key.clone();
+                    match send(stream, res) {
                         Ok(_) => {},
                         Err(e) => handle_send_error!(e, logger, client_key),
                     };

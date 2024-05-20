@@ -358,7 +358,6 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
 ///
 fn process(down_command: DownCommand) {
     let logger = acquire_logger!("Transposer - Process");
-
     logger.debug(format!("Initializing processing!"));
 
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
@@ -424,7 +423,6 @@ fn process(down_command: DownCommand) {
         }
 
         // -> EXTRACT CALLBACK FUNCTION
-
         let command_instructions = translated_command.command.clone();
         let kwargs_to_call: HashMap<String, Value>;
         let mut map = HashMap::new();
