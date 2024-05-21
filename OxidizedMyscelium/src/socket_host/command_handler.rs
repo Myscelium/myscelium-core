@@ -354,7 +354,6 @@ pub fn host_commands_processing(command: &Command) -> Command {
     let response: Command;
 
     //> HANDLE COMMANDS WITH RESPONSE:
-
     if !command_is_not_registry {
         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
         let response = match get_response(command.clone()) {

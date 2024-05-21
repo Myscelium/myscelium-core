@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use syn::Index;
 
 use crate::socket_host::command_handler::{host_commands_processing, redirect_commands_processing};
+use crate::socket_host::task_manager::manager::NodeTask;
+use crate::TASKS_MANAGER;
 use lazy_static::lazy_static;
 use serde_json::json;
 
@@ -597,7 +599,6 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
 
     {
         let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
-
         let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
 
         // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
@@ -825,7 +826,68 @@ fn handle_connection(stream: &mut TcpStream) {
                 }
             }
 
+            /// Updates the tasks in the task table based in the
+            /// incomming commands and the outcome tasks.
+            fn update_task_table(command: &Command, incoming: bool) {
+                let mut tasks_manager = TASKS_MANAGER.lock();
+
+                // Bypass (itisaspecialcase) that means bypass all internal tasks
+                if command.parity_id == "itisaspecialcase" {
+                    return;
+                }
+
+                // Bypass confirmation functions, now it only will delete tasks when the response itself is sended back to the receiver
+                if command.command.actf == "C210" {
+                    match command.command.mode {
+                        CommandMode::Response => {
+                            // let mut task = tasks_manager.get_node_task_by_id(&command.client_key, &command.parity_id.clone()).unwrap();
+                            // task.received_conf(); // this store that the function was received by the target
+                            return;
+                        },
+                        _ => {
+                            // TODO >>> We can see about add the remove task here when the confirmation is confirmating the receive of the Response
+                            return;
+                        },
+                    }
+                }
+
+                match command.command.mode {
+                    CommandMode::Function => {
+                        if incoming {
+                            //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
+                            if command.client_key != command.command.target.to_string() {
+                                //> Case were we are receiving the command to redirect to a target
+                                //> We pass the origin here just in case it isn't in the command instruction so then we can easily trace it
+                                let node_task: NodeTask = NodeTask::new(command.client_key.clone(), command.parity_id.clone(), command.command.clone());
+                                tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
+                            }
+                            //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
+                            if command.client_key == command.command.target.to_string() {
+                                //> Handle the cases were we are sending some comand to a target
+                                let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
+                                task.sended();
+                            }
+                        }
+                    },
+                    CommandMode::Response => {
+                        if !incoming {
+                            // -> Here theoretically the client_key of the command is the target of the command that cause this response
+                            if command.client_key == command.command.target.to_string() {
+                                tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                            }
+
+                            // < C210 commands are always with (itisaspecialcase) parity_id by filtering the special case we can filter them
+                            // TODO >>> Verify isn't just a confirmation
+                            // TODO >>> Verify if the response matches some command
+                            // TODO >>> Remove the command of the taskss
+                        }
+                    },
+                }
+            }
+
             //> Early return for command type:
+
+            update_task_table(&command, true); // This is important to be here to handle the cases were we need to verify the confirmation received
 
             match &command.command_type() {
                 CommandType::SpecialFunction => {
@@ -835,27 +897,6 @@ fn handle_connection(stream: &mut TcpStream) {
                 },
                 _ => {},
             }
-
-            /// Updates the tasks in the task table based in the
-            /// incomming commands and the outcome tasks.
-            fn update_task_table(command: &Command, incoming: bool) {
-                match command.command.mode {
-                    CommandMode::Function => {
-                        if incoming {
-                            // TODO >>> Add the command to the tasks
-                        }
-                    },
-                    CommandMode::Response => {
-                        if !incoming {
-                            // TODO >>> Verify isn't just a confirmation
-                            // TODO >>> Verify if the response matches some command
-                            // TODO >>> Remove the command of the taskss
-                        }
-                    },
-                }
-            }
-
-            update_task_table(&command, true);
 
             // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
             match &command.command.target {
@@ -875,12 +916,26 @@ fn handle_connection(stream: &mut TcpStream) {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                     // WARNING: This locks command_patterns!
                     let res: Command = host_commands_processing(&command);
-                    update_task_table(&res, false);
+                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", res));
                     match send(stream, res) {
                         Ok(_) => {},
                         Err(e) => handle_send_error!(e, logger, command.client_key),
                     };
+                },
+                CommandTarget::Origin => {
+                    let mut tasks_manager = TASKS_MANAGER.lock();
+                    println!("Current parity id to match to a task: {}", &command.parity_id);
+                    tasks_manager.show_node_tasks(&command.client_key);
+                    let real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap();
+                    let res: Command = redirect_commands_processing(&command, &real_origin.to_string());
+                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    match send(stream, res) {
+                        Ok(_) => {},
+                        Err(e) => handle_send_error!(e, logger, client_key),
+                    };
+                    handle_client_disconnect(&client_key);
+                    break;
                 },
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
@@ -889,7 +944,7 @@ fn handle_connection(stream: &mut TcpStream) {
                         command.parity_id,
                         format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
                     );
-                    update_task_table(&res, false);
+                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", &res));
                     let client_key = res.client_key.clone();
                     match send(stream, res) {

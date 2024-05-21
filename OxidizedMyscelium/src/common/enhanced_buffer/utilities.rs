@@ -106,6 +106,16 @@ pub enum CommandTarget {
     Host,
 }
 
+impl CommandTarget {
+    pub fn as_pure_string(&self) -> String {
+        match self {
+            CommandTarget::ClientKey(key) => key.clone(),
+            CommandTarget::Host => "Host".to_string(),
+            CommandTarget::Origin => "Origin".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResponseTarget {
     Origin,
@@ -121,6 +131,15 @@ pub enum CommandOrigin {
     Host,
     #[serde(rename = "ClientKey")]
     ClientKey(String),
+}
+
+impl CommandOrigin {
+    pub fn to_string(&self) -> String {
+        match self {
+            CommandOrigin::ClientKey(key) => key.clone(),
+            CommandOrigin::Host => "Host".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

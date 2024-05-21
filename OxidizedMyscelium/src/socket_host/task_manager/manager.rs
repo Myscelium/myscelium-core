@@ -1,4 +1,4 @@
-use crate::CommandInstructions;
+use crate::{common::enhanced_buffer::utilities::CommandOrigin, CommandInstructions};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -28,6 +28,7 @@ pub enum TaskStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeTask {
+    origin: String,
     parity_id: String,
     command: CommandInstructions,
     received_ts: f64,
@@ -55,9 +56,10 @@ fn float_to_ts(f: f64) -> DateTime<Utc> {
 }
 
 impl NodeTask {
-    pub fn new(parity_id: String, command: CommandInstructions) -> Self {
+    pub fn new(origin: String, parity_id: String, command: CommandInstructions) -> Self {
         let received_ts: f64 = ts_to_float(Utc::now());
         Self {
+            origin,
             parity_id,
             command,
             received_ts,
@@ -71,6 +73,14 @@ impl NodeTask {
     pub fn sended(&mut self) {
         self.sended_to_target_ts = ts_to_float(Utc::now());
         self.status = TaskStatus::WaitingReceiveConf;
+    }
+
+    pub fn trace_origin(self) -> CommandOrigin {
+        self.command.origin
+    }
+
+    pub fn get_origin(self) -> String {
+        self.origin
     }
 
     // Mark task as received by the target, current state waiting a response
@@ -113,7 +123,27 @@ impl NodesTaskManager {
         }
     }
 
-    pub fn add_node_task(&mut self, node_key: &String, task: NodeTask) -> Result<(), TaskManagerError> {
+    pub fn get_node_task_origin(&mut self, node_key: &String, parity_id: &String) -> Result<String, TaskManagerError> {
+        let mut tasks = self.get_node_tasks(node_key)?;
+        let task = tasks.iter().find(|&task| &task.parity_id == parity_id);
+        if let Some(task) = task {
+            return Ok(task.clone().get_origin());
+        }
+        return Err(TaskManagerError::TaskNotFound(node_key.clone(), parity_id.clone()));
+    }
+
+    pub fn show_node_tasks(&mut self, node_key: &String) -> Result<(), TaskManagerError> {
+        let node_tasks = self.get_node_tasks(node_key)?;
+        println!("\n\n");
+        println!("Node: {} tasks:", node_key);
+        for task in node_tasks {
+            println!("task: {:?}", task);
+        }
+        println!("\n\n");
+        Ok(())
+    }
+
+    pub fn add_task_to_node(&mut self, node_key: &String, task: NodeTask) -> Result<(), TaskManagerError> {
         let mut node_tasks = self.get_node_tasks(node_key)?;
         node_tasks.push(task);
         Ok(())
@@ -130,7 +160,7 @@ impl NodesTaskManager {
         return Err(TaskManagerError::TaskNotFound(node_key.clone(), parity_id.clone()));
     }
 
-    pub fn remove_task_of_a_node(&mut self, node_key: &String, parity_id: &String) -> Result<(), TaskManagerError> {
+    pub fn remove_task_from_node(&mut self, node_key: &String, parity_id: &String) -> Result<(), TaskManagerError> {
         let mut tasks = self.get_node_tasks(node_key)?;
         tasks.retain(|t| t.parity_id == *parity_id);
         Ok(())
