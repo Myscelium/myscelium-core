@@ -63,6 +63,7 @@ pub use crate::common::client_manager::manager::check_if_client_key_exists;
 pub use crate::common::client_manager::manager::registry_new_client;
 pub use crate::common::client_manager::manager::Client;
 pub use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Clients};
+use crate::socket_host::task_manager::manager::NodesTaskManager;
 pub use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 pub use socket_host::socket_host::set_heartbeat_callback;
 
@@ -92,6 +93,7 @@ lazy_static! {
     pub static ref HOST_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
+    pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;
@@ -193,7 +195,6 @@ pub fn is_target_ready(node_key: String) -> bool {
     } else {
         return false;
     }
-
     return true;
 }
 
@@ -648,10 +649,19 @@ pub fn load_allowed_clients() {
         },
     };
 
+    //> PRE POPULATE THE HOST TASK MANAGER WITH HOST NODE
+    {
+        let mut tasks_manager = TASKS_MANAGER.lock();
+        tasks_manager.add_node("Host".to_string()).unwrap();
+    }
+
+    //> Populate the controllers with the nodes of the network
     for client_allowed in new_allowed_clients_list.iter() {
         if !check_if_client_key_exists(client_allowed.client_key.clone()) {
             client_allowed.save_into_db()
         }
+
+        // -> POPULATE THE HOST SYNC CONTROLLER NODES
 
         {
             let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
@@ -659,10 +669,19 @@ pub fn load_allowed_clients() {
             println!("\nSet clients sync controler to:\n{:?}\n", controller);
         }
 
+        // -> POPULATE THE HOST NETWORK NODES
+
         {
             let mut network_map = HOST_COMMAND_PATTERNS.lock();
             let new_node = Node::partially_initialize(client_allowed.client_name.clone(), client_allowed.client_key.clone(), NodeStatus::NotImplemented, None, None, None);
             network_map.add_or_update_if_exists(new_node)
+        }
+
+        // -> POPULATE THE HOST TASK MANAGER NODES
+
+        {
+            let mut tasks_manager = TASKS_MANAGER.lock();
+            tasks_manager.add_node(client_allowed.client_key.clone()).unwrap();
         }
 
         println!("Successfully created client: {} of key: {}", client_allowed.client_name, client_allowed.client_key)

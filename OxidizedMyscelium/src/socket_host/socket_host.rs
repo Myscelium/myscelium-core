@@ -3,12 +3,16 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 
 use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
 
 use indexmap::IndexMap;
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
 use syn::Index;
 
+use crate::socket_host::command_handler::{host_commands_processing, redirect_commands_processing};
+use crate::socket_host::task_manager::manager::NodeTask;
+use crate::TASKS_MANAGER;
 use lazy_static::lazy_static;
 use serde_json::json;
 
@@ -360,6 +364,49 @@ pub fn initialize_host_buffer(buffer_location: String) {
 /// # Parameters
 /// - `address`: The IP address and port on which the host should listen, in the format `ip:port`.
 /// - `client_key`: The client ID for the host.
+// pub fn initialize_host(address: String, client_key: String) {
+//     let logger = acquire_logger!("Core");
+
+//     {
+//         let mut actual_client_id = CLIENT_ID.lock().unwrap();
+//         *actual_client_id = client_key;
+//     }
+
+//     let listener = TcpListener::bind(&address).unwrap();
+
+//     logger.info(format!("Listening: {}", address));
+
+//     loop {
+//         logger.info("Waiting conn!".to_string());
+
+//         // Keep the thread alive until HOST_IS_RUNNING is set to false
+//         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
+//             // Lock the pool and stop it
+//             terminate_pool!(CONNECTION_HANDLER_POOL);
+//             logger.info("Stopped the thread pool!".to_string());
+//             break;
+//         }
+
+//         match listener.accept() {
+//             Ok((mut stream, _)) => {
+//                 // Directly run the connection handler in a new thread or a thread pool.
+//                 // This allows the main loop to immediately go back to listening for new connections.
+//                 run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
+//                     // Set a read timeout of 5 seconds
+//                     stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
+//                     handle_connection(&mut stream);
+//                 });
+//             },
+//             Err(e) => {
+//                 logger.warn(format!("Failed to accept a connection: {}", e));
+//             },
+//         }
+
+//         // No need to wait for all threads here. The main loop should be able to immediately proceed.
+//     }
+// }
+use std::panic;
+
 pub fn initialize_host(address: String, client_key: String) {
     let logger = acquire_logger!("Core");
 
@@ -377,28 +424,31 @@ pub fn initialize_host(address: String, client_key: String) {
 
         // Keep the thread alive until HOST_IS_RUNNING is set to false
         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
-            // Lock the pool and stop it
-            terminate_pool!(CONNECTION_HANDLER_POOL);
-            logger.info("Stopped the thread pool!".to_string());
+            logger.info("Stopped the server!".to_string());
             break;
         }
 
         match listener.accept() {
             Ok((mut stream, _)) => {
-                // Directly run the connection handler in a new thread or a thread pool.
-                // This allows the main loop to immediately go back to listening for new connections.
-                run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
+                // Spawn a new thread for each connection
+                thread::spawn(move || {
+                    let logger = acquire_logger!("Core");
+
                     // Set a read timeout of 5 seconds
                     stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
-                    handle_connection(&mut stream);
+
+                    match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        handle_connection(&mut stream);
+                    })) {
+                        Ok(_) => logger.info("Connection handled successfully".to_string()),
+                        Err(e) => logger.warn(format!("Connection handler panicked: {:?}", e)),
+                    }
                 });
             },
             Err(e) => {
                 logger.warn(format!("Failed to accept a connection: {}", e));
             },
         }
-
-        // No need to wait for all threads here. The main loop should be able to immediately proceed.
     }
 }
 
@@ -504,67 +554,12 @@ fn handle_special_functions(client_key: String, function: String) -> Command {
     return command;
 }
 
-/// Handles common commands that don't fall under special functions.
-///
-/// This function schedules the command for processing using the `buffer_down_manager`. After scheduling, it sends a "C210" special command as a receive confirmation.
-///
-/// # Parameters
-/// - `command`: The `Command` object that needs to be handled.
-///
-/// # Returns
-/// - A `Command` object representing the response for the common command.
-fn handle_common_function(command: &Command) -> Command {
-    // >--------------------------------------------------------------------------------------------------------------
-    // > Schedule to process
-
-    let json_command = serde_json::to_string(&command.command).unwrap();
-    let down_command = DownCommand::new(
-        command.client_key.clone(),
-        command.parity_id.clone(),
-        command.priority,
-        json_command,
-        command.command.mode.clone(),
-        command.command.collect_response.clone(),
-    );
-
-    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
-
-    // >--------------------------------------------------------------------------------------------------------------
-    // > Send receive conf
-
-    let kwargs: HashMap<String, Value> = HashMap::new();
-
-    let command_instructions: CommandInstructions = CommandInstructions::new(
-        CommandMode::Function,
-        CommandType::SpecialFunction,
-        CommandTarget::Origin,
-        CommandStatus::Success,
-        CommandOrigin::Host,
-        "C210".to_string(),
-        kwargs,
-        "".to_string(),
-        None, // Not required here
-        None, // Not required here
-        None, // Not required here
-        true,
-    );
-
-    let conf_command = Command {
-        client_key: command.client_key.to_string().clone(),
-        parity_id: command.parity_id.to_string().clone(),
-        priority: 11,
-        command: command_instructions,
-    };
-
-    return conf_command;
-}
-
 /// Enum representing possible responses.
 ///
 /// This enum encapsulates the two possible response types:
 /// 1. A valid `Command` response.
 /// 2. An absence of a response, represented by `None`.
-enum Response {
+pub enum Response {
     Command(Command),
     None,
 }
@@ -587,7 +582,7 @@ enum Response {
 /// 3. If a scheduled response is found, it is converted into a `Command` object.
 /// 4. The original scheduled response is then removed from the buffer to avoid any future retrievals.
 /// 5. The transformed command is returned as `Response::Command(response_command)`.
-fn get_response(command: Command) -> Response {
+pub fn get_response(command: Command) -> Response {
     let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_get_scheduled_by_parity_id(&command.client_key, &command.parity_id);
 
     if !(up_schedule.len() > 0) {
@@ -610,7 +605,7 @@ enum StreamError {
     ConnectionClosed,
 }
 
-fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
+pub fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
     let command_response_json = json!(data).to_string();
     let data_size = command_response_json.len() as u32;
     let size_buffer = data_size.to_be_bytes();
@@ -651,7 +646,6 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
 
     {
         let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
-
         let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
 
         // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
@@ -864,11 +858,6 @@ fn handle_connection(stream: &mut TcpStream) {
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
             logger.debug(format!("Command function: {}", command.command.actf));
 
-            let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
-                .into_iter()
-                .map(|s| s.to_string())
-                .collect();
-
             fn special_fn_handling(stream: &mut TcpStream, command: &Command) {
                 let logger = acquire_logger!("Core");
                 let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
@@ -884,351 +873,178 @@ fn handle_connection(stream: &mut TcpStream) {
                 }
             }
 
+            /// Updates the tasks in the task table based in the
+            /// incomming commands and the outcome tasks.
+            fn update_task_table(command: &Command, incoming: bool) {
+                // Bypass (itisaspecialcase) that means bypass all internal tasks
+                if command.parity_id == "itisaspecialcase" {
+                    return;
+                }
+
+                // Bypass confirmation functions, now it only will delete tasks when the response itself is sended back to the receiver
+                if command.command.actf == "C210" {
+                    match command.command.mode {
+                        CommandMode::Response => {
+                            // let mut task = tasks_manager.get_node_task_by_id(&command.client_key, &command.parity_id.clone()).unwrap();
+                            // task.received_conf(); // this store that the function was received by the target
+                            return;
+                        },
+                        _ => {
+                            // TODO >>> We can see about add the remove task here when the confirmation is confirmating the receive of the Response
+                            return;
+                        },
+                    }
+                }
+
+                match command.command.mode {
+                    CommandMode::Function => {
+                        if incoming {
+                            //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
+                            if command.client_key != command.command.target.to_string() {
+                                //> Case were we are receiving the command to redirect to a target
+                                //> We pass the origin here just in case it isn't in the command instruction so then we can easily trace it
+                                let node_task: NodeTask = NodeTask::new(command.client_key.clone(), command.parity_id.clone(), command.command.clone());
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
+                                }
+                            }
+                            //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
+                            if command.client_key == command.command.target.to_string() {
+                                //> Handle the cases were we are sending some comand to a target
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
+                                    task.sended();
+                                }
+                            }
+                        }
+                    },
+                    CommandMode::Response => {
+                        if !incoming {
+                            // -> Here theoretically the client_key of the command is the target of the command that cause this response
+                            if command.client_key == command.command.target.to_string() {
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+
+                                    println!("Attempt to remove task: {} from node: {}", &command.parity_id, &command.client_key);
+                                    tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                    println!("Task: {} removed", &command.parity_id);
+                                }
+                            }
+
+                            // < C210 commands are always with (itisaspecialcase) parity_id by filtering the special case we can filter them
+                            // TODO >>> Verify isn't just a confirmation
+                            // TODO >>> Verify if the response matches some command
+                            // TODO >>> Remove the command of the taskss
+                        }
+                    },
+                }
+            }
+
+            //> Early return for command type:
+
+            update_task_table(&command, true); // This is important to be here to handle the cases were we need to verify the confirmation received
+
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
-                    special_fn_handling(stream, &command)
+                    special_fn_handling(stream, &command);
+                    continue;
                 },
-                _ => {
-                    // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
+                _ => {},
+            }
 
-                    match &command.command.target {
-                        CommandTarget::ClientKey(target) => {
-                            // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
-
-                            // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
-                            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
-
-                            //> PREVIOUSLY CHECK REQUIREMENTS BEFORE REDIRECT
-                            if !command_patterns.target_is_reachable(target).unwrap() {
-                                let command: Command = create_error_command_response!(
-                                    command.client_key.clone(),
-                                    command.parity_id,
-                                    format!("Function: {}, can be redirected because target: {} isn't reachable", command.command.actf, target)
-                                );
-                                logger.debug(format!("Sending back: {:?}", &command));
-                                let client_key = command.client_key.clone();
-                                match send(stream, command) {
-                                    Ok(_) => {},
-                                    Err(e) => handle_send_error!(e, logger, client_key),
-                                };
-                                handle_client_disconnect(&client_key);
-                                break;
-                            }
-
-                            //> VERIFY IF THE TARGET IS SYNC
-                            if !command_patterns.target_is_ready(target).unwrap() {
-                                let command: Command = create_error_command_response!(
-                                    command.client_key.clone(),
-                                    command.parity_id,
-                                    format!("Function: {}, can be redirected because target: {} isn't ready", command.command.actf, target)
-                                );
-                                logger.debug(format!("Sending back: {:?}", &command));
-                                let client_key = command.client_key.clone();
-                                match send(stream, command) {
-                                    Ok(_) => {},
-                                    Err(e) => handle_send_error!(e, logger, client_key),
-                                };
-                                handle_client_disconnect(&client_key);
-                                break;
-                            }
-
-                            //> SEE IF THE HANDLER EXIST IN THE TARGET
-
-                            if command.command.mode == "Function" {
-                                if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
-                                    let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                    logger.debug(format!("Sending back: {:?}", &command));
-                                    let client_key = command.client_key.clone();
-                                    match send(stream, command) {
-                                        Ok(_) => {},
-                                        Err(e) => handle_send_error!(e, logger, client_key),
-                                    };
-                                    handle_client_disconnect(&client_key);
-                                    break;
-                                };
-                            }
-
-                            // TODO >>> See if the client has permission to send commands to this target
-
-                            //>--------------------------------------------------------------------------------------------------
-                            //> Response Target Rules
-
-                            //* Command Target should't be the same of the Response Target
-                            //* When a Client Sends a command the scheduler verify if the handler exists in itself
-                            //* Same happens for host
-
-                            // TODO >>> Add verification to cases where client is sendind a resp to host, verify if the resp_actf exists in target
-
-                            // TODO >>> ADD THIS TO THE OTHER CASES< NOT ONLY TO THE CommandTarget::ClientKey
-                            if let Some(response_target) = command.command.response_target.clone() {
-                                let resp_target = match response_target {
-                                    ResponseTarget::Origin => "origin".to_string(),
-                                    ResponseTarget::Host => "host".to_string(),
-                                    ResponseTarget::ClientKey(key) => key,
-                                };
-
-                                //> IF TARGET IS EQUAL TO RESPONSE TARGET THEN RETURN A ERROR
-                                if &resp_target == target {
-                                    let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Can't send a response from target: {} to itself", target));
-                                    logger.debug(format!("Sending back: {:?}", &command));
-                                    let client_key = command.client_key.clone();
-                                    match send(stream, command) {
-                                        Ok(_) => {},
-                                        Err(e) => handle_send_error!(e, logger, client_key),
-                                    };
-                                    handle_client_disconnect(&client_key);
-                                    break;
-                                }
-
-                                //> If resp target isn't origin, nor host then:
-                                if !vec!["origin", "host"].contains(&resp_target.as_str()) {
-                                    let available_targets_map = command_patterns.get_node_keys().unwrap();
-                                    let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
-
-                                    //> CHECK IF THE TARGET EXISTS
-                                    if !available_targets_keys.contains(&resp_target) {
-                                        // If not exists
-                                        let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
-                                        logger.debug(format!("Sending back: {:?}", &command));
-                                        let client_key = command.client_key.clone();
-                                        match send(stream, command) {
-                                            Ok(_) => {},
-                                            Err(e) => handle_send_error!(e, logger, client_key),
-                                        };
-                                        handle_client_disconnect(&client_key);
-                                        break;
-                                    }
-
-                                    //> Check if the handler to response exist in target (ONLY IF AUTO COLLECT == True)
-                                    if command.command.collect_response {
-                                        if let Some(response_actf) = command.command.response_actf.clone() {
-                                            if command.command.collect_response && response_actf != "" {
-                                                // Only verify if handler exists if auto collect response == true
-                                                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                                                    let command: Command =
-                                                        create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
-                                                    logger.debug(format!("Sending back: {:?}", &command));
-                                                    let client_key = command.client_key.clone();
-                                                    match send(stream, command) {
-                                                        Ok(_) => {},
-                                                        Err(e) => handle_send_error!(e, logger, client_key),
-                                                    };
-                                                    handle_client_disconnect(&client_key);
-                                                    break;
-                                                };
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // TODO >>> Verify if the client that send this command has permission to send the response to this target
-
-                            //>--------------------------------------------------------------------------------------------------
-
-                            logger.debug(format!("Redirecting command to target: {}", target));
-
-                            let command_instructions_to_schedule: CommandInstructions = handle_redirect(&command.command.clone(), &mut command.client_key.clone(), command.parity_id.clone(), command.priority.clone());
-
-                            //> CAST COMMAND TO REDIRECT
-                            let command_to_redirect: Command = Command {
-                                client_key: target.to_string().clone(),
-                                parity_id: command.parity_id.to_string().clone(),
-                                priority: 11,
-                                command: command_instructions_to_schedule,
-                            };
-
-                            // > VERIFY IF ALREADY PROCESSED:
-                            logger.debug("Command is in command patterns!".to_string());
-                            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command_to_redirect.parity_id.clone(), command_to_redirect.client_key.clone());
-                            let response: Command;
-
-                            //> HANDLE COMMANDS WITH RESPONSE:
-                            if !command_is_not_registry {
-                                logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
-                                match get_response(command.clone()) {
-                                    Response::Command(c) => {
-                                        if c.client_key == command.client_key {
-                                            response = c;
-                                        } else {
-                                            logger.info("Response is None!".to_string());
-                                            response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                        }
-                                    },
-                                    Response::None => {
-                                        logger.info("Response is None!".to_string());
-                                        response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    },
-                                }
-
-                            //> HANDLE COMMANDS WITHOUT RESPONSES:
-                            } else {
-                                // _ = handle_common_function(&command_to_redirect);
-                                let up_command = UpCommand::from_command(command_to_redirect.clone());
-                                enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-                                response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                            }
-
-                            //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
-                            logger.debug(format!("Sending back: {:?}", response));
-                            match send(stream, response) {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    handle_send_error!(e, logger, command_to_redirect.client_key)
-                                },
-                            };
-                        },
-                        CommandTarget::Host => {
-                            //> CHECK IF HANDLER DON'T EXIST AND RETURN & SEND ERROR MESSAGE IF NOT
-                            if !command_patterns.handler_exists_in("host", command.command.actf.as_str()) && !direct_functions.contains(&command.command.actf) {
-                                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in host callbacks nor in any client!", command.command.actf));
-                                logger.debug(format!("Sending back: {:?}", &command));
-                                let client_key = command.client_key.clone();
-                                match send(stream, command) {
-                                    Ok(_) => {},
-                                    Err(e) => handle_send_error!(e, logger, client_key),
-                                };
-                                handle_client_disconnect(&client_key);
-                                break;
-                            };
-
-                            // > VERIFY IF ALREADY PROCESSED:
-                            logger.debug("Command is in command patterns!".to_string());
-                            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), command.client_key.clone());
-                            let response: Command;
-
-                            //> HANDLE COMMANDS WITH RESPONSE:
-                            if !command_is_not_registry {
-                                logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
-                                match get_response(command.clone()) {
-                                    Response::Command(c) => {
-                                        if c.client_key == command.client_key {
-                                            response = c;
-                                        } else {
-                                            logger.info("Response is None!".to_string());
-                                            response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                        }
-                                    },
-                                    Response::None => {
-                                        logger.info("Response is None!".to_string());
-                                        response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    },
-                                }
-
-                            //> HANDLE COMMANDS WITHOUT RESPONSES:
-                            } else {
-                                //> If Response target is defined
-                                if let Some(response_target) = command.command.response_target.clone() {
-                                    let resp_target = match response_target {
-                                        ResponseTarget::Origin => "origin".to_string(),
-                                        ResponseTarget::Host => "host".to_string(),
-                                        ResponseTarget::ClientKey(key) => key,
-                                    };
-
-                                    // > Check if the response target is host, if so return error (don't allow send commands to self)
-                                    if resp_target == "host" {
-                                        let command: Command = create_error_command_response!(
-                                            command.client_key.clone(),
-                                            command.parity_id,
-                                            format!(
-                                                "Can't send a response from command: {:?} processed in host to a host response handler: {:?}, this is a self conflic!",
-                                                command.command.actf, command.command.response_actf
-                                            )
-                                        );
-                                        logger.debug(format!("Sending back: {:?}", &command));
-                                        let client_key = command.client_key.clone();
-                                        match send(stream, command) {
-                                            Ok(_) => {},
-                                            Err(e) => handle_send_error!(e, logger, client_key),
-                                        };
-                                        handle_client_disconnect(&client_key);
-                                        break;
-                                    }
-
-                                    //> If resp target isn't origin, nor host then:
-                                    if !vec!["origin", "host"].contains(&resp_target.as_str()) {
-                                        let available_targets_map = command_patterns.get_node_keys().unwrap();
-                                        let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
-
-                                        //> CHECK IF THE TARGET EXISTS
-                                        if !available_targets_keys.contains(&resp_target) {
-                                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
-                                            logger.debug(format!("Sending back: {:?}", &command));
-                                            let client_key = command.client_key.clone();
-                                            match send(stream, command) {
-                                                Ok(_) => {},
-                                                Err(e) => handle_send_error!(e, logger, client_key),
-                                            };
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        }
-
-                                        //> Check if the target is ready
-                                        // TODO >>> Possible waith to target become ready
-                                        if !command_patterns.target_is_ready(&resp_target).unwrap() {
-                                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
-                                            logger.debug(format!("Sending back: {:?}", &command));
-                                            let client_key = command.client_key.clone();
-                                            match send(stream, command) {
-                                                Ok(_) => {},
-                                                Err(e) => handle_send_error!(e, logger, client_key),
-                                            };
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        }
-
-                                        //> Check if the handler to response exist in target (this also will handler the case that the target isn't initialized)
-                                        if let Some(response_actf) = command.command.response_actf.clone() {
-                                            if command.command.collect_response && response_actf != "" {
-                                                // Only verify if response actf exists if collect response == true
-                                                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                                                    let command: Command = create_error_command_response!(
-                                                        command.client_key.clone(),
-                                                        command.parity_id,
-                                                        format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, resp_target)
-                                                    );
-                                                    logger.debug(format!("Sending back: {:?}", &command));
-                                                    let client_key = command.client_key.clone();
-                                                    match send(stream, command) {
-                                                        Ok(_) => {},
-                                                        Err(e) => handle_send_error!(e, logger, client_key),
-                                                    };
-                                                    handle_client_disconnect(&client_key);
-                                                    break;
-                                                };
-                                            }
-                                        }
-                                    }
-                                };
-
-                                response = handle_common_function(&command);
-                            }
-
-                            //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
-                            logger.debug(format!("Sending back: {:?}", response));
-                            match send(stream, response) {
-                                Ok(_) => {},
-                                Err(e) => handle_send_error!(e, logger, command.client_key),
-                            };
-                        },
-                        _ => {
-                            // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
-                            let command: Command = create_error_command_response!(
-                                command.client_key.clone(),
-                                command.parity_id,
-                                format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
-                            );
-                            logger.debug(format!("Sending back: {:?}", &command));
-                            let client_key = command.client_key.clone();
-                            match send(stream, command) {
-                                Ok(_) => {},
-                                Err(e) => handle_send_error!(e, logger, client_key),
-                            };
+            // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
+            match &command.command.target {
+                //->  Redirect cases:
+                CommandTarget::ClientKey(target) => {
+                    // WARNING: This locks command_patterns!
+                    let res: Command = redirect_commands_processing(&command, target);
+                    update_task_table(&res, false);
+                    match send(stream, res) {
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, client_key);
                             handle_client_disconnect(&client_key);
                             break;
                         },
+                    };
+                },
+                CommandTarget::Host => {
+                    //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
+                    // WARNING: This locks command_patterns!
+                    let res: Command = host_commands_processing(&command);
+                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    logger.debug(format!("Sending back: {:?}", res));
+                    match send(stream, res) {
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, command.client_key);
+                            handle_client_disconnect(&client_key);
+                            break;
+                        },
+                    };
+                },
+                CommandTarget::Origin => {
+                    let mut command: Command = command.clone();
+                    let real_origin: String;
+                    {
+                        let mut tasks_manager = TASKS_MANAGER.lock();
+                        println!("Current parity id to match to a task: {}", &command.parity_id);
+                        tasks_manager.show_node_tasks(&command.client_key);
+                        real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap().clone();
                     }
+
+                    println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
+                    command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
+                    let res: Command = redirect_commands_processing(&command, &real_origin.to_string());
+                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                    println!("New command casted: \n{:#?}\n", &res);
+
+                    if res.command.status == "Failure" {
+                        {
+                            let mut tasks_manager = TASKS_MANAGER.lock();
+                            println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
+                            tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                            println!("Task: {} removed", &command.parity_id);
+                        }
+                    } else {
+                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    }
+
+                    println!("Tasks updated");
+
+                    {
+                        let mut tasks_manager = TASKS_MANAGER.lock();
+                        tasks_manager.show_node_tasks(&command.client_key);
+                    }
+
+                    match send(stream, res) {
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, client_key);
+                            handle_client_disconnect(&client_key);
+                            break;
+                        },
+                    };
+                },
+                _ => {
+                    // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
+                    let res: Command = create_error_command_response!(
+                        command.client_key.clone(),
+                        command.parity_id,
+                        format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
+                    );
+                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    logger.debug(format!("Sending back: {:?}", &res));
+                    let client_key = res.client_key.clone();
+                    match send(stream, res) {
+                        Ok(_) => {},
+                        Err(e) => handle_send_error!(e, logger, client_key),
+                    };
+                    handle_client_disconnect(&client_key);
+                    break;
                 },
             }
         }
