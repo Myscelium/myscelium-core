@@ -3,6 +3,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 
 use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
 
 use indexmap::IndexMap;
 use serde_json::{from_str, Value};
@@ -363,6 +364,49 @@ pub fn initialize_host_buffer(buffer_location: String) {
 /// # Parameters
 /// - `address`: The IP address and port on which the host should listen, in the format `ip:port`.
 /// - `client_key`: The client ID for the host.
+// pub fn initialize_host(address: String, client_key: String) {
+//     let logger = acquire_logger!("Core");
+
+//     {
+//         let mut actual_client_id = CLIENT_ID.lock().unwrap();
+//         *actual_client_id = client_key;
+//     }
+
+//     let listener = TcpListener::bind(&address).unwrap();
+
+//     logger.info(format!("Listening: {}", address));
+
+//     loop {
+//         logger.info("Waiting conn!".to_string());
+
+//         // Keep the thread alive until HOST_IS_RUNNING is set to false
+//         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
+//             // Lock the pool and stop it
+//             terminate_pool!(CONNECTION_HANDLER_POOL);
+//             logger.info("Stopped the thread pool!".to_string());
+//             break;
+//         }
+
+//         match listener.accept() {
+//             Ok((mut stream, _)) => {
+//                 // Directly run the connection handler in a new thread or a thread pool.
+//                 // This allows the main loop to immediately go back to listening for new connections.
+//                 run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
+//                     // Set a read timeout of 5 seconds
+//                     stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
+//                     handle_connection(&mut stream);
+//                 });
+//             },
+//             Err(e) => {
+//                 logger.warn(format!("Failed to accept a connection: {}", e));
+//             },
+//         }
+
+//         // No need to wait for all threads here. The main loop should be able to immediately proceed.
+//     }
+// }
+use std::panic;
+
 pub fn initialize_host(address: String, client_key: String) {
     let logger = acquire_logger!("Core");
 
@@ -380,28 +424,31 @@ pub fn initialize_host(address: String, client_key: String) {
 
         // Keep the thread alive until HOST_IS_RUNNING is set to false
         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
-            // Lock the pool and stop it
-            terminate_pool!(CONNECTION_HANDLER_POOL);
-            logger.info("Stopped the thread pool!".to_string());
+            logger.info("Stopped the server!".to_string());
             break;
         }
 
         match listener.accept() {
             Ok((mut stream, _)) => {
-                // Directly run the connection handler in a new thread or a thread pool.
-                // This allows the main loop to immediately go back to listening for new connections.
-                run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
+                // Spawn a new thread for each connection
+                thread::spawn(move || {
+                    let logger = acquire_logger!("Core");
+
                     // Set a read timeout of 5 seconds
                     stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
-                    handle_connection(&mut stream);
+
+                    match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        handle_connection(&mut stream);
+                    })) {
+                        Ok(_) => logger.info("Connection handled successfully".to_string()),
+                        Err(e) => logger.warn(format!("Connection handler panicked: {:?}", e)),
+                    }
                 });
             },
             Err(e) => {
                 logger.warn(format!("Failed to accept a connection: {}", e));
             },
         }
-
-        // No need to wait for all threads here. The main loop should be able to immediately proceed.
     }
 }
 
@@ -829,8 +876,6 @@ fn handle_connection(stream: &mut TcpStream) {
             /// Updates the tasks in the task table based in the
             /// incomming commands and the outcome tasks.
             fn update_task_table(command: &Command, incoming: bool) {
-                let mut tasks_manager = TASKS_MANAGER.lock();
-
                 // Bypass (itisaspecialcase) that means bypass all internal tasks
                 if command.parity_id == "itisaspecialcase" {
                     return;
@@ -859,13 +904,19 @@ fn handle_connection(stream: &mut TcpStream) {
                                 //> Case were we are receiving the command to redirect to a target
                                 //> We pass the origin here just in case it isn't in the command instruction so then we can easily trace it
                                 let node_task: NodeTask = NodeTask::new(command.client_key.clone(), command.parity_id.clone(), command.command.clone());
-                                tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
+                                }
                             }
                             //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
                             if command.client_key == command.command.target.to_string() {
                                 //> Handle the cases were we are sending some comand to a target
-                                let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
-                                task.sended();
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
+                                    task.sended();
+                                }
                             }
                         }
                     },
@@ -873,7 +924,13 @@ fn handle_connection(stream: &mut TcpStream) {
                         if !incoming {
                             // -> Here theoretically the client_key of the command is the target of the command that cause this response
                             if command.client_key == command.command.target.to_string() {
-                                tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+
+                                    println!("Attempt to remove task: {} from node: {}", &command.parity_id, &command.client_key);
+                                    tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                    println!("Task: {} removed", &command.parity_id);
+                                }
                             }
 
                             // < C210 commands are always with (itisaspecialcase) parity_id by filtering the special case we can filter them
@@ -906,11 +963,13 @@ fn handle_connection(stream: &mut TcpStream) {
                     let res: Command = redirect_commands_processing(&command, target);
                     update_task_table(&res, false);
                     match send(stream, res) {
-                        Ok(_) => {},
-                        Err(e) => handle_send_error!(e, logger, client_key),
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, client_key);
+                            handle_client_disconnect(&client_key);
+                            break;
+                        },
                     };
-                    handle_client_disconnect(&client_key);
-                    break;
                 },
                 CommandTarget::Host => {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
@@ -919,23 +978,56 @@ fn handle_connection(stream: &mut TcpStream) {
                     update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", res));
                     match send(stream, res) {
-                        Ok(_) => {},
-                        Err(e) => handle_send_error!(e, logger, command.client_key),
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, command.client_key);
+                            handle_client_disconnect(&client_key);
+                            break;
+                        },
                     };
                 },
                 CommandTarget::Origin => {
-                    let mut tasks_manager = TASKS_MANAGER.lock();
-                    println!("Current parity id to match to a task: {}", &command.parity_id);
-                    tasks_manager.show_node_tasks(&command.client_key);
-                    let real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap();
+                    let mut command: Command = command.clone();
+                    let real_origin: String;
+                    {
+                        let mut tasks_manager = TASKS_MANAGER.lock();
+                        println!("Current parity id to match to a task: {}", &command.parity_id);
+                        tasks_manager.show_node_tasks(&command.client_key);
+                        real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap().clone();
+                    }
+
+                    println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
+                    command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
                     let res: Command = redirect_commands_processing(&command, &real_origin.to_string());
-                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                    println!("New command casted: \n{:#?}\n", &res);
+
+                    if res.command.status == "Failure" {
+                        {
+                            let mut tasks_manager = TASKS_MANAGER.lock();
+                            println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
+                            tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                            println!("Task: {} removed", &command.parity_id);
+                        }
+                    } else {
+                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    }
+
+                    println!("Tasks updated");
+
+                    {
+                        let mut tasks_manager = TASKS_MANAGER.lock();
+                        tasks_manager.show_node_tasks(&command.client_key);
+                    }
+
                     match send(stream, res) {
-                        Ok(_) => {},
-                        Err(e) => handle_send_error!(e, logger, client_key),
+                        Ok(_) => continue,
+                        Err(e) => {
+                            handle_send_error!(e, logger, client_key);
+                            handle_client_disconnect(&client_key);
+                            break;
+                        },
                     };
-                    handle_client_disconnect(&client_key);
-                    break;
                 },
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION

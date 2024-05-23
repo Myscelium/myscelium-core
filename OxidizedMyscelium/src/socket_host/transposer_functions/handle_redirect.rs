@@ -114,16 +114,17 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
         },
         CommandTarget::Origin => {
             logger.warn("Error! Cont redirect from host to origin, this is a host to origin direct case!".to_string());
-            return create_error_response_and_return!("Error! Cont redirect from host to origin, this is a Origin to Host direct case!");
+            return create_error_response_and_return!("Error! Cant redirect from host to origin, this is a Origin to Host direct case!");
         },
-        CommandTarget::ClientKey(c) => c.clone(),
+        CommandTarget::ClientKey(c) => {
+            if !check_if_client_key_exists(c.clone()) {
+                logger.warn(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
+                return create_error_response_and_return!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
+                // return error_response!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to.to_string()));
+            }
+            c.clone()
+        },
     };
-
-    if !check_if_client_key_exists(redirect_to.clone()) {
-        logger.warn(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to));
-        return create_error_response_and_return!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to));
-        // return error_response!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to.to_string()));
-    }
 
     //> This was remove because in the cases that sends a lot of redirect this makes a spamming into the client that sends the list to retransmit:
     // let mut command_map = HashMap::new();

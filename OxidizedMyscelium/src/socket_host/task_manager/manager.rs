@@ -162,7 +162,7 @@ impl NodesTaskManager {
 
     pub fn remove_task_from_node(&mut self, node_key: &String, parity_id: &String) -> Result<(), TaskManagerError> {
         let mut tasks = self.get_node_tasks(node_key)?;
-        tasks.retain(|t| t.parity_id == *parity_id);
+        tasks.retain(|t| t.parity_id != *parity_id);
         Ok(())
     }
 }
