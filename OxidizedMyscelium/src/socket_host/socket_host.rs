@@ -709,7 +709,7 @@ fn handle_connection(stream: &mut TcpStream) {
     let mut client_key: String = "".to_string();
 
     // -> Before join in the loop, schedule a request of the client commands
-    let mut client: Option<Client> = None;
+    // let mut client: Option<Client> = None;
 
     loop {
         let mut size_buffer = [0; 4];
@@ -770,13 +770,13 @@ fn handle_connection(stream: &mut TcpStream) {
 
         client_key = command.client_key.clone();
 
-        client = Some(match Client::get_by_key(&command.client_key) {
-            Ok(c) => c,
-            Err(e) => {
-                handle_client_manager_error!(e, stream, command, logger, "Unexpected error getting your client");
-                break;
-            },
-        });
+        // client = Some(match Client::get_by_key(&command.client_key) {
+        //     Ok(c) => c,
+        //     Err(e) => {
+        //         handle_client_manager_error!(e, stream, command, logger, "Unexpected error getting your client");
+        //         break;
+        //     },
+        // });
 
         // -> GET CLIENT STATUS, SEE IF IT IS SYNC OR NOT
         let client_sync_status: Option<bool>;
