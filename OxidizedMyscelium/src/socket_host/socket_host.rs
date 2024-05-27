@@ -992,7 +992,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     {
                         let mut tasks_manager = TASKS_MANAGER.lock();
                         println!("Current parity id to match to a task: {}", &command.parity_id);
-                        tasks_manager.show_node_tasks(&command.client_key);
+                        // tasks_manager.show_node_tasks(&command.client_key);
                         real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap().clone();
                     }
 
