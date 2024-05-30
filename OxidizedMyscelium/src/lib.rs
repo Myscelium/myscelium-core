@@ -19,8 +19,6 @@ mod socket_client;
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod socket_host;
-
-use common::enhanced_buffer::utilities::CommandOrigin;
 use indexmap::IndexMap;
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
@@ -29,7 +27,6 @@ use indexmap::IndexMap;
 #[allow(unused_results)]
 #[allow(unused_variables)]
 use lazy_static::lazy_static;
-use serde_json::Value;
 use socket_client::response_watcher::watch_response;
 use socket_client::scheduler::SchedulingError;
 
@@ -37,7 +34,6 @@ use core::panic;
 #[deny(non_snake_case)]
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::thread::Thread;
 
 use parking_lot::Mutex;
 
@@ -380,16 +376,6 @@ pub fn get_socket_client_available_handlers() -> HashMap<String, IndexMap<std::s
     get_available_handlers_registered()
 }
 
-// fn concatenate_strings(args: Vec<Box<dyn Any + 'static>>) -> Box<dyn Any> {
-//     let mut result = String::new();
-//     for arg in args {
-//         if let Some(string_arg) = arg.downcast_ref::<String>() {
-//             result.push_str(string_arg);
-//         }
-//     }
-//     Box::new(result) as Box<dyn Any>
-// }
-
 pub fn get_client_state() -> bool {
     thread::sleep(Duration::from_secs(1));
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
@@ -464,11 +450,6 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     CLIENT_IS_RUNNING.store(true, Ordering::SeqCst);
 
-    // let client_key_storage = CLIENT_ID;
-    // smart_lock(&*client_key_storage, |key: &mut String| {
-    //     *key = client_id.clone();
-    // });
-
     let address = format!("{}:{}", ip, port);
 
     thread::spawn(|| {
@@ -512,7 +493,7 @@ pub fn change_client_to_initialized() {
 }
 
 pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
-    common::logs_register::register::initialize_logs_file(buffer_path.as_str().clone()).unwrap();
+    common::logs_register::register::initialize_logs_file(buffer_path.as_str()).unwrap();
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
     set_client_key(client_uid.clone());
@@ -589,7 +570,7 @@ fn set_socket_host_max_connections(n_max_conns: u32) {
 fn initialize_host_buffer_tables(path: String) {
     initialize_host_buffer(path.clone());
     initialize_buffer_history(&path.clone()).unwrap();
-    common::logs_register::register::initialize_logs_file(path.as_str().clone()).unwrap();
+    common::logs_register::register::initialize_logs_file(path.as_str()).unwrap();
     clients_manager_initialize_table(path.clone());
 
     return;
