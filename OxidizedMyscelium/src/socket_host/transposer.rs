@@ -566,16 +566,5 @@ pub fn initialize_socket_host_transposer() {
     }
 
     thread::sleep(Duration::from_millis(100));
-
-    // let mut command_patterns = HOST_COMMAND_PATTERNS.lock().unwrap();
-
     return;
-
-    // for stream in listener.incoming() {
-    //     let stream = stream.unwrap();
-
-    //     pool.execute(|| {
-    //         handle_connection(stream);
-    //     });
-    // }
 }
