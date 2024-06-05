@@ -167,41 +167,6 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 let status = controller.update_client_sync_status(client_key, true);
             }
 
-            // // -> Try to get the clients registred in the database
-            // let mut clients = match get_all_clients() {
-            //     Ok(c) => c,
-            //     Err(e) => match e {
-            //         _ => {
-            //             // TODO >>> Create a better error handling for this, there is no need to return this to any client
-
-            //             let new_command_instructions = CommandInstructions::new(
-            //                 CommandMode::Function,
-            //                 CommandType::DirectFunction,
-            //                 CommandTarget::Origin,
-            //                 CommandStatus::Failure,
-            //                 CommandOrigin::Host,
-            //                 "update_available_host_commands".to_string(),
-            //                 HashMap::new(),
-            //                 "unexpect error getting clients to redirect the update commands".to_string(),
-            //                 Some(ResponseType::DirectFunction),
-            //                 Some(ResponseTarget::Host),
-            //                 None, // Not required in this case
-            //                 true,
-            //             );
-
-            //             return ProcessResult::CommandInstructions(new_command_instructions);
-            //         },
-            //     },
-            // };
-
-            // // -> Filter the actual client from the list cause it alwready was handled
-            // for (index, client) in clients.iter().enumerate() {
-            //     if client.client_key == client_key.clone() {
-            //         clients.remove(index);
-            //         break;
-            //     }
-            // }
-
             let mut responses: Vec<ProcessResult> = Vec::new();
 
             // logger.info(format!("Receive client: {} handlers, retransmitting to: {:?}", client_key, clients).to_string());
@@ -356,10 +321,6 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             // TODO >>> Update this to use the new kwargs structure where the new client is wrapped in updated_client
             //> The idea was to send the content of the "updated_client" to the cast_new_client, cast the updated client
             //> and use the current clietn key to get the current client and change it to the new client casted
-
-            // fn convert(map: &serde_json::Map<String, Value>) -> HashMap<String, Value> {
-            //     map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            // }
 
             // This function now accepts a serde_json::Value that is expected to be a String containing JSON
             fn convert(value: &Value) -> Result<HashMap<String, Value>, ProcessResult> {

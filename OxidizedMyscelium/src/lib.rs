@@ -38,7 +38,6 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 extern crate chrono;
-// use crate::socket_client::states_manager::manager::ClientState;
 
 pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
@@ -109,7 +108,6 @@ macro_rules! acquire_logger {
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // -> CLIENT:
 
-// use crate::socket_client::client_logger::log_handler::{initialize_client_logs_database_dir, set_client_log_level};
 use crate::socket_client::states_manager::manager::inialize_client_status_table_table;
 use std::collections::HashMap;
 
@@ -119,7 +117,6 @@ use std::time::Duration;
 
 // -> Socket Client main-points:
 
-// use crate::common::functions::callbacks::extract_arg_types;
 use crate::socket_client::scheduler::{self, schedule};
 use crate::socket_client::socket_client::get_available_handlers_registered;
 use crate::socket_client::socket_client::{initialize_client, initialize_client_buffer};
@@ -593,16 +590,6 @@ pub fn set_host_callbacks(callbacks: HashMap<String, Box<CallbackClosure>>) {
         set_socket_host_transposer_callbacks(key, callback)
     }
 }
-
-// pub fn registry_socket_host_client_heartbeat_contact_callback(commands: &PyList) -> PyResult<()> {
-//     let mut callback_pattern = HashMap::new();
-
-//     process_commands!(py, commands, callback_pattern);
-
-//     set_heartbeat_callback(callback_pattern);
-
-//     Ok(())
-// }
 
 pub fn get_socket_host_available_commands() -> HashMap<String, IndexMap<String, String>> {
     get_available_commands_registered()

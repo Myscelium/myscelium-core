@@ -469,37 +469,7 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
             return Ok(None);
         },
     }
-
-    // match handle_response(&received) {
-    //     Received::DownCommand(down_command) => return Some(down_command),
-    //     Received::Confirmation => {
-    //         println!("Receive confirmation C210");
-    //         return None;
-    //     },
-    //     Received::PingResponse => {
-    //         println!("Receive ping response!");
-    //         return None;
-    //     },
-    //     Received::Error(e) => {
-    //         println!("Error when processing response received after ping: {:?}", e);
-
-    //         //TODO >>> Add the mechanism to stop the client if received a error
-    //         return None;
-    //     },
-    //     Received::Nothing => {
-    //         println!("Response is none!");
-    //         return None;
-    //     },
-    // }
 }
-
-// pub enum Received {
-//     DownCommand(DownCommand),
-//     Confirmation,
-//     PingResponse,
-//     Nothing,
-//     Error(String),
-// }
 
 pub fn set_client_uid(client_key: String) {
     let logger = acquire_logger!("Core");

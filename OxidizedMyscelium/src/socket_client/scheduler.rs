@@ -17,10 +17,6 @@ use parking_lot::Mutex;
 
 use std::sync::Arc;
 
-// lazy_static! {
-//    static ref CLIENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(' '.to_string()));
-// }
-
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
@@ -211,13 +207,6 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     } else {
         return Err(SchedulingError::ClientIsntFullyInitialized);
     }
-
-    // {
-    //    let key = CLIENT_ID.lock(); // TODO > This is using parking lot, see if need to change to smart-lock
-    //    println!("[CLIENT][GLOBAL][Lock] - CLIENT_ID");
-    //    client_key = key.clone();
-    //    drop(key)
-    // }
 
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 

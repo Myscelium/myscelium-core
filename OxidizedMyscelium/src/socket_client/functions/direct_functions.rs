@@ -148,33 +148,6 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 
-            // //> VERIFY IF IS CLIENT FIRST SYNC
-            // if !CLIENT_IS_SYNC.load(Ordering::SeqCst) {
-
-            // } else {
-            //     // -> Only return this 'restrictive_update_client_commands_ref' in case that isn't the first sync of the client to avoid network status loops
-
-            //     // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
-            //     let new_command_instructions = CommandInstructions::new(
-            //         CommandMode::Function,
-            //         CommandType::DirectFunction,
-            //         CommandTarget::Host,
-            //         CommandStatus::Success,
-            //         CommandOrigin::ClientKey(client_key.clone()),
-            //         "restrictive_update_client_commands_ref".to_string(),
-            //         filtered_commands_map,
-            //         "".to_string(),
-            //         Some(ResponseType::DirectFunction),
-            //         Some(ResponseTarget::Origin),
-            //         None, // Not required in this case
-            //         true,
-            //     );
-
-            //     let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-            //     let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
-            //     enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-            // }
-
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);
 

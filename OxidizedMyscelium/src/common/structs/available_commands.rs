@@ -460,9 +460,6 @@ impl NetworkMap {
                 },
             }
             // TODO >> Maybe create a new case where the status can be InShutdown
-            // This will allow to make the client now that the target is turning Offline
-            // and return this previously without have to send the information to the host
-            // redirect and then return the error
         } else {
             return Ok(false);
         };

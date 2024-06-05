@@ -27,22 +27,4 @@ pub fn read_json_from_stream(stream: &mut TcpStream) -> Result<Command, Box<dyn 
     let buffer_string = String::from_utf8_lossy(&buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string();
 
     serde_json::from_str(&buffer_string).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-
-    // let mut buffer = [0; 16384];
-
-    //     match stream.read(&mut buffer) {
-    //         Ok(0) => {
-    //             // No data was read, break the loop
-    //             continue;
-    //         },
-    //         Ok(_) => {
-    //             logger.debug("Data received!".to_string());
-    //         },
-    //         Err(e) => {
-    //             // Handle the error
-    //             logger.exception(format!("Failed to read from the stream: {}", e));
-    //         },
-    //     }
-
-    // let buffer_string = String::from_utf8_lossy(&buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string();
 }

@@ -30,10 +30,6 @@ pub fn set_client_log_level(log_level: String) {
     }
 }
 
-// pub fn initialize_host_logs_database_dir(path: String) {
-//     old_register_manager::logs_register_initialize_table(path);
-// }
-
 // pub fn set_host_logs_handler_callback(callback_pattern: HashMap<String, (Py<PyFunction>, Value)>) {
 //     {
 //         let mut heart_beat_callback = LOGS_HANDLER_CALLBACK.lock().unwrap();
