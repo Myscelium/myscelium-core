@@ -194,7 +194,7 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
                     ProcessResult::CommandInstructions(c) => c.to_value_map(),
                     ProcessResult::List(l) => {
                         // TODO >>> Handle this case maybe create a generalized function for all places that uses this
-                        logger.debug(format!("Reeive a unimplemented case in process_map_result!"));
+                        logger.debug(format!("Receive a unimplemented case in process_map_result!"));
                         create_special_command_instruction_response!("C210".to_string())
                     },
                     ProcessResult::Empty => {
