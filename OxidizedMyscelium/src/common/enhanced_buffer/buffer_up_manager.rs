@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
+use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
 
 use rusqlite::params;
 
@@ -199,7 +199,7 @@ pub fn buffer_up_initialize_table(buffer_path: String) {
             },
         };
         let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS ClientCommandsTosend (ID INT PRIMARY KEY, ClientKey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CreatedTime NUMBER)",
+            "CREATE TABLE IF NOT EXISTS ClientCommandsTosend (ID INTEGER PRIMARY KEY AUTOINCREMENT, ClientKey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CreatedTime NUMBER)",
             params![],
         );
 
@@ -322,14 +322,12 @@ pub fn buffer_up_schedule(command: UpCommand) {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let registered_ids = get_registred_ids(conn);
 
-        let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
-
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
         let result = conn.execute(
-            "INSERT INTO ClientCommandsTosend (ID, ClientKey, ParityId, Priority, Command, CreatedTime) VALUES (?, ?, ?, ?, ?, ?);",
-            params![id_generator.gen(), command.client_key, command.parity_id, command.priority, command.command, timestamp],
+            "INSERT INTO ClientCommandsTosend (ClientKey, ParityId, Priority, Command, CreatedTime) VALUES (?, ?, ?, ?, ?);",
+            params![command.client_key, command.parity_id, command.priority, command.command, timestamp],
         );
 
         match result {

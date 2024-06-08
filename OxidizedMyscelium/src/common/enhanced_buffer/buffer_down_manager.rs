@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
+use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
 
 use rusqlite::params;
 
@@ -228,7 +228,7 @@ pub fn buffer_down_initialize_table(buffer_path: String) {
         };
 
         let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS ClientCommandsReceived (ID INT PRIMARY KEY, Clientkey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CommandMode TEXT, CreatedTime NUMBER, CollectIt BOOL)",
+            "CREATE TABLE IF NOT EXISTS ClientCommandsReceived (ID INTEGER PRIMARY KEY AUTOINCREMENT, Clientkey TEXT, ParityId TEXT, Priority NUMBER, Command TEXT, CommandMode TEXT, CreatedTime NUMBER, CollectIt BOOL)",
             params![],
         );
 
@@ -343,16 +343,14 @@ pub fn buffer_down_schedule(command: &DownCommand) {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
         let registered_ids = get_registred_ids(conn);
 
-        let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
-
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
         let command_mode: String = serde_json::to_string(&command.command_mode).unwrap();
 
         let result = conn.execute(
-            "INSERT INTO ClientCommandsReceived (ID, Clientkey, ParityId, Priority, Command, CommandMode, CreatedTime, CollectIt) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-            params![id_generator.gen(), command.client_key, command.parity_id, command.priority, command.command, command_mode, timestamp, command.auto_collect],
+            "INSERT INTO ClientCommandsReceived (Clientkey, ParityId, Priority, Command, CommandMode, CreatedTime, CollectIt) VALUES (?, ?, ?, ?, ?, ?, ?);",
+            params![command.client_key, command.parity_id, command.priority, command.command, command_mode, timestamp, command.auto_collect],
         );
 
         match result {
