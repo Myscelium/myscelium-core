@@ -39,8 +39,6 @@ use parking_lot::Mutex;
 
 extern crate chrono;
 
-// Hello
-
 pub use crate::common::client_manager::manager::ClientError;
 pub use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
