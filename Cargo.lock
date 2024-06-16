@@ -10,6 +10,7 @@ dependencies = [
  "ctrlc",
  "indexmap 2.2.3",
  "lazy_static",
+ "lock_api",
  "oxidized_myscelium_macros",
  "parking_lot 0.12.2",
  "proc-macro2",
