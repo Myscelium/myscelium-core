@@ -356,55 +356,6 @@ pub fn initialize_host_buffer(buffer_location: String) {
     return;
 }
 
-/// Starts and initializes the host to listen for incoming connections.
-///
-/// This function binds a `TcpListener` to the provided address and starts listening for incoming connections.
-/// Each incoming connection is handled in a new thread from the thread pool, allowing for concurrent processing.
-///
-/// # Parameters
-/// - `address`: The IP address and port on which the host should listen, in the format `ip:port`.
-/// - `client_key`: The client ID for the host.
-// pub fn initialize_host(address: String, client_key: String) {
-//     let logger = acquire_logger!("Core");
-
-//     {
-//         let mut actual_client_id = CLIENT_ID.lock().unwrap();
-//         *actual_client_id = client_key;
-//     }
-
-//     let listener = TcpListener::bind(&address).unwrap();
-
-//     logger.info(format!("Listening: {}", address));
-
-//     loop {
-//         logger.info("Waiting conn!".to_string());
-
-//         // Keep the thread alive until HOST_IS_RUNNING is set to false
-//         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
-//             // Lock the pool and stop it
-//             terminate_pool!(CONNECTION_HANDLER_POOL);
-//             logger.info("Stopped the thread pool!".to_string());
-//             break;
-//         }
-
-//         match listener.accept() {
-//             Ok((mut stream, _)) => {
-//                 // Directly run the connection handler in a new thread or a thread pool.
-//                 // This allows the main loop to immediately go back to listening for new connections.
-//                 run_in_thread_pool!(CONNECTION_HANDLER_POOL, {
-//                     // Set a read timeout of 5 seconds
-//                     stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
-//                     handle_connection(&mut stream);
-//                 });
-//             },
-//             Err(e) => {
-//                 logger.warn(format!("Failed to accept a connection: {}", e));
-//             },
-//         }
-
-//         // No need to wait for all threads here. The main loop should be able to immediately proceed.
-//     }
-// }
 use std::panic;
 
 pub fn initialize_host(address: String, client_key: String) {
