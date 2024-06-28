@@ -18,6 +18,8 @@ fn test_buffer_up_insertion() {
     // Compare Informations
     // Delete
 
+    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string());
+
     let client_key: String = "randomsclientids".to_string();
     let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 
@@ -58,7 +60,12 @@ fn test_buffer_up_delete() {
     // Verify delte
 }
 
+use crate::tests::helpers::functions::remove_directory;
+
 #[test]
 fn test_buffer_up_capacity() {
     // TODO >>> Test large storage with multiple itens and compare results
+
+    // Remove the temp db after the tests:
+    remove_directory("./Temp/");
 }
