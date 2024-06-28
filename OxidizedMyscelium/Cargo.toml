@@ -11,7 +11,10 @@ opt-level = 3
 [build]
 rustflags = ["-A", "warnings"]
 
+[dev-dependencies]
+
 [dependencies]
+ctor = "0.2.8"
 thiserror = "1.0.60"
 oxidized_myscelium_macros = { path = "../oxidized_myscelium_macros" }
 proc-macro2 = "1.0"

@@ -351,7 +351,7 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
 ///
 /// ```rust
 /// let py = Python::acquire_gil().python();
-/// let down_command = DownCommand::new(...); // Initialize a DownCommand
+/// let down_command = DownCommand::new(..); // Initialize a DownCommand
 ///
 /// process(py, down_command);
 /// ```
