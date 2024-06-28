@@ -41,9 +41,8 @@ fn test_buffer_up_insertion() {
     let command = Command::new(client_key.clone(), parity_id.clone(), priority, command_instruction);
     let up_command = UpCommand::from_command(command);
 
-    let command_to_schedule = UpCommand::new(&client_key.clone(), &parity_id, priority, &to_string(&up_command).unwrap());
-
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule);
+    // Schedule command:
+    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 }
 
 #[test]
