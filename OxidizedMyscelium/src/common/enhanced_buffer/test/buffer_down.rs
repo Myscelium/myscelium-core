@@ -1,11 +1,11 @@
-use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::{self, buffer_down_manager::DownCommand};
 use serde_json::to_string;
 use std::collections::HashMap;
 
 #[test]
-fn test_buffer_up() {
+fn test_buffer_down() {
     //> The idea:
 
     // Write in the buffer
@@ -18,7 +18,7 @@ fn test_buffer_up() {
 
     // -> TEST ADD AND RETRIEVE
 
-    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string());
+    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table("./Temp/".to_string());
 
     let client_key: String = "randomsclientids".to_string();
     let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
@@ -40,47 +40,24 @@ fn test_buffer_up() {
     );
 
     let command = Command::new(client_key.clone(), parity_id.clone(), priority, command_instruction);
-    let up_command = UpCommand::from_command(command.clone());
+    let down_command = DownCommand::from_command(command.clone());
 
     // Schedule command:
 
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
     let command_extracted = buffer_list.first().unwrap();
-    let cm = Command::from_up_command(command_extracted).unwrap();
+    let cm = Command::from_down_command(command_extracted).unwrap();
 
     assert_eq!(serde_json::to_string(&command).unwrap(), serde_json::to_string(&cm).unwrap());
 
     // -> TEST DELETE:
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
     let command_extracted = buffer_list.first().unwrap();
-    enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(command_extracted.command_id.unwrap());
+    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_extracted.command_id.unwrap());
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
     assert_eq!(0, buffer_list.len());
-}
-
-#[test]
-fn test_buffer_up_update() {
-    // Update row
-    // Compare Informations
-}
-
-#[test]
-fn test_buffer_up_delete() {
-    // Delete row create previously
-    // Get Data
-    // Verify delte
-}
-
-use crate::tests::helpers::functions::remove_directory;
-
-#[test]
-fn test_buffer_up_capacity() {
-    // TODO >>> Test large storage with multiple itens and compare results
-
-    // Remove the temp db after the tests:
-    remove_directory("./Temp/");
 }
