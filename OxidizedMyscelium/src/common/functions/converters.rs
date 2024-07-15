@@ -3,6 +3,8 @@ use crate::common::structs::results_structs::ResultType;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::MutexGuard;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConversionError {
     UnsuportedValueVariant(String),
 }
