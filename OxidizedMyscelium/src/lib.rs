@@ -20,15 +20,8 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
-#[allow(unused_imports)]
-#[allow(unused_extern_crates)]
-#[allow(warnings)]
-#[allow(dead_code, unused_variables)]
-#[allow(unused_results)]
-#[allow(unused_variables)]
-mod tests;
-
 use indexmap::IndexMap;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[deny(warnings)]

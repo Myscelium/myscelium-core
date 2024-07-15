@@ -76,7 +76,7 @@ fn test_buffer_up() {
 //     // Verify delte
 // }
 
-use crate::tests::helpers::functions::remove_directory;
+use crate::common::helpers::functions::remove_directory;
 
 // #[test]
 // fn test_buffer_up_capacity() {
