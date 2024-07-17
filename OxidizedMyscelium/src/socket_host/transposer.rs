@@ -356,7 +356,7 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
 /// process(py, down_command);
 /// ```
 ///
-fn process(down_command: DownCommand) {
+pub fn process(down_command: DownCommand) {
     let logger = acquire_logger!("Transposer - Process");
     logger.debug(format!("Initializing processing!"));
 
