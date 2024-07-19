@@ -286,6 +286,7 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
                         break;
                     },
                 }
+                counter += 1;
             }
             // -> Remove the buffer down command that generated these responses since he is alwready processed
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
@@ -516,9 +517,7 @@ pub fn process(down_command: DownCommand) {
     }
 
     logger.debug(format!("Callback call response converted to rust: {:?}", result));
-
     let client_key = down_command.client_key.clone();
-
     if let Some(c_id) = down_command.command_id {
         process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
     } else {
