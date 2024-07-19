@@ -474,15 +474,7 @@ pub fn process(down_command: DownCommand) {
                         process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                     } else {
                         logger.warn("Can't process a command that doesn't have command id".to_string());
-                        let result = ProcessResult::Error(format!("Callback with key '{}' not found!", translated_command.command.actf.clone()));
-                        let client_key = down_command.client_key.clone();
-                        if let Some(c_id) = down_command.command_id {
-                            process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
-                        } else {
-                            logger.warn("Can't process a command that doesn't have command id".to_string())
-                        }
                     }
-
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
                     return;
                 },
