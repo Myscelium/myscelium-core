@@ -247,10 +247,10 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
 /// let resulttype_command = ResultType::Map(...); // Construct a ResultType::Map
 /// let mut client_key = "client123".to_string();
 /// let down_command = DownCommand::new(...); // Construct a DownCommand
-/// process_response_and_schedule(resulttype_command, client_key, down_command);
+/// process_response(resulttype_command, client_key, down_command);
 /// ```
 // TODO >>> Remake this doc string
-fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
+fn process_response(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     let response: Value; // Errors are attached in the response and sent in the same way
     let mut client_to_send_back: String;
@@ -477,7 +477,7 @@ pub fn process(down_command: DownCommand) {
                     let result = ProcessResult::Error(format!("{:?}", e));
                     let client_key = down_command.client_key.clone();
                     if let Some(c_id) = down_command.command_id {
-                        let responses = process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        let responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                         schedule_up_commands(responses, command_id);
                     } else {
                         logger.warn("Can't process a command that doesn't have command id".to_string());
@@ -516,7 +516,7 @@ pub fn process(down_command: DownCommand) {
     logger.debug(format!("Callback call response converted to rust: {:?}", callable_result));
     let client_key = down_command.client_key.clone();
     if let Some(c_id) = down_command.command_id {
-        let responses = process_response_and_schedule(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+        let responses = process_response(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
         schedule_up_commands(responses, command_id);
     } else {
         logger.warn("Can't process a command that doesn't have command id".to_string())
