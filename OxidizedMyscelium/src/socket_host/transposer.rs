@@ -250,13 +250,13 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
 /// process_response_and_schedule(resulttype_command, client_key, down_command);
 /// ```
 // TODO >>> Remake this doc string
-fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) {
+fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     let response: Value; // Errors are attached in the response and sent in the same way
     let mut client_to_send_back: String;
+    let mut responses: Vec<UpCommand> = Vec::new();
 
     match resulttype_command {
-        // TODO >>> Implement change of response here
         ProcessResult::CommandInstructions(m) => {
             (response, client_key) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
         },
@@ -268,7 +268,7 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
                         if counter == 0 {
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
-                            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                            responses.push(up_command);
                         } else {
                             // -> Send to clients based in the target id
                             // -> Gen 20 digits parity id based on client
@@ -276,21 +276,21 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
 
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &special_parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
-                            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+
+                            responses.push(up_command);
                         }
                     },
                     _ => {
+                        // TODO >>> Create a system that do not stop processing because some command give an error, just return a error to the one that caused it
                         response = error_response!(format!("Error! Receive {:?} when expecting a Command_Instruction!", res));
                         let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
-                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                        responses.push(up_command);
                         break;
                     },
                 }
                 counter += 1;
             }
-            // -> Remove the buffer down command that generated these responses since he is alwready processed
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-            return;
+            return responses;
         },
         ProcessResult::Empty => response = create_special_command_instruction_response!("C210".to_string()),
         ProcessResult::Error(e) => {
@@ -299,14 +299,20 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
         },
     }
 
-    // TODO >>> Made a better handler to the response errors
-
     logger.debug(format!("Function returned: {:?}", response));
     logger.info(format!("Command: {:?}, processed!", parity_id.clone()));
 
     let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+    responses.push(up_command);
 
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+    return responses;
+}
+
+fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
+    for resp in responses {
+        enhanced_buffer::buffer_up_manager::buffer_up_schedule(resp)
+    }
+    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 }
 
 /// Processes a given `DownCommand`, executing the corresponding logic and handling redirection.
@@ -402,11 +408,11 @@ pub fn process(down_command: DownCommand) {
         .map(|s| s.to_string())
         .collect();
 
-    let result: ProcessResult;
+    let callable_result: ProcessResult;
 
     if direct_functions.contains(&translated_command.command.actf.clone()) {
         // -> HANDLE DIRECT FUNCTIONS:
-        result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
+        callable_result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
     } else {
         // -> VERIFY IF THE COMMAND EXIST:
         {
@@ -455,7 +461,7 @@ pub fn process(down_command: DownCommand) {
                 let host_handlers = host_node.get_node_handlers().unwrap();
                 let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
 
-                //Obtain the correct order of the kwargs
+                // Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
             }
 
@@ -471,7 +477,8 @@ pub fn process(down_command: DownCommand) {
                     let result = ProcessResult::Error(format!("{:?}", e));
                     let client_key = down_command.client_key.clone();
                     if let Some(c_id) = down_command.command_id {
-                        process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        let responses = process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        schedule_up_commands(responses, command_id);
                     } else {
                         logger.warn("Can't process a command that doesn't have command id".to_string());
                     }
@@ -482,7 +489,7 @@ pub fn process(down_command: DownCommand) {
         }
 
         // -> PROCESS CALLBACK RESPONSE:
-        result = match response.downcast::<CommandInstructions>() {
+        callable_result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
                 logger.debug(format!("Successfully downcasted to CommandInstructions!"));
@@ -499,24 +506,21 @@ pub fn process(down_command: DownCommand) {
                 ProcessResult::CommandInstructions(instruction)
             },
             Err(e) => {
-                // The downcast operation failed
-                // Logging the error for more details
+                // The downcast operation failed. Logging the error for more details
                 logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
-
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
     }
 
-    logger.debug(format!("Callback call response converted to rust: {:?}", result));
+    logger.debug(format!("Callback call response converted to rust: {:?}", callable_result));
     let client_key = down_command.client_key.clone();
     if let Some(c_id) = down_command.command_id {
-        process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+        let responses = process_response_and_schedule(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+        schedule_up_commands(responses, command_id);
     } else {
         logger.warn("Can't process a command that doesn't have command id".to_string())
     }
-
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 }
 
 fn clear_old_data() {
