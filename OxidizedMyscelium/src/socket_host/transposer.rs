@@ -223,33 +223,47 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
     return (response, client_to_send);
 }
 
-/// Processes a `ResultType` command and schedules appropriate actions based on its type.
+/// Processes the result of a command and generates a list of `UpCommand` responses.
 ///
-/// This function orchestrates the processing of various `ResultType` commands, including handling
-/// maps, strings, integers, floats, booleans, lists, and other types. It leverages `process_map_result`
-/// for handling `Map` types, specifically dealing with different response modes and other map-specific
-/// logic. The function also manages errors, logs information, and schedules 'up' commands using an
-/// enhanced buffer management system. It handles the removal of processed 'down' commands and generates
-/// responses for each input type.
+/// This function handles various types of command results, processing them accordingly and
+/// generating appropriate responses. The responses are encapsulated in `UpCommand` objects,
+/// which are returned in a `Vec<UpCommand>`.
 ///
-/// # Arguments
-/// * `resulttype_command` - A command of type `ResultType` to be processed.
-/// * `client_key` - A mutable string representing the client key.
-/// * `down_command` - A `DownCommand` instance containing command-related information.
+/// # Parameters
+///
+/// - `resulttype_command`: The type of result returned by the command, represented by `ProcessResult`.
+/// - `client_key`: A mutable `String` representing the client's key.
+/// - `parity_id`: A reference to a `String` representing the parity ID.
+/// - `priority`: A reference to a `u8` representing the priority level of the command.
+/// - `command_id`: A `u32` representing the command ID.
 ///
 /// # Returns
-/// This function does not return a value but orchestrates the processing of the result type command,
-/// handles logging, and schedules upstream commands based on the processed results.
 ///
-/// # Examples
+/// A `Vec<UpCommand>` containing the processed responses.
+///
+/// # Process Flow
+///
+/// 1. The function initializes a logger and prepares necessary variables.
+/// 2. It matches the `resulttype_command` to determine the type of command result and processes it:
+///    - If `CommandInstructions` is received, it processes the command map and generates the response.
+///    - If `List` is received, it iterates over the list, processing each item and handling nested results.
+///    - If `Empty` is received, it generates a special command instruction response.
+///    - If `Error` is received, it logs the error and generates an error response.
+/// 3. The function logs the debug and info messages for tracking.
+/// 4. It encapsulates the final response in an `UpCommand` and returns the list of responses.
+///
+/// # Notes
+///
+/// - The function is designed to handle different types of `ProcessResult` and generate appropriate
+///   `UpCommand` objects.
+/// - Special handling is implemented for nested `CommandInstructions` and errors.
+/// - TODO comments indicate areas for potential review and improvement, especially for cross-client delivery.
+///
+/// # Example
+///
+/// ```rust
+/// let result = process_response(resulttype_command, client_key, parity_id, priority, command_id);
 /// ```
-/// // Assuming ResultType, DownCommand, and related types are defined and available
-/// let resulttype_command = ResultType::Map(...); // Construct a ResultType::Map
-/// let mut client_key = "client123".to_string();
-/// let down_command = DownCommand::new(...); // Construct a DownCommand
-/// process_response(resulttype_command, client_key, down_command);
-/// ```
-// TODO >>> Remake this doc string
 fn process_response(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     let response: Value; // Errors are attached in the response and sent in the same way
@@ -264,25 +278,35 @@ fn process_response(resulttype_command: ProcessResult, mut client_key: String, p
             let mut counter: u64 = 0;
             for res in l {
                 match res {
+                    // -> This is designed to not use infinite recursion nested lists, here we only expect CommandInstructions, Errors or Empty Cases
                     ProcessResult::CommandInstructions(m) => {
                         if counter == 0 {
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
                             responses.push(up_command);
                         } else {
-                            // -> Send to clients based in the target id
-                            // -> Gen 20 digits parity id based on client
+                            // -> Send to clients based in the target id. Gen 20 digits parity id based on client.
                             let special_parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_special_parity_id(&client_key);
-
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &special_parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
-
                             responses.push(up_command);
                         }
                     },
+                    ProcessResult::Empty => {
+                        // TODO >>> Review how this will work for cross client delivery
+                        let response = create_special_command_instruction_response!("C210".to_string());
+                        let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+                        responses.push(up_command);
+                    },
+                    ProcessResult::Error(e) => {
+                        // TODO >>> Review how this will work for cross client delivery
+                        logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                        let response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                        let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+                        responses.push(up_command);
+                    },
                     _ => {
-                        // TODO >>> Create a system that do not stop processing because some command give an error, just return a error to the one that caused it
-                        response = error_response!(format!("Error! Receive {:?} when expecting a Command_Instruction!", res));
+                        response = error_response!(format!("Error! Receive {:?} when expecting a CommandInstruction!", res));
                         let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
                         responses.push(up_command);
                         break;
@@ -452,7 +476,6 @@ pub fn process(down_command: DownCommand) {
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
-
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
 
             {
@@ -466,7 +489,6 @@ pub fn process(down_command: DownCommand) {
             }
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
-
             // -> CALL CALLBACK FUNCTION
 
             response = match callback_patterns.call(command_instructions.actf.as_str(), kwargs, args_pattern) {
