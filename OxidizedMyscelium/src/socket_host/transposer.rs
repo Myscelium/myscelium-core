@@ -504,8 +504,9 @@ pub fn process(down_command: DownCommand) {
                     } else {
                         logger.warn("Can't process a command that doesn't have command id".to_string());
                     }
+                    // TODO >>> Remove this line to remove the buffer down, this needs to be done in the main tranposer iterator
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-                    return;
+                    return; // TODO >>> Change the return to return the responses
                 },
             };
         }
@@ -543,6 +544,8 @@ pub fn process(down_command: DownCommand) {
     } else {
         logger.warn("Can't process a command that doesn't have command id".to_string())
     }
+
+    // TODO >>> Change the return to return the responses
 }
 
 fn clear_old_data() {
