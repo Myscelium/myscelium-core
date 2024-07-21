@@ -391,6 +391,8 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     logger.debug(format!("Initializing processing!"));
 
+    let mut responses: Vec<UpCommand> = Vec::new();
+
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.clone().unwrap();
 
@@ -431,7 +433,6 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
         .into_iter()
         .map(|s| s.to_string())
         .collect();
-
     let callable_result: ProcessResult;
 
     if direct_functions.contains(&translated_command.command.actf.clone()) {
@@ -446,9 +447,16 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
             if !global_command_patterns.handler_exists_in("host", &translated_command.command.actf) {
                 // TODO >>> Add a mecanism to check if the command exist for the target client
                 // TODO >>> Also adda mecanism to commands have a target by default, and if target is host then target is host
-                logger.warn(format!("Command isn't registered in the patterns"));
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-                logger.warn(format!("command skipped and removed from schedule"));
+
+                logger.warn(format!("Command: {:?} isn't registered in the patterns so it was skipped!", &translated_command.command.actf));
+                let response = error_response!(format!(
+                    "Error! Command activation function: {:?} not listed as host function or you doesn't have the required permission!",
+                    &translated_command.command.actf
+                ));
+
+                let up_command = UpCommand::new(&translated_command.client_key, &translated_command.parity_id, translated_command.priority.clone(), &to_string(&response).unwrap());
+                responses.push(up_command);
+
                 return Vec::new();
             }
         }
@@ -498,7 +506,6 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                     logger.exception(format!("Callback error: {:?}", e));
                     let result = ProcessResult::Error(format!("{:?}", e));
                     let client_key = down_command.client_key.clone();
-                    let mut responses: Vec<UpCommand> = Vec::new();
                     if let Some(c_id) = down_command.command_id {
                         responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                     } else {
@@ -536,7 +543,6 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
     logger.debug(format!("Callback call response converted to rust: {:?}", callable_result));
     let client_key = down_command.client_key.clone();
-    let mut responses: Vec<UpCommand> = Vec::new();
     if let Some(c_id) = down_command.command_id {
         responses = process_response(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
     } else {
