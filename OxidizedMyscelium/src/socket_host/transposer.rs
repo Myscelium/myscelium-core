@@ -419,10 +419,13 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
     let translated_command: Command = match Command::from_down_command(&down_command) {
         Ok(c) => c,
         Err(_) => {
-            // TODO >>> handle this erro case
-            logger.debug(format!("Error converting COMMAND from down_command."));
             logger.warn(format!("Error converting COMMAND from down_command."));
-            return Vec::new();
+
+            let response = error_response!(format!("Error! Converting command {:?} from down_command!", &down_command));
+            let up_command = UpCommand::new(&down_command.client_key, &down_command.parity_id, down_command.priority.clone(), &to_string(&response).unwrap());
+            responses.push(up_command);
+
+            return responses;
         },
     };
 
@@ -457,7 +460,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                 let up_command = UpCommand::new(&translated_command.client_key, &translated_command.parity_id, translated_command.priority.clone(), &to_string(&response).unwrap());
                 responses.push(up_command);
 
-                return Vec::new();
+                return responses;
             }
         }
 
