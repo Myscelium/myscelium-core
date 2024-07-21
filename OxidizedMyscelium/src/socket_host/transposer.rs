@@ -223,40 +223,54 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
     return (response, client_to_send);
 }
 
-/// Processes a `ResultType` command and schedules appropriate actions based on its type.
+/// Processes the result of a command and generates a list of `UpCommand` responses.
 ///
-/// This function orchestrates the processing of various `ResultType` commands, including handling
-/// maps, strings, integers, floats, booleans, lists, and other types. It leverages `process_map_result`
-/// for handling `Map` types, specifically dealing with different response modes and other map-specific
-/// logic. The function also manages errors, logs information, and schedules 'up' commands using an
-/// enhanced buffer management system. It handles the removal of processed 'down' commands and generates
-/// responses for each input type.
+/// This function handles various types of command results, processing them accordingly and
+/// generating appropriate responses. The responses are encapsulated in `UpCommand` objects,
+/// which are returned in a `Vec<UpCommand>`.
 ///
-/// # Arguments
-/// * `resulttype_command` - A command of type `ResultType` to be processed.
-/// * `client_key` - A mutable string representing the client key.
-/// * `down_command` - A `DownCommand` instance containing command-related information.
+/// # Parameters
+///
+/// - `resulttype_command`: The type of result returned by the command, represented by `ProcessResult`.
+/// - `client_key`: A mutable `String` representing the client's key.
+/// - `parity_id`: A reference to a `String` representing the parity ID.
+/// - `priority`: A reference to a `u8` representing the priority level of the command.
+/// - `command_id`: A `u32` representing the command ID.
 ///
 /// # Returns
-/// This function does not return a value but orchestrates the processing of the result type command,
-/// handles logging, and schedules upstream commands based on the processed results.
 ///
-/// # Examples
+/// A `Vec<UpCommand>` containing the processed responses.
+///
+/// # Process Flow
+///
+/// 1. The function initializes a logger and prepares necessary variables.
+/// 2. It matches the `resulttype_command` to determine the type of command result and processes it:
+///    - If `CommandInstructions` is received, it processes the command map and generates the response.
+///    - If `List` is received, it iterates over the list, processing each item and handling nested results.
+///    - If `Empty` is received, it generates a special command instruction response.
+///    - If `Error` is received, it logs the error and generates an error response.
+/// 3. The function logs the debug and info messages for tracking.
+/// 4. It encapsulates the final response in an `UpCommand` and returns the list of responses.
+///
+/// # Notes
+///
+/// - The function is designed to handle different types of `ProcessResult` and generate appropriate
+///   `UpCommand` objects.
+/// - Special handling is implemented for nested `CommandInstructions` and errors.
+/// - TODO comments indicate areas for potential review and improvement, especially for cross-client delivery.
+///
+/// # Example
+///
+/// ```rust
+/// let result = process_response(resulttype_command, client_key, parity_id, priority, command_id);
 /// ```
-/// // Assuming ResultType, DownCommand, and related types are defined and available
-/// let resulttype_command = ResultType::Map(...); // Construct a ResultType::Map
-/// let mut client_key = "client123".to_string();
-/// let down_command = DownCommand::new(...); // Construct a DownCommand
-/// process_response_and_schedule(resulttype_command, client_key, down_command);
-/// ```
-// TODO >>> Remake this doc string
-fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) {
+fn process_response(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     let response: Value; // Errors are attached in the response and sent in the same way
     let mut client_to_send_back: String;
+    let mut responses: Vec<UpCommand> = Vec::new();
 
     match resulttype_command {
-        // TODO >>> Implement change of response here
         ProcessResult::CommandInstructions(m) => {
             (response, client_key) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
         },
@@ -264,32 +278,43 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
             let mut counter: u64 = 0;
             for res in l {
                 match res {
+                    // -> This is designed to not use infinite recursion nested lists, here we only expect CommandInstructions, Errors or Empty Cases
                     ProcessResult::CommandInstructions(m) => {
                         if counter == 0 {
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
-                            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                            responses.push(up_command);
                         } else {
-                            // -> Send to clients based in the target id
-                            // -> Gen 20 digits parity id based on client
+                            // -> Send to clients based in the target id. Gen 20 digits parity id based on client.
                             let special_parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_special_parity_id(&client_key);
-
                             let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
                             let up_command = UpCommand::new(&client_to_send_back, &special_parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
-                            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                            responses.push(up_command);
                         }
                     },
-                    _ => {
-                        response = error_response!(format!("Error! Receive {:?} when expecting a Command_Instruction!", res));
+                    ProcessResult::Empty => {
+                        // TODO >>> Review how this will work for cross client delivery
+                        let response = create_special_command_instruction_response!("C210".to_string());
                         let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
-                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                        responses.push(up_command);
+                    },
+                    ProcessResult::Error(e) => {
+                        // TODO >>> Review how this will work for cross client delivery
+                        logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                        let response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                        let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+                        responses.push(up_command);
+                    },
+                    _ => {
+                        response = error_response!(format!("Error! Receive {:?} when expecting a CommandInstruction!", res));
+                        let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+                        responses.push(up_command);
                         break;
                     },
                 }
+                counter += 1;
             }
-            // -> Remove the buffer down command that generated these responses since he is alwready processed
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-            return;
+            return responses;
         },
         ProcessResult::Empty => response = create_special_command_instruction_response!("C210".to_string()),
         ProcessResult::Error(e) => {
@@ -298,14 +323,20 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
         },
     }
 
-    // TODO >>> Made a better handler to the response errors
-
     logger.debug(format!("Function returned: {:?}", response));
     logger.info(format!("Command: {:?}, processed!", parity_id.clone()));
 
     let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+    responses.push(up_command);
 
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+    return responses;
+}
+
+fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
+    for resp in responses {
+        enhanced_buffer::buffer_up_manager::buffer_up_schedule(resp)
+    }
+    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 }
 
 /// Processes a given `DownCommand`, executing the corresponding logic and handling redirection.
@@ -356,9 +387,11 @@ fn process_response_and_schedule(resulttype_command: ProcessResult, mut client_k
 /// process(py, down_command);
 /// ```
 ///
-pub fn process(down_command: DownCommand) {
+pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     logger.debug(format!("Initializing processing!"));
+
+    let mut responses: Vec<UpCommand> = Vec::new();
 
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.clone().unwrap();
@@ -366,7 +399,7 @@ pub fn process(down_command: DownCommand) {
     if !command_is_not_registry {
         logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone()));
         enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
-        return;
+        return Vec::new();
     }
 
     // TODO >>> Use the command.command or create a require type field to redirect the command to another client
@@ -386,10 +419,13 @@ pub fn process(down_command: DownCommand) {
     let translated_command: Command = match Command::from_down_command(&down_command) {
         Ok(c) => c,
         Err(_) => {
-            // TODO >>> handle this erro case
-            logger.debug(format!("Error converting COMMAND from down_command."));
             logger.warn(format!("Error converting COMMAND from down_command."));
-            return;
+
+            let response = error_response!(format!("Error! Converting command {:?} from down_command!", &down_command));
+            let up_command = UpCommand::new(&down_command.client_key, &down_command.parity_id, down_command.priority.clone(), &to_string(&response).unwrap());
+            responses.push(up_command);
+
+            return responses;
         },
     };
 
@@ -400,12 +436,11 @@ pub fn process(down_command: DownCommand) {
         .into_iter()
         .map(|s| s.to_string())
         .collect();
-
-    let result: ProcessResult;
+    let callable_result: ProcessResult;
 
     if direct_functions.contains(&translated_command.command.actf.clone()) {
         // -> HANDLE DIRECT FUNCTIONS:
-        result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
+        callable_result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
     } else {
         // -> VERIFY IF THE COMMAND EXIST:
         {
@@ -415,10 +450,17 @@ pub fn process(down_command: DownCommand) {
             if !global_command_patterns.handler_exists_in("host", &translated_command.command.actf) {
                 // TODO >>> Add a mecanism to check if the command exist for the target client
                 // TODO >>> Also adda mecanism to commands have a target by default, and if target is host then target is host
-                logger.warn(format!("Command isn't registered in the patterns"));
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-                logger.warn(format!("command skipped and removed from schedule"));
-                return;
+
+                logger.warn(format!("Command: {:?} isn't registered in the patterns so it was skipped!", &translated_command.command.actf));
+                let response = error_response!(format!(
+                    "Error! Command activation function: {:?} not listed as host function or you doesn't have the required permission!",
+                    &translated_command.command.actf
+                ));
+
+                let up_command = UpCommand::new(&translated_command.client_key, &translated_command.parity_id, translated_command.priority.clone(), &to_string(&response).unwrap());
+                responses.push(up_command);
+
+                return responses;
             }
         }
 
@@ -445,7 +487,6 @@ pub fn process(down_command: DownCommand) {
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
-
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
 
             {
@@ -454,12 +495,11 @@ pub fn process(down_command: DownCommand) {
                 let host_handlers = host_node.get_node_handlers().unwrap();
                 let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
 
-                //Obtain the correct order of the kwargs
+                // Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
             }
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
-
             // -> CALL CALLBACK FUNCTION
 
             response = match callback_patterns.call(command_instructions.actf.as_str(), kwargs, args_pattern) {
@@ -470,26 +510,17 @@ pub fn process(down_command: DownCommand) {
                     let result = ProcessResult::Error(format!("{:?}", e));
                     let client_key = down_command.client_key.clone();
                     if let Some(c_id) = down_command.command_id {
-                        process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                     } else {
                         logger.warn("Can't process a command that doesn't have command id".to_string());
-                        let result = ProcessResult::Error(format!("Callback with key '{}' not found!", translated_command.command.actf.clone()));
-                        let client_key = down_command.client_key.clone();
-                        if let Some(c_id) = down_command.command_id {
-                            process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
-                        } else {
-                            logger.warn("Can't process a command that doesn't have command id".to_string())
-                        }
                     }
-
-                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-                    return;
+                    return responses;
                 },
             };
         }
 
         // -> PROCESS CALLBACK RESPONSE:
-        result = match response.downcast::<CommandInstructions>() {
+        callable_result = match response.downcast::<CommandInstructions>() {
             Ok(instructions_box) => {
                 // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
                 logger.debug(format!("Successfully downcasted to CommandInstructions!"));
@@ -506,26 +537,21 @@ pub fn process(down_command: DownCommand) {
                 ProcessResult::CommandInstructions(instruction)
             },
             Err(e) => {
-                // The downcast operation failed
-                // Logging the error for more details
+                // The downcast operation failed. Logging the error for more details
                 logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
-
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
     }
 
-    logger.debug(format!("Callback call response converted to rust: {:?}", result));
-
+    logger.debug(format!("Callback call response converted to rust: {:?}", callable_result));
     let client_key = down_command.client_key.clone();
-
     if let Some(c_id) = down_command.command_id {
-        process_response_and_schedule(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+        responses = process_response(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
     } else {
         logger.warn("Can't process a command that doesn't have command id".to_string())
     }
-
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+    return responses;
 }
 
 fn clear_old_data() {
@@ -560,7 +586,8 @@ pub fn initialize_socket_host_transposer() {
         logger.info(format!("get a pool worker in transposer!"));
         {
             logger.debug(format!("Start to process task!"));
-            process(dow_command);
+            let responses = process(dow_command.clone());
+            schedule_up_commands(responses, dow_command.command_id.unwrap());
             logger.debug(format!("Finalize a process task!"));
         }
     }
