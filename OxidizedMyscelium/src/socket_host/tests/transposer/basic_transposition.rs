@@ -3,11 +3,26 @@ use crate::{
     socket_host::transposer::process,
 };
 
-// TODO >>> Initialize the buffer
-// TODO >>> Add the command to tranpose in the buffer down
-// TODO >>> Execute the process function of the tranposer
-// TODO >>> Verify if the command was transposed
-// TODO >>> Verify if the command transposed matches the expected
+// TODO >>> Map the commands that are possible to be received in the tranposer process
+//> Commands:
+//> 1.
+
+// TODO >>> Map the response to each command
+//> Responses:
+//> 1.
+
+// TODO >>> Map each command with command mode: Response posssible in the transposer process
+//> Command Responses:
+//> 1.
+
+// TODO >>> Map each command with command mode: Response response obtained in the tranposer process
+//> Response of Command Responses:
+//> 1.
+
+// TODO >>> Create rules of how each command and response command should behave
+
+// < Maybe the Direct Commands will need some speciall attention cause them change real states
+// * In this case od Direct Commands we will need to create a special set of rules to them.
 
 #[test]
 fn test_down_command_transposition() {
