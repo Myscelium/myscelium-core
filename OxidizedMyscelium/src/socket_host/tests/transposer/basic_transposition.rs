@@ -1,10 +1,12 @@
+use indexmap::IndexMap;
+
 use crate::{
     common::enhanced_buffer::{
         buffer_down_manager::DownCommand,
         utilities::{CommandMode, CommandOrigin, CommandStatus, CommandTarget, ResponseTarget, ResponseType},
     },
     socket_host::transposer::process,
-    Command, CommandInstructions, CommandType,
+    Command, CommandInstructions, CommandType, HandlerStatus, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
 };
 use std::collections::HashMap;
 
@@ -103,9 +105,79 @@ fn validate_command_instruction(instruction: &CommandInstructions, rules: &Rules
     false
 }
 
+fn registry_socket_host_callbacks() {
+    let mut host_node_handlers: Vec<NodeHandler> = Vec::new();
+    // let mut callbacks_patterns = HashMap::new();
+
+    // Extract the argument types (This are extracted from the function args requirements)
+    // let mut args_types_value = IndexMap::new(); // Key: arg name, Value: Type followign python standarts
+
+    // // Store the function name and argument types in the command patterns
+    // let host_handler: NodeHandler = NodeHandler::new(function_name.to_string(), args_types_value.clone(), CommandType::ExternalFunction, HandlerStatus::NotTested, HashMap::new(), "".to_string());
+    // host_node_handlers.push(host_handler);
+    // callbacks_patterns.insert(function_name.to_string(), wrapped_function);
+
+    // // Now you can use the command_patterns
+    // OxidizedMyscelium::set_host_callbacks(callbacks_patterns);
+
+    //> Add Client
+    {
+        let mut args_types_value: IndexMap<String, String> = IndexMap::new();
+
+        args_types_value.insert("client_name".to_string(), "str".to_string());
+        args_types_value.insert("client_key".to_string(), "str".to_string());
+        args_types_value.insert("client_type".to_string(), "str".to_string());
+        args_types_value.insert("permission_group".to_string(), "str".to_string());
+        args_types_value.insert("is_super_user".to_string(), "bool".to_string());
+        args_types_value.insert("max_sub_channels".to_string(), "int".to_string());
+        args_types_value.insert("owned_sub_channels_keys".to_string(), "list".to_string());
+
+        let host_add_client_handler: NodeHandler = NodeHandler::new("add_client".to_string(), args_types_value.clone(), CommandType::DirectFunction, HandlerStatus::Working, HashMap::new(), "".to_string());
+
+        host_node_handlers.push(host_add_client_handler);
+    }
+
+    //> Update Client
+    {
+        let mut args_types_value: IndexMap<String, String> = IndexMap::new();
+
+        args_types_value.insert("actual_client_key".to_string(), "str".to_string());
+        args_types_value.insert("updated_client".to_string(), "dict".to_string());
+
+        // TODO >>> make be possible to do sub dict explicity definitions of the parameters that is should have, also do the same with lists too
+
+        let host_update_client_handler: NodeHandler = NodeHandler::new("update_client".to_string(), args_types_value.clone(), CommandType::DirectFunction, HandlerStatus::Working, HashMap::new(), "".to_string());
+
+        host_node_handlers.push(host_update_client_handler);
+    }
+
+    //> Remove Client
+    {
+        let mut args_types_value: IndexMap<String, String> = IndexMap::new();
+
+        args_types_value.insert("client_key".to_string(), "str".to_string());
+
+        let host_remove_client_handler: NodeHandler = NodeHandler::new("remove_client".to_string(), args_types_value.clone(), CommandType::DirectFunction, HandlerStatus::Working, HashMap::new(), "".to_string());
+
+        host_node_handlers.push(host_remove_client_handler);
+    }
+
+    // TODO >>> Create a mechanism that allows to only update the necessary information to avoid need update all what can cause isues
+
+    // -> UPDATE HOST NODE WITH THE HANDLERS
+    let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
+    let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+    let host_node: Node = Node::new("host".to_string(), "host".to_string(), "".to_string(), node_version, host_node_handlers, NodeStatus::Online);
+    global_command_patterns.add_or_update_if_exists(host_node);
+}
+
 #[test]
 fn test_down_command_transposition() {
     // TODO >>> List "some_actf" as a host ext function
+
+    registry_socket_host_callbacks();
+
+    // -> INITIALIZE RULES:
 
     let rules_function = Rules {
         command_modes: vec![CommandMode::Function],
@@ -200,8 +272,9 @@ fn test_down_command_transposition() {
         collect_response: true,
     };
 
+    // -> TEST ALL VALID COMMANDS:
+
     generate_combinations_recursive(&mut initial_command, 0, &fields_function, &rules_function, &mut valid_combinations);
-    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
 
     let mut total_responses: u64 = 0u64;
     let mut total_failures: u64 = 0u64;
@@ -226,6 +299,11 @@ fn test_down_command_transposition() {
 
         println!("\n{} responses and {} failed", total_responses, total_failures);
     }
+
+    // -> TEST ALL VALID RESPONSES:
+
+    let mut valid_combinations = Vec::new();
+    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
 
     panic!()
     // let mut down_commands: Vec<DownCommand> = Vec::new();
