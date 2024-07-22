@@ -90,7 +90,6 @@ pub fn host_callback(input: TokenStream) -> TokenStream {
 
 //     output.into()
 // }
-
 #[proc_macro_attribute]
 pub fn callback(attr: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
@@ -98,14 +97,11 @@ pub fn callback(attr: TokenStream, input: TokenStream) -> TokenStream {
     let fn_name = &input_fn.sig.ident;
     let fn_name_str = fn_name.to_string();
 
-    // Initialize node name as None to enforce specification
     let mut node_name: Option<String> = None;
-
-    // Parse attributes to find node name
     for arg in args {
         match arg {
             NestedMeta::Meta(Meta::NameValue(nv)) if nv.path.is_ident("node") => {
-                if let Lit::Str(s) = nv.lit {
+                if let Lit::Str(ref s) = nv.lit {
                     node_name = Some(s.value());
                 } else {
                     return Error::new_spanned(nv.lit, "Expected a string literal for the node name").to_compile_error().into();
@@ -115,17 +111,18 @@ pub fn callback(attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    // Ensure that node name has been specified
     let node_name = match node_name {
         Some(name) => name,
-        None => return Error::new_spanned(&input_fn.sig.ident, "Node name must be specified using #[host_callback(node=\"node_name\")]").to_compile_error().into(),
+        None => {
+            let error = Error::new_spanned(&input_fn.sig.ident, "Node name must be specified using #[callback(node=\"node_name\")]").to_compile_error();
+            return error.into();
+        },
     };
 
-    // Extract argument types
-    let args = input_fn.sig.inputs.iter().map(|arg| {
-        if let FnArg::Typed(PatType { pat, ty, .. }) = arg {
+    let args_insertion = input_fn.sig.inputs.iter().map(|arg| {
+        if let syn::FnArg::Typed(syn::PatType { pat, ty, .. }) = arg {
             let arg_name = match **pat {
-                Pat::Ident(ref ident) => ident.ident.to_string(),
+                syn::Pat::Ident(ref ident) => ident.ident.to_string(),
                 _ => panic!("Unsupported pattern"),
             };
             let arg_type = quote!(#ty).to_string();
@@ -135,34 +132,36 @@ pub fn callback(attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     });
 
-    // Generate a closure that matches the CallbackClosure signature
+    let fn_block = &input_fn.block;
+
     let output = quote! {
-        #input_fn
+        fn #fn_name() -> Option<String> {
+            {
+                let mut args_types_value = indexmap::IndexMap::new();
+                #(#args_insertion)*
 
-        {
-            let mut args_types_value = indexmap::IndexMap::new();
-            #(#args)*
+                let closure = Box::new(move |args: Vec<Box<dyn std::any::Any + 'static>>| -> Box<dyn std::any::Any> {
+                    Box::new(#fn_name(/* Extract and pass arguments here */))
+                });
 
-            // Wrap the function in a closure that matches the expected callback signature
-            let closure = Box::new(move |args: Vec<Box<dyn std::any::Any + 'static>>| -> Box<dyn std::any::Any> {
-                // Placeholder for argument extraction and calling the original function
-                Box::new(#fn_name(/* Extract and pass arguments here */))
-            });
+                crate::common::functions::callbacks::MyCallbacks::insert(#fn_name_str.clone(), closure);
 
-            let handler = crate::NodeHandler::new(
-                #fn_name_str.clone(),
-                args_types_value,
-                crate::CommandType::ExternalFunction,
-                crate::HandlerStatus::NotTested,
-                std::collections::HashMap::new(),
-                "".to_string()
-            );
+                let handler = crate::NodeHandler::new(
+                    #fn_name_str.clone(),
+                    args_types_value,
+                    crate::CommandType::ExternalFunction,
+                    crate::HandlerStatus::NotTested,
+                    std::collections::HashMap::new(),
+                    "".to_string()
+                );
 
-            // Update the global command patterns
-            let mut global_command_patterns = crate::HOST_COMMAND_PATTERNS.lock();
-            let node_version = crate::NodeVersion::cast_version(1, 3, 0, crate::VersionIndentifier::ReleaseCandidate);
-            let host_node = crate::Node::new(#node_name.clone(), #node_name, "".to_string(), node_version, vec![handler], crate::NodeStatus::Online);
-            global_command_patterns.add_or_update_if_exists(host_node);
+                let global_command_patterns = crate::HOST_COMMAND_PATTERNS.lock();
+                let node_version = crate::NodeVersion::cast_version(1, 3, 0, crate::VersionIndentifier::ReleaseCandidate);
+                let host_node = crate::Node::new(#node_name.clone(), #node_name, "".to_string(), node_version, vec![handler], crate::NodeStatus::Online);
+                global_command_patterns.add_or_update_if_exists(host_node);
+            }
+
+            #fn_block
         }
     };
 

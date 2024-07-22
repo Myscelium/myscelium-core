@@ -21,6 +21,7 @@ mod socket_client;
 mod socket_host;
 
 use indexmap::IndexMap;
+use oxidized_myscelium_macros::callback;
 
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
