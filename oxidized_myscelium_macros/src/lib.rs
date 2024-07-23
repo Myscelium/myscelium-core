@@ -240,6 +240,32 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_name = &input.sig.ident;
 
+    // Ensure the first argument is as expected with detailed error reporting
+    let first_arg = input.sig.inputs.first().expect("Function must have at least one argument");
+    match first_arg {
+        syn::FnArg::Typed(pat) => {
+            let arg_name = match &*pat.pat {
+                syn::Pat::Ident(ident) => ident.ident.to_string(),
+                _ => panic!("Expected the first argument to be a named parameter"),
+            };
+            let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), "");
+            let expected_type = quote! {&HashMap<String, Value>}.to_string().replace(' ', "");
+
+            // Debugging output
+            println!("Found type: {}", arg_type.to_string());
+
+            if arg_name.replace(" ", "").replace(":", "") != "info".to_string() || arg_type.to_string() != expected_type {
+                panic!(
+                    "First argument must be {}, found `{}` and arg_name must be info, finded: {}",
+                    expected_type,
+                    arg_type.to_string(),
+                    arg_name.replace(" ", "").replace(":", "")
+                );
+            }
+        },
+        _ => panic!("Unsupported argument type for the first argument"),
+    }
+
     // Capture argument names and types
     let args = input
         .sig

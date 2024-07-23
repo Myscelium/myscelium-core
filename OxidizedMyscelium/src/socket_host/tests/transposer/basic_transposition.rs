@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use rusqlite::types::Value;
 
 use crate::{
     common::enhanced_buffer::{
@@ -62,8 +63,8 @@ use std::collections::HashMap;
 use crate::{CallbackClosure, FunctionMetadata};
 
 #[callback]
-fn some_actf(number: &Vec<u32>) -> Option<CommandInstructions> {
-    Some(CommandInstructions {
+fn some_actf(info: &HashMap<String, Value>) -> Option<CommandInstructions> {
+    let response = Some(CommandInstructions {
         mode: CommandMode::Response,
         command_type: CommandType::ExternalFunction,
         target: CommandTarget::Origin,
@@ -76,7 +77,10 @@ fn some_actf(number: &Vec<u32>) -> Option<CommandInstructions> {
         response_target: None,
         response_actf: None,
         collect_response: true,
-    })
+    });
+
+    println!("Resp: {:?}", response);
+    response
 }
 
 // #[callback]
