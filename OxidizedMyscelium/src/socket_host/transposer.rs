@@ -393,6 +393,8 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
     let mut responses: Vec<UpCommand> = Vec::new();
 
+    // TODO >>> The verification to see if the DownCommand is already answered needs to be done in the part that call process not here
+
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.clone().unwrap();
 
