@@ -240,27 +240,27 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_name = &input.sig.ident;
 
+    // Capture argument names and types
     let args = input
         .sig
         .inputs
         .iter()
-        .enumerate()
-        .map(|(i, arg)| match arg {
+        .map(|arg| match arg {
             syn::FnArg::Typed(pat) => {
                 let arg_name = match &*pat.pat {
                     syn::Pat::Ident(ident) => ident.ident.to_string(),
-                    _ => format!("arg{}", i),
+                    _ => panic!("Unsupported argument pattern"),
                 };
-                let arg_type = quote! {#pat.ty}.to_string().replace(".ty", "");
-                let arg_type = arg_type.replace(' ', ""); // Removing spaces for better readability
+                let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), ""); // Removing spaces for better readability
                 quote! {
-                    (#arg_name.to_string(), #arg_type.to_string())
+                    (#arg_name.clone(), #arg_type.clone())
                 }
             },
             _ => panic!("Unsupported argument type"),
         })
         .collect::<Vec<_>>();
 
+    // Generate the code to extract arguments
     let arg_names = input
         .sig
         .inputs
@@ -299,7 +299,7 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 name: stringify!(#fn_name),
                 args: vec![
                     #(#args),*
-                ].into_iter().collect(),
+                ].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
                 func,
             }
         }

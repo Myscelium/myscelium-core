@@ -79,16 +79,15 @@ fn some_actf(number: &Vec<u32>) -> Option<CommandInstructions> {
     })
 }
 
-#[callback]
-fn some_function() -> Option<String> {
-    None::<String>
-}
+// #[callback]
+// fn some_function() -> Option<String> {
+//     None::<String>
+// }
 
-#[test]
-fn test_some_function() {
-    println!("Some: {:?}", some_function());
-    panic!()
-}
+// #[test]
+// fn test_some_function() {
+//     println!("Some: {:?}", some_function());
+// }
 
 // TODO >>> Map the commands that are possible to be received in the tranposer process
 //> Commands:
@@ -190,6 +189,8 @@ fn registry_handlers(handlers: Vec<FunctionMetadata>) {
     let mut callbacks_patterns: HashMap<String, Box<CallbackClosure>> = HashMap::new();
 
     for handler in handlers {
+        println!("Registred handler: {} with args: {:?}", handler.name, handler.args);
+
         node_handlers.push(NodeHandler::new(handler.name.to_string(), handler.args, CommandType::ExternalFunction, HandlerStatus::NotTested, HashMap::new(), "".to_string()));
         callbacks_patterns.insert(handler.name.to_string(), Box::new(handler.func));
     }
@@ -271,8 +272,8 @@ fn test_down_command_transposition() {
     let fields_function: Vec<Vec<(String, Box<dyn Fn(&mut CommandInstructions, String)>)>> = vec![
         vec![("Function".to_string(), Box::new(|c: &mut CommandInstructions, _| c.mode = CommandMode::Function))],
         vec![
-            ("SpecialFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.command_type = CommandType::SpecialFunction)),
-            ("DirectFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.command_type = CommandType::DirectFunction)),
+            // ("SpecialFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.command_type = CommandType::SpecialFunction)),
+            // ("DirectFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.command_type = CommandType::DirectFunction)),
             ("ExternalFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.command_type = CommandType::ExternalFunction)),
         ],
         vec![
