@@ -240,8 +240,6 @@ fn registry_handlers(handlers: Vec<FunctionMetadata>) {
 
 #[test]
 fn test_down_command_transposition() {
-    // TODO >>> List "some_actf" as a host ext function
-
     let handlers = vec![some_actf()];
     registry_handlers(handlers);
 
