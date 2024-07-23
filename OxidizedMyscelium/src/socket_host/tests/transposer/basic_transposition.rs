@@ -62,12 +62,25 @@ use std::collections::HashMap;
 use crate::{CallbackClosure, FunctionMetadata};
 
 #[callback]
-fn some_function(number: &Vec<u32>) -> Option<String> {
-    None::<String>
+fn some_actf(number: &Vec<u32>) -> Option<CommandInstructions> {
+    Some(CommandInstructions {
+        mode: CommandMode::Response,
+        command_type: CommandType::ExternalFunction,
+        target: CommandTarget::Origin,
+        status: CommandStatus::Success,
+        origin: CommandOrigin::Host,
+        actf: "some_actf".to_string(),
+        kwargs: HashMap::new(),
+        message: "Hello".to_string(),
+        response_type: None,
+        response_target: None,
+        response_actf: None,
+        collect_response: true,
+    })
 }
 
 #[callback]
-fn some_actf() -> Option<String> {
+fn some_function() -> Option<String> {
     None::<String>
 }
 
@@ -356,10 +369,11 @@ fn test_down_command_transposition() {
 
     // -> TEST ALL VALID RESPONSES:
 
-    let mut valid_combinations = Vec::new();
-    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
+    // let mut valid_combinations = Vec::new();
+    // generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
 
-    panic!()
+    panic!();
+
     // let mut down_commands: Vec<DownCommand> = Vec::new();
 
     // // -> ALL FIELDS PRESENT:
