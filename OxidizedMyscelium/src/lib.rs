@@ -38,6 +38,7 @@ use core::panic;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+pub use crate::common::structs::callbacks_structure::FunctionMetadata;
 use parking_lot::Mutex;
 
 extern crate chrono;
