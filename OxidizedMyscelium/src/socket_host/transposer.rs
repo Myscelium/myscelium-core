@@ -395,14 +395,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
     // TODO >>> The verification to see if the DownCommand is already answered needs to be done in the part that call process not here
 
-    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.clone().unwrap();
-
-    if !command_is_not_registry {
-        logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone()));
-        enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
-        return Vec::new();
-    }
 
     // TODO >>> Use the command.command or create a require type field to redirect the command to another client
 
@@ -583,13 +576,23 @@ pub fn initialize_socket_host_transposer() {
     logger.info(format!("Data found in schedule!"));
 
     // -> Process all commands
-    for dow_command in schedule {
+    for down_command in schedule {
         let logger = acquire_logger!("Transposer");
         logger.info(format!("get a pool worker in transposer!"));
         {
             logger.debug(format!("Start to process task!"));
-            let responses = process(dow_command.clone());
-            schedule_up_commands(responses, dow_command.command_id.unwrap());
+
+            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
+            let command_id: u32 = down_command.command_id.clone().unwrap();
+
+            if !command_is_not_registry {
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
+                logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone()));
+                continue;
+            }
+
+            let responses = process(down_command.clone());
+            schedule_up_commands(responses, down_command.command_id.unwrap());
             logger.debug(format!("Finalize a process task!"));
         }
     }

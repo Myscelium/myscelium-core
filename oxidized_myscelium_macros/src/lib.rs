@@ -305,13 +305,18 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 };
                 let arg_type = &pat.ty;
                 quote! {
-                    let #arg_name: #arg_type = *args_iter.next().unwrap().downcast_ref::<#arg_type>().unwrap();
+                    let #arg_name: Option<#arg_type> = match args_iter.next() {
+                        Some(arg) => match arg.downcast_ref::<#arg_type>() {
+                            Some(typed_arg) => Some(*typed_arg),
+                            None => None, // Handle the case where downcast_ref failed
+                        },
+                        None => None, // Handle the case where args_iter.next() returned None
+                    };
                 }
             },
             _ => panic!("Unsupported argument type"),
         })
         .collect::<Vec<_>>();
-
     let fn_body = &input.block;
 
     let gen = quote! {
