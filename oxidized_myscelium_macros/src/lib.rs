@@ -240,6 +240,8 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_name = &input.sig.ident;
 
+    // TODO >>> Create a bypass to bypass the first argument that is the info carrier arument
+
     // Ensure the first argument is as expected with detailed error reporting
     let first_arg = input.sig.inputs.first().expect("Function must have at least one argument");
     match first_arg {
