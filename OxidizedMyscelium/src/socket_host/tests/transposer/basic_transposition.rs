@@ -17,8 +17,10 @@ use std::collections::HashMap;
 
 use crate::{CallbackClosure, FunctionMetadata};
 
+// TODO >>> Modify the tranposition downcast to be able to downcast Option<CommandInstruction> instead of only CommandInstruction
+
 #[callback]
-fn some_actf(info: &HashMap<String, Value>) {
+fn some_actf(info: &HashMap<String, Value>) -> CommandInstructions {
     let response = CommandInstructions {
         mode: CommandMode::Response,
         command_type: CommandType::ExternalFunction,
@@ -35,6 +37,7 @@ fn some_actf(info: &HashMap<String, Value>) {
     };
 
     println!("Resp: {:?}", response);
+    response
 }
 
 #[derive(Clone)]
