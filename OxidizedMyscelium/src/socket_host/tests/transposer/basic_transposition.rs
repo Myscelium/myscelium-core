@@ -15,52 +15,6 @@ use oxidized_myscelium_macros::callback;
 use std::any::Any;
 use std::collections::HashMap;
 
-// type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
-// pub type CallbackClosure = Box<dyn Fn(Vec<Box<dyn Any + 'static>>) -> Box<dyn Any> + Send + Sync>;
-
-// #[macro_export]
-// macro_rules! wrap_fn {
-//     ($fn_name:ident, $($arg_name:ident: $arg_type:ty),* $(,)?) => {
-//         pub fn $fn_name() -> $crate::CallbackClosure {
-//             Box::new(move |args: Vec<Box<dyn std::any::Any + 'static>>| -> Box<dyn std::any::Any> {
-//                 $(
-//                     let $arg_name: $arg_type = *args[$crate::wrap_fn_helper::index_of!($arg_name)].downcast_ref::<$arg_type>().expect("Argument type mismatch");
-//                 )*
-
-//                 let result = {
-//                     fn $fn_name($($arg_name: $arg_type),*) -> $crate::CallbackClosure {
-//                         // Original function body goes here
-//                         None
-//                     }
-//                     $fn_name($($arg_name),*)
-//                 };
-//                 Box::new(result)
-//             })
-//         }
-//     };
-// }
-
-// #[macro_export]
-// macro_rules! wrap_fn_helper {
-//     ($fn_name:ident($($arg_name:ident: $arg_type:ty),*)) => {
-//         $crate::wrap_fn!($fn_name, $($arg_name: $arg_type),*)
-//     };
-
-//     // Helper to find the index of an argument name in a list
-//     (@index_of $arg_name:ident, $($name:ident),*) => {
-//         {
-//             let mut index = 0;
-//             $(
-//                 if stringify!($name) == stringify!($arg_name) {
-//                     break;
-//                 }
-//                 index += 1;
-//             )*
-//             index
-//         }
-//     };
-// }
-
 use crate::{CallbackClosure, FunctionMetadata};
 
 #[callback]
@@ -83,37 +37,6 @@ fn some_actf(info: &HashMap<String, Value>) -> CommandInstructions {
     println!("Resp: {:?}", response);
     response
 }
-
-// #[callback]
-// fn some_function() -> Option<String> {
-//     None::<String>
-// }
-
-// #[test]
-// fn test_some_function() {
-//     println!("Some: {:?}", some_function());
-// }
-
-// TODO >>> Map the commands that are possible to be received in the tranposer process
-//> Commands:
-//> 1.
-
-// TODO >>> Map the response to each command
-//> Responses:
-//> 1.
-
-// TODO >>> Map each command with command mode: Response posssible in the transposer process
-//> Command Responses:
-//> 1.
-
-// TODO >>> Map each command with command mode: Response response obtained in the tranposer process
-//> Response of Command Responses:
-//> 1.
-
-// TODO >>> Create rules of how each command and response command should behave
-
-// < Maybe the Direct Commands will need some speciall attention cause them change real states
-// * In this case od Direct Commands we will need to create a special set of rules to them.
 
 #[derive(Clone)]
 struct Rules {
