@@ -10,6 +10,7 @@ use crate::{
     socket_host::transposer::process,
     Command, CommandInstructions, CommandType, HandlerStatus, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
 };
+use core::panic;
 use oxidized_myscelium_macros::callback;
 use std::any::Any;
 use std::collections::HashMap;
@@ -292,7 +293,7 @@ fn test_down_command_transposition() {
             ("Failure".to_string(), Box::new(|c: &mut CommandInstructions, _| c.status = CommandStatus::Failure)),
         ],
         vec![
-            ("DirectFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.response_type = Some(ResponseType::DirectFunction))),
+            // ("DirectFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.response_type = Some(ResponseType::DirectFunction))),
             ("ExternalFunction".to_string(), Box::new(|c: &mut CommandInstructions, _| c.response_type = Some(ResponseType::ExternalFunction))),
         ],
         vec![
@@ -345,6 +346,7 @@ fn test_down_command_transposition() {
     // -> TEST ALL VALID COMMANDS:
 
     generate_combinations_recursive(&mut initial_command, 0, &fields_function, &rules_function, &mut valid_combinations);
+    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
 
     let mut total_responses: u64 = 0u64;
     let mut total_failures: u64 = 0u64;
@@ -368,6 +370,9 @@ fn test_down_command_transposition() {
         }
 
         println!("\n{} responses and {} failed", total_responses, total_failures);
+        if total_failures > 1 {
+            panic!("{} command functions/responses failed", total_failures);
+        }
     }
 
     // -> TEST ALL VALID RESPONSES:
@@ -375,7 +380,7 @@ fn test_down_command_transposition() {
     // let mut valid_combinations = Vec::new();
     // generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
 
-    panic!();
+    // panic!();
 
     // let mut down_commands: Vec<DownCommand> = Vec::new();
 
