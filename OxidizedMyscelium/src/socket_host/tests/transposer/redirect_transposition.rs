@@ -1,12 +1,4 @@
-// TODO >>> The idea of this module is to test the percurse of the tranposer
-
-// -> Basic idea:
-// > Input some command in the buffer down
-// > 
-
-
-// TODO >>> Initialize the buffer
-// TODO >>> Add the command to tranpose in the buffer down
-// TODO >>> Execute the process function of the tranposer
-// TODO >>> Verify if the command was transposed
-// TODO >>> Verify if the command transposed matches the expected
+// TODO >>> Generate all command cases for redirect command cases where we should trasnpose
+// TODO >>> Create a method to pass all the tested commands through the process and verify the outcome
+// TODO >>> See if the outcome of the process is a success or not
+// TODO >>> Create a panic handler to the cases that the command gives a error
