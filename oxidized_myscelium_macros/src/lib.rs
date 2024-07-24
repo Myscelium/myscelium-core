@@ -237,53 +237,91 @@ use std::any::Any;
 #[proc_macro_attribute]
 pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
+
     let fn_name = &input.sig.ident;
+
+    // Check the return type
+    let return_type = if let syn::ReturnType::Type(_, ty) = &input.sig.output {
+        quote! {#ty}.to_string().replace(' ', "")
+    } else {
+        "()".to_string()
+    };
+
+    let expected_types = vec![quote! {CommandInstructions}.to_string().replace(' ', ""), "()".to_string()];
+
+    if !expected_types.contains(&return_type) {
+        panic!("The return type must be `CommandInstructions` or `()`, found `{}`", return_type);
+    }
 
     // Ensure the first argument is as expected with detailed error reporting
     let first_arg = input.sig.inputs.first().expect("Function must have at least one argument");
     match first_arg {
         syn::FnArg::Typed(pat) => {
-            if let syn::Pat::Ident(ident) = &*pat.pat {
-                let arg_name = &ident.ident;
-                let arg_type = &pat.ty;
-                let expected_type_str = "&HashMap<String, Value>";
-                let expected_type: syn::Type = syn::parse_str(expected_type_str).unwrap();
+            let arg_name = match &*pat.pat {
+                syn::Pat::Ident(ident) => ident.ident.to_string(),
+                _ => panic!("Expected the first argument to be a named parameter"),
+            };
+            let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), "");
+            let expected_type = quote! {&HashMap<String, Value>}.to_string().replace(' ', "");
 
-                if arg_name != "info" || quote! {#arg_type}.to_string().replace(" ", "") != quote! {#expected_type}.to_string().replace(" ", "") {
-                    panic!("First argument must be info: &HashMap<String, Value>");
-                }
-            } else {
-                panic!("Expected the first argument to be a named parameter");
+            if arg_name.replace(" ", "").replace(":", "") != "info".to_string() || arg_type.to_string() != expected_type {
+                panic!(
+                    "First argument must be {}, found `{}` and arg_name must be info, found: {}",
+                    expected_type,
+                    arg_type.to_string(),
+                    arg_name.replace(" ", "").replace(":", "")
+                );
             }
         },
         _ => panic!("Unsupported argument type for the first argument"),
     }
 
-    // Capture and generate code for remaining arguments
-    let mut args = Vec::new();
-    let mut arg_names = Vec::new();
-    for (_, arg) in input.sig.inputs.iter().enumerate().skip(1) {
-        match arg {
+    // Capture argument names and types
+    let args = input
+        .sig
+        .inputs
+        .iter()
+        .map(|arg| match arg {
             syn::FnArg::Typed(pat) => {
-                if let syn::Pat::Ident(ident) = &*pat.pat {
-                    let arg_name = ident.ident.clone();
-                    let arg_type = &pat.ty;
-                    args.push(quote! { (#arg_name.to_string(), quote! {#arg_type}.to_string()) });
-
-                    arg_names.push(quote! {
-                        let #arg_name: #arg_type = match args_iter.next() {
-                            Some(arg) => match arg.downcast_ref::<#arg_type>() {
-                                Some(typed_arg) => *typed_arg,
-                                None => panic!("Type mismatch for argument {}", stringify!(#arg_name)),
-                            },
-                            None => panic!("Missing argument {}", stringify!(#arg_name)),
-                        };
-                    });
+                let arg_name = match &*pat.pat {
+                    syn::Pat::Ident(ident) => ident.ident.to_string(),
+                    _ => panic!("Unsupported argument pattern"),
+                };
+                let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), ""); // Removing spaces for better readability
+                quote! {
+                    (#arg_name.clone(), #arg_type.clone())
                 }
             },
             _ => panic!("Unsupported argument type"),
-        }
-    }
+        })
+        .collect::<Vec<_>>();
+
+    // Generate the code to extract arguments
+    let arg_names = input
+        .sig
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(i, arg)| match arg {
+            syn::FnArg::Typed(pat) => {
+                let arg_name = match &*pat.pat {
+                    syn::Pat::Ident(ident) => ident.ident.clone(),
+                    _ => format_ident!("arg{}", i),
+                };
+                let arg_type = &pat.ty;
+                quote! {
+                    let #arg_name: Option<#arg_type> = match args_iter.next() {
+                        Some(arg) => match arg.downcast_ref::<#arg_type>() {
+                            Some(typed_arg) => Some(*typed_arg),
+                            None => None, // Handle the case where downcast_ref failed
+                        },
+                        None => None, // Handle the case where args_iter.next() returned None
+                    };
+                }
+            },
+            _ => panic!("Unsupported argument type"),
+        })
+        .collect::<Vec<_>>();
 
     let fn_body = &input.block;
 
@@ -296,12 +334,14 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 let result = { #fn_body };
 
-                Box::new(result) as Box<dyn Any>
+                Box::new(result)
             });
 
             FunctionMetadata {
                 name: stringify!(#fn_name),
-                args: vec![#(#args),*].into_iter().collect(),
+                args: vec![
+                    #(#args),*
+                ].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
                 func,
             }
         }
