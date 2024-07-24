@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::{CallbackClosure, FunctionMetadata};
 
 #[callback]
-fn some_actf(info: &HashMap<String, Value>) -> CommandInstructions {
+fn some_actf(info: &HashMap<String, Value>) {
     let response = CommandInstructions {
         mode: CommandMode::Response,
         command_type: CommandType::ExternalFunction,
@@ -35,7 +35,6 @@ fn some_actf(info: &HashMap<String, Value>) -> CommandInstructions {
     };
 
     println!("Resp: {:?}", response);
-    response
 }
 
 #[derive(Clone)]
