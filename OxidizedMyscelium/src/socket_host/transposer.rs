@@ -515,21 +515,26 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
         }
 
         // -> PROCESS CALLBACK RESPONSE:
-        callable_result = match response.downcast::<CommandInstructions>() {
-            Ok(instructions_box) => {
-                // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                logger.debug(format!("Successfully downcasted to CommandInstructions!"));
+        callable_result = match response.downcast::<Option<CommandInstructions>>() {
+            Ok(optional_instructions_box) => {
+                // Successfully downcasted, optional_instructions_box is now a Box<Option<CommandInstructions>>
+                logger.debug(format!("Successfully downcasted to Option<CommandInstructions>!"));
 
-                // Additional logging: Inspect the contents of instructions_box
-                logger.debug(format!("CommandInstructions details: {:?}", instructions_box));
+                // Additional logging: Inspect the contents of optional_instructions_box
+                logger.debug(format!("Option<CommandInstructions> details: {:?}", optional_instructions_box));
 
-                // You can now use instructions_box as Box<CommandInstructions>
-                let mut instruction = *instructions_box;
+                match *optional_instructions_box {
+                    Some(mut instruction) => {
+                        // -> Override the collect_response set as the trigger command instruction that generated this response defined it
+                        instruction.collect_response = command_instructions.collect_response.clone();
 
-                // -> Overide the collect_response set it as the trigger command instruction that generate this response defined it
-                instruction.collect_response = command_instructions.collect_response.clone();
-
-                ProcessResult::CommandInstructions(instruction)
+                        ProcessResult::CommandInstructions(instruction)
+                    },
+                    None => {
+                        logger.debug("Callback response was None.".to_string());
+                        ProcessResult::Empty // Handle the case where there are no instructions
+                    },
+                }
             },
             Err(e) => {
                 // The downcast operation failed. Logging the error for more details

@@ -264,13 +264,8 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), "");
             let expected_type = quote! {&HashMap<String, Value>}.to_string().replace(' ', "");
 
-            if arg_name.replace(" ", "").replace(":", "") != "info".to_string() || arg_type.to_string() != expected_type {
-                panic!(
-                    "First argument must be {}, found `{}` and arg_name must be info, found: {}",
-                    expected_type,
-                    arg_type.to_string(),
-                    arg_name.replace(" ", "").replace(":", "")
-                );
+            if arg_name.replace(" ", "").replace(":", "") != "info" || arg_type != expected_type {
+                panic!("First argument must be {}, found `{}` and arg_name must be `info`, found: {}", expected_type, arg_type, arg_name);
             }
         },
         _ => panic!("Unsupported argument type for the first argument"),
@@ -325,6 +320,23 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let fn_body = &input.block;
 
+    // Modify the function body to wrap the result in Option
+    let wrapped_fn_body = if return_type == "CommandInstructions" {
+        quote! {
+            {
+                let result: CommandInstructions = { #fn_body };
+                Some(result)
+            }
+        }
+    } else {
+        quote! {
+            {
+                { #fn_body };
+                None::<CommandInstructions>
+            }
+        }
+    };
+
     let gen = quote! {
         pub fn #fn_name() -> FunctionMetadata {
             let func: CallbackClosure = Box::new(|args: Vec<Box<dyn Any + 'static>>| -> Box<dyn Any> {
@@ -332,7 +344,7 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 #(#arg_names)*
 
-                let result = { #fn_body };
+                let result = #wrapped_fn_body;
 
                 Box::new(result)
             });
