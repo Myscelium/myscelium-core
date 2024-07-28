@@ -14,7 +14,7 @@ proc-macro = true
 [dependencies]
 indexmap = { version = "2.2.3", features = ["serde"] }
 proc-macro2 = "1.0"
-syn = { version = "1.0", features = ["full"] }
+syn = { version = "2.0.72", features = ["full"] }
 quote = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -23,4 +23,4 @@ lazy_static = "1.4.0"
 rand = "0.8.5"
 chrono = "0.4"
 ctrlc = "3.1.9"
-parking_lot = { version = "0.11", features = ["deadlock_detection"] }
+parking_lot = { version = "0.12.3", features = ["deadlock_detection"] }

@@ -2,7 +2,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, AttributeArgs, Error, FnArg, ItemFn, Lit, Meta, NestedMeta, Pat, PatType};
+use syn::{parse_macro_input, Attribute, Error, FnArg, ItemFn, Lit, Meta, Pat, PatType};
 
 // use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
 // use host_entry_point::set_socket_client_transposer_callbacks;
@@ -93,7 +93,7 @@ pub fn host_callback(input: TokenStream) -> TokenStream {
 // }
 // #[proc_macro_attribute]
 // pub fn callback(attr: TokenStream, input: TokenStream) -> TokenStream {
-//     let args = parse_macro_input!(attr as AttributeArgs);
+//     let args = parse_macro_input!(attr as Attribute);
 //     let input_fn = parse_macro_input!(input as ItemFn);
 //     let fn_name = &input_fn.sig.ident;
 //     let fn_name_str = fn_name.to_string();
