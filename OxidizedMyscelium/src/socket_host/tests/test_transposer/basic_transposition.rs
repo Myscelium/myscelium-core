@@ -15,29 +15,9 @@ use oxidized_myscelium_macros::callback;
 use std::any::Any;
 use std::collections::HashMap;
 
+use crate::socket_host::tests::test_transposer::uni_setup::setup_once;
 use crate::socket_host::tests::utilities::functions::registry_handlers;
 use crate::{CallbackClosure, FunctionMetadata};
-
-#[callback]
-fn some_actf(info: &HashMap<String, Value>) -> CommandInstructions {
-    let response = CommandInstructions {
-        mode: CommandMode::Response,
-        command_type: CommandType::ExternalFunction,
-        target: CommandTarget::Origin,
-        status: CommandStatus::Success,
-        origin: CommandOrigin::Host,
-        actf: "some_actf".to_string(),
-        kwargs: HashMap::new(),
-        message: "Hello".to_string(),
-        response_type: None,
-        response_target: None,
-        response_actf: None,
-        collect_response: true,
-    };
-
-    println!("Resp: {:?}", response);
-    response
-}
 
 #[derive(Clone)]
 struct Rules {
@@ -115,8 +95,8 @@ fn validate_command_instruction(instruction: &CommandInstructions, rules: &Rules
 
 #[test]
 fn test_down_command_transposition() {
-    let handlers = vec![some_actf()];
-    registry_handlers(handlers);
+    // -> Here is were we setup our callbacks that we will use in the tests
+    setup_once();
 
     // -> INITIALIZE RULES:
 
