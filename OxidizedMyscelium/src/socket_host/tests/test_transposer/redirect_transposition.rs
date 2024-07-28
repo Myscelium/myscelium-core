@@ -69,6 +69,8 @@ mod tests {
         //     collect_response: true,
         // };
 
+        // TODO >>> Verify why this isn't redirecting, eveen that all the base tests are passing
+
         // let expected_response = Command::new("someclientid".to_string(), "xNmlMpN34x14s".to_string(), 1u8, response_expected_instructions.clone());
 
         println!("processed: {:?}", processed_command);
