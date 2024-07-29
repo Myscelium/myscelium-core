@@ -35,12 +35,15 @@ mod tests {
         // -> Here is were we setup our callbacks that we will use in the tests
         setup_once();
 
+        // < This command that should send the command to target: `otherclientid` is activating a function in Host
+        // TODO >>> This is not working since the redirect commands are directly redirectly since the direct redirect update
+
         let mut instructions: CommandInstructions = CommandInstructions {
             mode: CommandMode::Function,
             command_type: CommandType::ExternalFunction,
             target: CommandTarget::ClientKey("otherclientid".to_string()),
             status: CommandStatus::Success,
-            origin: CommandOrigin::Host,
+            origin: CommandOrigin::ClientKey("someclientid".to_string()),
             actf: "redirect_actf".to_string(),
             kwargs: HashMap::new(),
             message: "some_message".to_string(),
