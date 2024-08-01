@@ -10,6 +10,7 @@ use serde_json::{from_str, Value};
 use std::collections::HashMap;
 use syn::Index;
 
+use crate::common::enhanced_buffer::utilities::CommandVariant;
 use crate::socket_host::command_handler::{host_commands_processing, redirect_commands_processing};
 use crate::socket_host::task_manager::manager::NodeTask;
 use crate::TASKS_MANAGER;
@@ -911,17 +912,27 @@ fn handle_connection(stream: &mut TcpStream) {
                 //->  Redirect cases:
                 CommandTarget::ClientKey(target) => {
                     // WARNING: This locks command_patterns!
-                    let commands: Vec<Command> = redirect_commands_processing(&command, target);
-                    for res in commands {
-                        update_task_table(&res, false);
-                        match send(stream, res) {
-                            Ok(_) => continue,
-                            Err(e) => {
-                                handle_send_error!(e, logger, client_key);
-                                handle_client_disconnect(&client_key);
-                                break;
+                    let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target);
+                    for command in commands {
+                        match command {
+                            CommandVariant::Command(res) => {
+                                update_task_table(&res, false);
+                                match send(stream, res) {
+                                    Ok(_) => continue,
+                                    Err(e) => {
+                                        handle_send_error!(e, logger, client_key);
+                                        handle_client_disconnect(&client_key);
+                                        break;
+                                    },
+                                };
                             },
-                        };
+                            CommandVariant::UpCommand(up) => {
+                                enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                            },
+                            CommandVariant::DownCommand(_) => {
+                                panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
+                            },
+                        }
                     }
                 },
                 CommandTarget::Host => {
@@ -951,36 +962,46 @@ fn handle_connection(stream: &mut TcpStream) {
 
                     println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
                     command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
-                    let commands: Vec<Command> = redirect_commands_processing(&command, &real_origin.to_string());
+                    let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string());
 
-                    for res in commands {
-                        println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
-                        println!("New command casted: \n{:#?}\n", &res);
+                    for com in commands {
+                        match com {
+                            CommandVariant::Command(res) => {
+                                println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                                println!("New command casted: \n{:#?}\n", &res);
 
-                        if res.command.status == "Failure" {
-                            {
-                                let mut tasks_manager = TASKS_MANAGER.lock();
-                                println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
-                                tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
-                                println!("Task: {} removed", &command.parity_id);
-                            }
-                        } else {
-                            update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
-                        }
+                                if res.command.status == "Failure" {
+                                    {
+                                        let mut tasks_manager = TASKS_MANAGER.lock();
+                                        println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
+                                        tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                        println!("Task: {} removed", &command.parity_id);
+                                    }
+                                } else {
+                                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                                }
 
-                        println!("Tasks updated");
+                                println!("Tasks updated");
 
-                        {
-                            let mut tasks_manager = TASKS_MANAGER.lock();
-                            tasks_manager.show_node_tasks(&command.client_key);
-                        }
+                                {
+                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    tasks_manager.show_node_tasks(&command.client_key);
+                                }
 
-                        match send(stream, res) {
-                            Ok(_) => continue,
-                            Err(e) => {
-                                handle_send_error!(e, logger, client_key);
-                                handle_client_disconnect(&client_key);
-                                break;
+                                match send(stream, res) {
+                                    Ok(_) => continue,
+                                    Err(e) => {
+                                        handle_send_error!(e, logger, client_key);
+                                        handle_client_disconnect(&client_key);
+                                        break;
+                                    },
+                                };
+                            },
+                            CommandVariant::UpCommand(up) => {
+                                enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                            },
+                            CommandVariant::DownCommand(_) => {
+                                panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
                             },
                         };
                     }
