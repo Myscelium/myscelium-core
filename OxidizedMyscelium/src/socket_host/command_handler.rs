@@ -100,7 +100,7 @@ macro_rules! acquire_logger {
 // ->--------------------------------------------------------------------------------------------------------------
 // -> INCOMMING REDIRECT COMMANDS PROCESSING
 
-pub fn redirect_commands_processing(command: &Command, target: &String) -> Command {
+pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<UpCommand> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
 
     let logger = acquire_logger!("Core");
