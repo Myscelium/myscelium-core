@@ -911,16 +911,18 @@ fn handle_connection(stream: &mut TcpStream) {
                 //->  Redirect cases:
                 CommandTarget::ClientKey(target) => {
                     // WARNING: This locks command_patterns!
-                    let res: Command = redirect_commands_processing(&command, target);
-                    update_task_table(&res, false);
-                    match send(stream, res) {
-                        Ok(_) => continue,
-                        Err(e) => {
-                            handle_send_error!(e, logger, client_key);
-                            handle_client_disconnect(&client_key);
-                            break;
-                        },
-                    };
+                    let commands: Vec<Command> = redirect_commands_processing(&command, target);
+                    for res in commands {
+                        update_task_table(&res, false);
+                        match send(stream, res) {
+                            Ok(_) => continue,
+                            Err(e) => {
+                                handle_send_error!(e, logger, client_key);
+                                handle_client_disconnect(&client_key);
+                                break;
+                            },
+                        };
+                    }
                 },
                 CommandTarget::Host => {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
@@ -949,36 +951,39 @@ fn handle_connection(stream: &mut TcpStream) {
 
                     println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
                     command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
-                    let res: Command = redirect_commands_processing(&command, &real_origin.to_string());
-                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
-                    println!("New command casted: \n{:#?}\n", &res);
+                    let commands: Vec<Command> = redirect_commands_processing(&command, &real_origin.to_string());
 
-                    if res.command.status == "Failure" {
+                    for res in commands {
+                        println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                        println!("New command casted: \n{:#?}\n", &res);
+
+                        if res.command.status == "Failure" {
+                            {
+                                let mut tasks_manager = TASKS_MANAGER.lock();
+                                println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
+                                tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                println!("Task: {} removed", &command.parity_id);
+                            }
+                        } else {
+                            update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                        }
+
+                        println!("Tasks updated");
+
                         {
                             let mut tasks_manager = TASKS_MANAGER.lock();
-                            println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
-                            tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
-                            println!("Task: {} removed", &command.parity_id);
+                            tasks_manager.show_node_tasks(&command.client_key);
                         }
-                    } else {
-                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+
+                        match send(stream, res) {
+                            Ok(_) => continue,
+                            Err(e) => {
+                                handle_send_error!(e, logger, client_key);
+                                handle_client_disconnect(&client_key);
+                                break;
+                            },
+                        };
                     }
-
-                    println!("Tasks updated");
-
-                    {
-                        let mut tasks_manager = TASKS_MANAGER.lock();
-                        tasks_manager.show_node_tasks(&command.client_key);
-                    }
-
-                    match send(stream, res) {
-                        Ok(_) => continue,
-                        Err(e) => {
-                            handle_send_error!(e, logger, client_key);
-                            handle_client_disconnect(&client_key);
-                            break;
-                        },
-                    };
                 },
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION

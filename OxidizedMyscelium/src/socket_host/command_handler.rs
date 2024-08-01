@@ -100,7 +100,7 @@ macro_rules! acquire_logger {
 // ->--------------------------------------------------------------------------------------------------------------
 // -> INCOMMING REDIRECT COMMANDS PROCESSING
 
-pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<UpCommand> {
+pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<Command> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
 
     let logger = acquire_logger!("Core");
@@ -126,7 +126,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
         );
         logger.debug(format!("Sending back: {:?}", &command));
         let client_key = command.client_key.clone();
-        return command;
+        return vec![command];
     }
 
     //> VERIFY IF THE TARGET IS SYNC
@@ -138,7 +138,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
         );
         logger.debug(format!("Sending back: {:?}", &command));
         let client_key = command.client_key.clone();
-        return command;
+        return vec![command];
     }
 
     //> SEE IF THE HANDLER EXIST IN THE TARGET
@@ -148,7 +148,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
             let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
             logger.debug(format!("Sending back: {:?}", &command));
             let client_key = command.client_key.clone();
-            return command;
+            return vec![command];
         };
     }
 
@@ -179,7 +179,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
             let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Can't send a response from target: {} to itself", target));
             logger.debug(format!("Sending back: {:?}", &command));
             let client_key = command.client_key.clone();
-            return command;
+            return vec![command];
         }
 
         //> If resp target isn't origin, nor host then:
@@ -193,7 +193,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
                 let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
                 logger.debug(format!("Sending back: {:?}", &command));
                 let client_key = command.client_key.clone();
-                return command;
+                return vec![command];
             }
 
             //> Check if the handler to response exist in target (ONLY IF AUTO COLLECT == True)
@@ -205,7 +205,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
                             let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
                             logger.debug(format!("Sending back: {:?}", &command));
                             let client_key = command.client_key.clone();
-                            return command;
+                            return vec![command];
                         };
                     }
                 }
@@ -232,7 +232,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
     // > VERIFY IF ALREADY PROCESSED:
     logger.debug("Command is in command patterns!".to_string());
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command_to_redirect.parity_id.clone(), command_to_redirect.client_key.clone());
-    let response: Command;
+    let mut response: Vec<Command> = vec![];
 
     //> HANDLE COMMANDS WITH RESPONSE:
     if !command_is_not_registry {
@@ -240,15 +240,15 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
         match get_response(command.clone()) {
             Response::Command(c) => {
                 if c.client_key == command.client_key {
-                    response = c;
+                    response.push(c);
                 } else {
                     logger.info("Response is None!".to_string());
-                    response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                    response.push(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone()));
                 }
             },
             Response::None => {
                 logger.info("Response is None!".to_string());
-                response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                response.push(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone()));
             },
         }
 
@@ -257,7 +257,7 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<U
         // _ = handle_common_function(&command_to_redirect);
         let up_command = UpCommand::from_command(command_to_redirect.clone());
         enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-        response = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+        response.push(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone()));
     }
 
     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
