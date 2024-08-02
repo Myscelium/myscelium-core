@@ -114,10 +114,6 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<C
 
     logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
 
-    // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
-    // TODO >>> {VERIFY IMPORTANT!} Verifications of things that already has a response needs to be done previously to reduce complexity
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
-
     //> PREVIOUSLY CHECK REQUIREMENTS BEFORE REDIRECT
     if !command_patterns.target_is_reachable(target).unwrap() {
         let command: Command = create_error_command_response!(
@@ -233,34 +229,13 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<C
     // > VERIFY IF ALREADY PROCESSED:
     logger.debug("Command is in command patterns!".to_string());
     // TODO >>> Verifications of things that already has a response needs to be done previously to reduce complexity
-    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command_to_redirect.parity_id.clone(), command_to_redirect.client_key.clone());
+
     let mut response: Vec<CommandVariant> = vec![];
-
-    //> HANDLE COMMANDS WITH RESPONSE:
-    if !command_is_not_registry {
-        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
-        match get_response(command.clone()) {
-            Response::Command(c) => {
-                if c.client_key == command.client_key {
-                    response.push(CommandVariant::Command(c));
-                } else {
-                    logger.info("Response is None!".to_string());
-                    response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
-                }
-            },
-            Response::None => {
-                logger.info("Response is None!".to_string());
-                response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
-            },
-        }
-
     //> HANDLE COMMANDS WITHOUT RESPONSES:
-    } else {
-        // _ = handle_common_function(&command_to_redirect);
-        let up_command = UpCommand::from_command(command_to_redirect.clone());
-        response.push(CommandVariant::UpCommand(up_command));
-        response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
-    }
+    // _ = handle_common_function(&command_to_redirect);
+    let up_command = UpCommand::from_command(command_to_redirect.clone());
+    response.push(CommandVariant::UpCommand(up_command));
+    response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
 
     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
     logger.debug(format!("Sending back: {:?}", response));
