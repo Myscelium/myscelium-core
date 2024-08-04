@@ -703,6 +703,7 @@ fn handle_connection(stream: &mut TcpStream) {
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
         logger.debug(format!("Command received:\n{:?}\n", command));
 
+        // -> Drop clients that aren't in the white list:
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
 
@@ -721,14 +722,6 @@ fn handle_connection(stream: &mut TcpStream) {
         }
 
         client_key = command.client_key.clone();
-
-        // client = Some(match Client::get_by_key(&command.client_key) {
-        //     Ok(c) => c,
-        //     Err(e) => {
-        //         handle_client_manager_error!(e, stream, command, logger, "Unexpected error getting your client");
-        //         break;
-        //     },
-        // });
 
         // -> GET CLIENT STATUS, SEE IF IT IS SYNC OR NOT
         let client_sync_status: Option<bool>;
@@ -753,6 +746,7 @@ fn handle_connection(stream: &mut TcpStream) {
             logger.debug(format!("Clients In Sync Controller: {:?}", controller));
         }
 
+        // -> Update Client Status
         update_last_contact(command.client_key.clone());
 
         // > Check if the max sync was reached

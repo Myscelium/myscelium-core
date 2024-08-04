@@ -26,7 +26,6 @@ fn test_redirect_command_response_pointing_to_origin() {
     setup_once();
 
     // < This command that should send the command to target: `otherclientid` is activating a function in Host
-    // TODO >>> This is not working since the redirect commands are directly redirectly since the direct redirect update
 
     let mut instructions: CommandInstructions = CommandInstructions {
         mode: CommandMode::Function,
@@ -52,7 +51,7 @@ fn test_redirect_command_response_pointing_to_origin() {
         },
     };
 
-    // TODO >>> Make the redirect commands processing do not depend of the buffer for better isolation
+    // TODO >>> Add the required nodes to this test do what it is supposed to do.
 
     let response = redirect_commands_processing(&command, target);
 
