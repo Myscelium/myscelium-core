@@ -1,9 +1,16 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::{CallbackClosure, CommandType, HandlerStatus};
 use indexmap::IndexMap;
 
 use serde_json::Value;
+
+pub struct FunctionMetadata {
+    pub name: &'static str,
+    pub args: IndexMap<String, String>,
+    pub func: CallbackClosure,
+}
 
 pub struct Callback {
     pub actf_name: String,
@@ -13,6 +20,16 @@ pub struct Callback {
     pub status: HandlerStatus,
     pub response_structure: HashMap<String, Value>,
     pub description: String,
+}
+
+impl fmt::Debug for FunctionMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FunctionMetadata")
+            .field("name", &self.name)
+            .field("args", &self.args)
+            // We exclude the `func` field as it is complex to print
+            .finish()
+    }
 }
 
 impl Callback {

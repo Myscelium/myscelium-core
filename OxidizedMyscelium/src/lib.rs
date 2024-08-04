@@ -19,7 +19,10 @@ mod socket_client;
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod socket_host;
+
 use indexmap::IndexMap;
+use oxidized_myscelium_macros::callback;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[deny(warnings)]
@@ -35,6 +38,7 @@ use core::panic;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+pub use crate::common::structs::callbacks_structure::FunctionMetadata;
 use parking_lot::Mutex;
 
 extern crate chrono;

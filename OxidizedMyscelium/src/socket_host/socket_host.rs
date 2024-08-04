@@ -10,6 +10,7 @@ use serde_json::{from_str, Value};
 use std::collections::HashMap;
 use syn::Index;
 
+use crate::common::enhanced_buffer::utilities::CommandVariant;
 use crate::socket_host::command_handler::{host_commands_processing, redirect_commands_processing};
 use crate::socket_host::task_manager::manager::NodeTask;
 use crate::TASKS_MANAGER;
@@ -702,6 +703,7 @@ fn handle_connection(stream: &mut TcpStream) {
         let command: Command = serde_json::from_str(&buffer_string).unwrap();
         logger.debug(format!("Command received:\n{:?}\n", command));
 
+        // -> Drop clients that aren't in the white list:
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
 
@@ -720,14 +722,6 @@ fn handle_connection(stream: &mut TcpStream) {
         }
 
         client_key = command.client_key.clone();
-
-        // client = Some(match Client::get_by_key(&command.client_key) {
-        //     Ok(c) => c,
-        //     Err(e) => {
-        //         handle_client_manager_error!(e, stream, command, logger, "Unexpected error getting your client");
-        //         break;
-        //     },
-        // });
 
         // -> GET CLIENT STATUS, SEE IF IT IS SYNC OR NOT
         let client_sync_status: Option<bool>;
@@ -752,6 +746,7 @@ fn handle_connection(stream: &mut TcpStream) {
             logger.debug(format!("Clients In Sync Controller: {:?}", controller));
         }
 
+        // -> Update Client Status
         update_last_contact(command.client_key.clone());
 
         // > Check if the max sync was reached
@@ -910,21 +905,86 @@ fn handle_connection(stream: &mut TcpStream) {
             match &command.command.target {
                 //->  Redirect cases:
                 CommandTarget::ClientKey(target) => {
-                    // WARNING: This locks command_patterns!
-                    let res: Command = redirect_commands_processing(&command, target);
-                    update_task_table(&res, false);
-                    match send(stream, res) {
-                        Ok(_) => continue,
-                        Err(e) => {
-                            handle_send_error!(e, logger, client_key);
-                            handle_client_disconnect(&client_key);
-                            break;
-                        },
-                    };
+                    // < WARNING: This locks command_patterns!
+
+                    // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
+
+                    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone());
+
+                    //> HANDLE COMMANDS WITH RESPONSE:
+                    if !command_is_not_registry {
+                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
+                        match get_response(command.clone()) {
+                            Response::Command(c) => {
+                                if c.client_key == command.client_key {
+                                    match send(stream, c) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                } else {
+                                    logger.info("Response is None!".to_string());
+                                    let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                    match send(stream, res) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                }
+                            },
+                            Response::None => {
+                                logger.info("Response is None!".to_string());
+                                let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                match send(stream, res) {
+                                    Ok(_) => continue,
+                                    Err(e) => {
+                                        handle_send_error!(e, logger, client_key);
+                                        handle_client_disconnect(&client_key);
+                                        break;
+                                    },
+                                };
+                            },
+                        }
+                    // > HANDLE COMMANDS WITHOUT RESPONSE:
+                    } else {
+                        let mut command_patterns: NetworkMap;
+                        {
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                        }
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target, &mut command_patterns);
+                        for command in commands {
+                            match command {
+                                CommandVariant::Command(res) => {
+                                    update_task_table(&res, false);
+                                    match send(stream, res) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                },
+                                CommandVariant::UpCommand(up) => {
+                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                                },
+                                CommandVariant::DownCommand(_) => {
+                                    panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
+                                },
+                            }
+                        }
+                    }
                 },
                 CommandTarget::Host => {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
-                    // WARNING: This locks command_patterns!
+                    // < WARNING: This locks command_patterns!
                     let res: Command = host_commands_processing(&command);
                     update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", res));
@@ -940,6 +1000,10 @@ fn handle_connection(stream: &mut TcpStream) {
                 CommandTarget::Origin => {
                     let mut command: Command = command.clone();
                     let real_origin: String;
+
+                    // < WARNING: This locks command_patterns!
+                    // < WANING: This locks tasks_manager!
+
                     {
                         let mut tasks_manager = TASKS_MANAGER.lock();
                         println!("Current parity id to match to a task: {}", &command.parity_id);
@@ -947,38 +1011,104 @@ fn handle_connection(stream: &mut TcpStream) {
                         real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap().clone();
                     }
 
-                    println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
-                    command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
-                    let res: Command = redirect_commands_processing(&command, &real_origin.to_string());
-                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
-                    println!("New command casted: \n{:#?}\n", &res);
+                    // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
 
-                    if res.command.status == "Failure" {
-                        {
-                            let mut tasks_manager = TASKS_MANAGER.lock();
-                            println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
-                            tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
-                            println!("Task: {} removed", &command.parity_id);
+                    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone());
+
+                    //> HANDLE COMMANDS WITH RESPONSE:
+                    if !command_is_not_registry {
+                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
+                        match get_response(command.clone()) {
+                            Response::Command(c) => {
+                                if c.client_key == command.client_key {
+                                    match send(stream, c) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                } else {
+                                    logger.info("Response is None!".to_string());
+                                    let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                    match send(stream, res) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                }
+                            },
+                            Response::None => {
+                                logger.info("Response is None!".to_string());
+                                let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
+                                match send(stream, res) {
+                                    Ok(_) => continue,
+                                    Err(e) => {
+                                        handle_send_error!(e, logger, client_key);
+                                        handle_client_disconnect(&client_key);
+                                        break;
+                                    },
+                                };
+                            },
                         }
+                    // > HANDLE COMMANDS WITHOUT RESPONSE:
                     } else {
-                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                        println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
+                        command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
+
+                        let mut command_patterns: NetworkMap;
+                        {
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                        }
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string(), &mut command_patterns);
+
+                        for com in commands {
+                            match com {
+                                CommandVariant::Command(res) => {
+                                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                                    println!("New command casted: \n{:#?}\n", &res);
+
+                                    if res.command.status == "Failure" {
+                                        {
+                                            let mut tasks_manager = TASKS_MANAGER.lock();
+                                            println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
+                                            tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
+                                            println!("Task: {} removed", &command.parity_id);
+                                        }
+                                    } else {
+                                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                                    }
+
+                                    println!("Tasks updated");
+
+                                    {
+                                        let mut tasks_manager = TASKS_MANAGER.lock();
+                                        tasks_manager.show_node_tasks(&command.client_key);
+                                    }
+
+                                    match send(stream, res) {
+                                        Ok(_) => continue,
+                                        Err(e) => {
+                                            handle_send_error!(e, logger, client_key);
+                                            handle_client_disconnect(&client_key);
+                                            break;
+                                        },
+                                    };
+                                },
+                                CommandVariant::UpCommand(up) => {
+                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                                },
+                                CommandVariant::DownCommand(_) => {
+                                    panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
+                                },
+                            };
+                        }
                     }
-
-                    println!("Tasks updated");
-
-                    {
-                        let mut tasks_manager = TASKS_MANAGER.lock();
-                        tasks_manager.show_node_tasks(&command.client_key);
-                    }
-
-                    match send(stream, res) {
-                        Ok(_) => continue,
-                        Err(e) => {
-                            handle_send_error!(e, logger, client_key);
-                            handle_client_disconnect(&client_key);
-                            break;
-                        },
-                    };
                 },
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION

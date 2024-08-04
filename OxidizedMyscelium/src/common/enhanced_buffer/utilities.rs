@@ -63,7 +63,7 @@ impl fmt::Display for CommandError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum CommandMode {
     Function,
     Response,
@@ -597,4 +597,11 @@ impl Command {
         // Convert the serde_json Map to HashMap
         Ok(map.into_iter().collect())
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum CommandVariant {
+    Command(Command),
+    UpCommand(UpCommand),
+    DownCommand(DownCommand),
 }

@@ -70,7 +70,7 @@ pub fn set_workers_num(n_workers: u32) {
     println!("[CLIENT][GLOBAL][Release] - COMMAND_PATTERNS");
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DownCommand {
     pub command_id: Option<u32>,
     pub client_key: String,

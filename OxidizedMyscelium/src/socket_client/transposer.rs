@@ -258,14 +258,21 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         }
 
         // -> PROCESS CALLBACK RESPONSE:
-        resp = match response.downcast::<CommandInstructions>() {
-            Ok(instructions_box) => {
-                // Successfully downcasted, instructions_box is now a Box<CommandInstructions>
-                logger.debug(format!("Successfully downcasted!"));
-                // You can now use instructions_box as Box<CommandInstructions>
-                let mut instruction = *instructions_box;
+        resp = match response.downcast::<Option<CommandInstructions>>() {
+            Ok(optional_instructions_box) => {
+                // Successfully downcasted, optional_instructions_box is now a Box<Option<CommandInstructions>>
+                logger.debug("Successfully downcasted to Option<CommandInstructions>!".to_string());
 
-                ProcessResult::CommandInstructions(instruction)
+                match *optional_instructions_box {
+                    Some(mut instruction) => {
+                        // You can now use instruction as CommandInstructions
+                        ProcessResult::CommandInstructions(instruction)
+                    },
+                    None => {
+                        logger.debug("Callback response was None.".to_string());
+                        ProcessResult::Empty // Handle the case where there are no instructions
+                    },
+                }
             },
             Err(e) => {
                 // The downcast operation failed
