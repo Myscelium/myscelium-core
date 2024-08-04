@@ -55,13 +55,31 @@ fn test_redirect_command_response_pointing_to_origin() {
 
     let mut nodes: Vec<Node> = Vec::new();
 
-    // Node::new(name, key, description, version, handlers, status)
+    // -> Registry Node "otherclientid"
+    let mut node_handlers: Vec<NodeHandler> = Vec::new();
 
-    // nodes.push(value)
+    node_handlers.push(NodeHandler::new(
+        "redirect_actf".to_string(),
+        IndexMap::new(),
+        CommandType::ExternalFunction,
+        HandlerStatus::Working,
+        HashMap::new(),
+        "".to_string(),
+    ));
 
-    // let mut network_map = NetworkMap::new(nodes);
+    nodes.push(Node::new(
+        "Client2".to_string(),
+        "otherclientid".to_string(),
+        "".to_string(),
+        NodeVersion::cast_version(1u32, 3u32, 1u32, VersionIndentifier::ReleaseCandidate),
+        node_handlers,
+        NodeStatus::Online,
+    ));
 
-    // let response = redirect_commands_processing(&command, target, &mut network_map);
+    let mut network_map = NetworkMap::new(nodes);
+
+    // -> Test responses
+    let response = redirect_commands_processing(&command, target, &mut network_map);
 
     println!("processed: {:?}", response);
 
