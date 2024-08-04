@@ -954,7 +954,11 @@ fn handle_connection(stream: &mut TcpStream) {
                         }
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
                     } else {
-                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target);
+                        let mut command_patterns: NetworkMap;
+                        {
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                        }
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target, &mut command_patterns);
                         for command in commands {
                             match command {
                                 CommandVariant::Command(res) => {
@@ -1056,7 +1060,12 @@ fn handle_connection(stream: &mut TcpStream) {
                     } else {
                         println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
                         command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
-                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string());
+
+                        let mut command_patterns: NetworkMap;
+                        {
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                        }
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string(), &mut command_patterns);
 
                         for com in commands {
                             match com {

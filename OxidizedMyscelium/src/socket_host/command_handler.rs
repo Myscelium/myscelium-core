@@ -6,8 +6,8 @@ use crate::socket_host::command_handler::enhanced_buffer::buffer_down_manager::D
 use crate::socket_host::command_handler::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::socket_host::command_handler::enhanced_buffer::utilities::ResponseTarget;
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
-use crate::HOST_COMMAND_PATTERNS;
 use crate::HOST_LOG_LEVEL;
+use crate::{NetworkMap, HOST_COMMAND_PATTERNS};
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
 
@@ -100,17 +100,11 @@ macro_rules! acquire_logger {
 // ->--------------------------------------------------------------------------------------------------------------
 // -> INCOMMING REDIRECT COMMANDS PROCESSING
 
-pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<CommandVariant> {
+pub fn redirect_commands_processing(command: &Command, target: &String, command_patterns: &mut NetworkMap) -> Vec<CommandVariant> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
 
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
-
-    let mut command_patterns;
-
-    {
-        command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
-    }
 
     logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
 
@@ -196,8 +190,8 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<C
             //> Check if the handler to response exist in target (ONLY IF AUTO COLLECT == True)
             if command.command.collect_response {
                 if let Some(response_actf) = command.command.response_actf.clone() {
+                    // > Only verify if handler exists if auto collect response == true
                     if command.command.collect_response && response_actf != "" {
-                        // Only verify if handler exists if auto collect response == true
                         if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
                             let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
                             logger.debug(format!("Sending back: {:?}", &command));
@@ -226,13 +220,11 @@ pub fn redirect_commands_processing(command: &Command, target: &String) -> Vec<C
         command: command_instructions_to_schedule,
     };
 
-    // > VERIFY IF ALREADY PROCESSED:
     logger.debug("Command is in command patterns!".to_string());
-    // TODO >>> Verifications of things that already has a response needs to be done previously to reduce complexity
 
     let mut response: Vec<CommandVariant> = vec![];
+
     //> HANDLE COMMANDS WITHOUT RESPONSES:
-    // _ = handle_common_function(&command_to_redirect);
     let up_command = UpCommand::from_command(command_to_redirect.clone());
     response.push(CommandVariant::UpCommand(up_command));
     response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));

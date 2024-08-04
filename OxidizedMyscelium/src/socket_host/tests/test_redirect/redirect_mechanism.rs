@@ -8,7 +8,7 @@ use crate::{
     },
     set_host_callbacks,
     socket_host::transposer::process,
-    Command, CommandInstructions, CommandType, HandlerStatus, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
+    Command, CommandInstructions, CommandType, HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
 };
 use core::panic;
 use oxidized_myscelium_macros::callback;
@@ -53,7 +53,15 @@ fn test_redirect_command_response_pointing_to_origin() {
 
     // TODO >>> Add the required nodes to this test do what it is supposed to do.
 
-    let response = redirect_commands_processing(&command, target);
+    let mut nodes: Vec<Node> = Vec::new();
+
+    // Node::new(name, key, description, version, handlers, status)
+
+    // nodes.push(value)
+
+    // let mut network_map = NetworkMap::new(nodes);
+
+    // let response = redirect_commands_processing(&command, target, &mut network_map);
 
     println!("processed: {:?}", response);
 
