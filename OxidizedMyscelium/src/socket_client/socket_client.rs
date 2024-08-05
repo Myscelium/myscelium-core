@@ -11,7 +11,7 @@ use serde_json::json;
 use serde_json::{from_str, Value};
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{self, Write};
 use std::io::{ErrorKind, Read};
 use std::net::TcpStream;
 use std::sync::atomic::Ordering;
@@ -412,7 +412,7 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
 
     // Send command and measure time
     let start = Instant::now();
-    let received = send(stream, &command_to_request).unwrap();
+    let received = send(stream, &command_to_request)?;
     let duration = start.elapsed();
 
     // Retry mechanism for lock acquisition
@@ -618,9 +618,10 @@ pub fn initialize_client(address: String) -> Option<String> {
                 // Update last attempt time
                 last_attempt_time = now
             } else {
-                let dif: Duration = last_attempt_time - now;
+                let dif: Duration = (last_attempt_time + Duration::from_secs(30)) - now;
                 println!("Trying to connect again in: {} secs", dif.as_secs());
             }
+            thread::sleep(Duration::from_secs(1u64));
             continue;
         }
 
@@ -644,24 +645,52 @@ pub fn initialize_client(address: String) -> Option<String> {
                             logger.exception(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                         StreamError::WriteSizeError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
-                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                         StreamError::ReadSizeError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
-                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
+
                             break;
                         },
                         StreamError::ReadDataError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                     };
@@ -745,24 +774,51 @@ pub fn initialize_client(address: String) -> Option<String> {
                                     logger.debug(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::WriteSizeError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
-                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::ReadSizeError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::ReadDataError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                             }
