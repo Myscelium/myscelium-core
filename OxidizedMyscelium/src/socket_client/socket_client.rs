@@ -11,7 +11,7 @@ use serde_json::json;
 use serde_json::{from_str, Value};
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{self, Write};
 use std::io::{ErrorKind, Read};
 use std::net::TcpStream;
 use std::sync::atomic::Ordering;
@@ -412,7 +412,7 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
 
     // Send command and measure time
     let start = Instant::now();
-    let received = send(stream, &command_to_request).unwrap();
+    let received = send(stream, &command_to_request)?;
     let duration = start.elapsed();
 
     // Retry mechanism for lock acquisition
@@ -482,81 +482,6 @@ pub fn set_client_uid(client_key: String) {
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 }
 
-/// Handles the received response from the server and processes it accordingly.
-///
-/// This function processes the response from the server based on its type. Depending on the
-/// type and content of the received response, the function might remove a command from the
-/// schedule, log an error or warning, shut down the client, or produce a new down command for
-/// further processing.
-///
-/// # Arguments
-/// - `received`: A `Response` variant containing the server's response.
-///
-/// # Returns
-/// - An `Option<DownCommand>`: If a new down command is produced based on the received response,
-///   this function will return `Some(DownCommand)`. Otherwise, it will return `None`.
-///
-/// # Behavior
-/// - If the received response indicates a confirmation (`C210`), the corresponding command is
-///   removed from the schedule and no further action is taken.
-/// - If an error is received, the error is logged and the client might be shut down.
-/// - If the received command is of type `Response`, a new down command may be produced based on
-///   the received content.
-/// - If the received command is of an unknown type, a warning is logged.
-///
-/// # Notes
-/// - This function uses the `CLIENT_NODE_CONFIGS` global lock to access and modify the command patterns.
-/// - The function also accesses the `CLIENT_IS_RUNNING` global flag to control the client's running state.
-// fn handle_response(received: &Response) -> Received {
-//     let logger = acquire_logger!("Core");
-
-//     let command_received;
-
-//     match received {
-//         Response::None => {
-//             logger.warn(format!("Received invalid data!"));
-//             return Received::Nothing;
-//         },
-//         Response::Command(c) => {
-//             logger.debug(format!("\nReceived command: {:?}", c));
-//             command_received = c;
-//         },
-//     }
-
-//     match command_received.command.mode {
-//         CommandMode::Function => {},
-//     }
-
-//     match command_received.command.command_type {
-//         CommandType::Default => {
-//             // > Also we can use a similar system to sync multiple hosts
-//             logger.info(format!("[Socket Client] - Received a function!:\n {:?}", command_received.command.actf));
-//             return Received::DownCommand(DownCommand::from_command(command_received.clone()));
-//         },
-
-//         CommandType::DirectFunction => {
-//             // TODO >>> Need to actualize this to the new patter like Response handler to redirect works as intended!
-//             // > Also we can use a similar system to sync multiple hosts
-//             logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", command_received.command.actf));
-//             return Received::DownCommand(DownCommand::from_command(command_received.clone()));
-//         },
-
-//         CommandType::InternalManagement => {
-//             return Received::Nothing;
-//         },
-
-//         CommandType::SpecialFunction => {
-//             logger.debug(format!("Receive a unknow special function: {:?}", command_received.command.actf));
-//             return Received::Nothing;
-//         },
-
-//         _ => {
-//             logger.warn(format!("Received an Unknown command!"));
-//             return Received::Nothing;
-//         },
-//     }
-// }
-
 /// Initializes the client and sets up communication with the specified server address.
 ///
 /// This function connects to the provided server address, and then periodically checks
@@ -611,42 +536,65 @@ pub fn initialize_client(address: String) -> Option<String> {
 
     let logger = acquire_logger!("Core");
 
-    let mut stream = match TcpStream::connect(address.clone()) {
-        Ok(s) => s,
-        Err(e) => match e.kind() {
-            ErrorKind::ConnectionRefused => {
-                logger.debug(format!("Can't connect in host!"));
-                return Some("Can't connect in host!".to_string());
-            },
-            _ => {
-                logger.debug(format!("Unhandled error: {}", e));
-                panic!("Unhandled error: {}", e)
-            },
-        },
-    };
+    fn connect(address: String) -> Option<TcpStream> {
+        let logger = acquire_logger!("Core");
 
-    stream.set_read_timeout(Some(Duration::new(15, 0))).unwrap();
+        let mut stream = match TcpStream::connect(address.clone()) {
+            Ok(s) => s,
+            Err(e) => match e.kind() {
+                ErrorKind::ConnectionRefused => {
+                    logger.debug(format!("Can't connect in host!"));
+                    return None;
+                },
+                _ => {
+                    logger.debug(format!("Unhandled error: {}", e));
+                    panic!("Unhandled error: {}", e)
+                },
+            },
+        };
+
+        stream.set_read_timeout(Some(Duration::new(15, 0))).unwrap();
+        Some(stream)
+    }
 
     // Here need to send the new handlers to host
     // then receive the host handlers
 
     logger.info(format!("Connected to {:?}!", &address).to_string());
-
     thread::sleep(Duration::from_millis(5));
-
     let client_key: String;
 
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
+
     {
         let c_uid = CLIENT_ID.lock();
         logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID"));
 
         client_key = c_uid.clone()
     }
+
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 
-    if verify_connection(&mut stream, &client_key) {
-        CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+    let mut stream: TcpStream;
+    let mut last_attempt_time: Instant = Instant::now() - Duration::from_secs(30);
+    loop {
+        let now = Instant::now();
+        if now.duration_since(last_attempt_time) >= Duration::from_secs(30) {
+            // try to connect again
+            if let Some(st) = connect(address.clone()) {
+                stream = st;
+                if verify_connection(&mut stream, &client_key) {
+                    CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+                    break;
+                }
+            }
+
+            // Update last attempt time
+            last_attempt_time = now
+        } else {
+            let dif: Duration = last_attempt_time - now;
+            println!("Trying to connect again in: {} secs", dif.as_secs());
+        }
     }
 
     loop {
@@ -654,6 +602,27 @@ pub fn initialize_client(address: String) -> Option<String> {
             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
             logger.info(format!("running is set to false, shutdown socket client main process!"));
             break;
+        }
+
+        if !CLIENT_IS_CONNECTED.load(Ordering::SeqCst) {
+            let now = Instant::now();
+            if now.duration_since(last_attempt_time) >= Duration::from_secs(30) {
+                // try to connect again
+                if let Some(st) = connect(address.clone()) {
+                    stream = st;
+                    if verify_connection(&mut stream, &client_key) {
+                        CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+                        continue;
+                    }
+                }
+                // Update last attempt time
+                last_attempt_time = now
+            } else {
+                let dif: Duration = (last_attempt_time + Duration::from_secs(30)) - now;
+                println!("Trying to connect again in: {} secs", dif.as_secs());
+            }
+            thread::sleep(Duration::from_secs(1u64));
+            continue;
         }
 
         let up_schedule = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
@@ -665,32 +634,59 @@ pub fn initialize_client(address: String) -> Option<String> {
                 Ok(d) => d,
                 Err(e) => {
                     logger.exception("A exception occurred!".to_string());
-                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                     CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                     match e {
                         StreamError::ConnectionClosed => {
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
-                            break;
+                            continue;
                         },
                         StreamError::WriteError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                         StreamError::WriteSizeError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                         StreamError::ReadSizeError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                         StreamError::ReadDataError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
                             logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            match e.kind() {
+                                io::ErrorKind::ConnectionReset => continue,
+                                _ => {
+                                    CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                    println!("Other error occurred")
+                                },
+                            }
                             break;
                         },
                     };
@@ -713,8 +709,8 @@ pub fn initialize_client(address: String) -> Option<String> {
         } else {
             logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
         }
-        logger.debug(format!("Start to process it!"));
 
+        logger.debug(format!("Start to process it!"));
         let mut index: u32 = 0u32;
 
         for up_command in up_schedule {
@@ -763,62 +759,65 @@ pub fn initialize_client(address: String) -> Option<String> {
                     received = match send(&mut stream, &command_to_request) {
                         Ok(r) => r,
                         Err(e) => {
-                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                             CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                             match e {
                                 StreamError::ConnectionClosed => {
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
-                                    break;
+                                    continue;
                                 },
                                 StreamError::WriteError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::WriteSizeError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::ReadSizeError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                                 StreamError::ReadDataError(e) => {
                                     logger.debug(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
                                     logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    match e.kind() {
+                                        io::ErrorKind::ConnectionReset => continue,
+                                        _ => {
+                                            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+                                            println!("Other error occurred")
+                                        },
+                                    }
                                     break;
                                 },
                             }
                         },
                     };
                 }
-
-                // CommandMode::Response => {
-                //     // Response format:
-                //     //* From now this is basically equal to response
-                //     logger.info(format!("[Socket Client] - Received a response!: \n{:?}", command_received.command));
-
-                //     let status: String = command_received.command.status.to_string();
-
-                //     // TODO >>> Add a better handler for error cases:
-                //     if status == "error".to_string() {
-                //         let val = Value::String("Unknown error".to_string());
-                //         let error_msg = command_received.command.message.clone();
-                //         logger.exception(format!("\nAn error occurred in host, the error was: {}\n", error_msg.clone()));
-                //         enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&command_received.client_key, &command_received.parity_id);
-                //         CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
-                //         return Received::Error(error_msg);
-                //     }
-
-                //     // let down_command = DownCommand::from_command(command_received.clone());
-
-                //     enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&command_received.client_key, &command_received.parity_id);
-
-                //     // return Received::DownCommand(down_command);
-                // },
 
                 match received {
                     Response::Command(c) => {
@@ -877,8 +876,6 @@ pub fn initialize_client(address: String) -> Option<String> {
 
                 logger.debug(format!("Invalid command!"));
                 break;
-
-                // thread::sleep(Duration::from_millis(200));
             }
 
             index = index + 1;
