@@ -6,8 +6,8 @@ use crate::socket_host::command_handler::enhanced_buffer::buffer_down_manager::D
 use crate::socket_host::command_handler::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::socket_host::command_handler::enhanced_buffer::utilities::ResponseTarget;
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
-use crate::HOST_LOG_LEVEL;
 use crate::{NetworkMap, HOST_COMMAND_PATTERNS};
+use crate::{HOST_BUFFER_ACTIVATION_CONTROLLER, HOST_LOG_LEVEL};
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
 
@@ -261,6 +261,13 @@ fn handle_common_function(command: &Command) -> Command {
     );
 
     enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+
+    println!("Initializating transposer!");
+
+    {
+        let react_actv = HOST_BUFFER_ACTIVATION_CONTROLLER.lock();
+        react_actv.start();
+    }
 
     // >--------------------------------------------------------------------------------------------------------------
     // > Send receive conf
