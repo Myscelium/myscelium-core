@@ -4,7 +4,7 @@ use crate::common::enhanced_buffer::utilities::{Command, CommandError, CommandIn
 
 use super::client_logger::log_handler::Logger;
 
-use crate::{CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
+use crate::{CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
 use indexmap::IndexMap;
 use serde_json::json;
@@ -696,6 +696,10 @@ pub fn initialize_client(address: String) -> Option<String> {
             logger.debug(format!("Nothing in schedule to send to host, so sending ping!"));
             if let Some(down_command) = option_down_command {
                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                {
+                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
+                    react_actv.start();
+                }
             } else {
                 logger.debug(format!("[Socket] - No command received in ping, skipping.."));
             }
@@ -838,6 +842,10 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 let down_command = DownCommand::from_command(c);
                                 logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command));
                                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                                {
+                                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
+                                    react_actv.start();
+                                }
                                 index = index + 1;
                                 break;
                             },
@@ -847,6 +855,10 @@ pub fn initialize_client(address: String) -> Option<String> {
                                 logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", c.command.actf));
                                 let down_command = DownCommand::from_command(c);
                                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                                {
+                                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
+                                    react_actv.start();
+                                }
                                 index = index + 1;
                                 break;
                             },

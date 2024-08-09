@@ -99,7 +99,7 @@ lazy_static! {
 
 }
 
-// -> HOST BUFFER REACTIVE ACTIVATOR:
+// -> HOST BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
 
 lazy_static! {
     pub static ref HOST_BUFFER_ACTIVATION_CONTROLLER: Arc<Mutex<Arc<ReactiveActivator>>> = Arc::new(Mutex::new(
@@ -111,7 +111,26 @@ lazy_static! {
             Arc::new(|| -> bool {
                 // Your condition closure code here
                 let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-                println!("Condition is: {:?}", !schedule.is_empty());
+                println!("Condition is: {:?}", schedule.is_empty());
+                schedule.is_empty()
+            }) as Arc<dyn Fn() -> bool + Send + Sync>
+        )
+    ));
+}
+
+// -> CLIENT BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
+
+lazy_static! {
+    pub static ref CLIENT_BUFFER_ACTIVATION_CONTROLLER: Arc<Mutex<Arc<ReactiveActivator>>> = Arc::new(Mutex::new(
+        ReactiveActivator::new(
+            Arc::new(|| {
+                // Your action closure code here
+                initialize_socket_client_transposer();
+            }) as Arc<dyn Fn() + Send + Sync>,
+            Arc::new(|| -> bool {
+                // Your condition closure code here
+                let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+                println!("Condition is: {:?}", schedule.is_empty());
                 schedule.is_empty()
             }) as Arc<dyn Fn() -> bool + Send + Sync>
         )
@@ -495,15 +514,16 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         loop {
-            println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
+            // println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
 
             if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                 println!("Stop the core!");
                 break;
             }
 
-            initialize_socket_client_transposer();
-            println!("Socket transposer working!!");
+            thread::sleep(Duration::from_secs(5));
+            // initialize_socket_client_transposer();
+            // println!("Socket transposer working!!");
         }
     }
 
