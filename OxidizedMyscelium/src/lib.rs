@@ -111,8 +111,8 @@ lazy_static! {
             Arc::new(|| -> bool {
                 // Your condition closure code here
                 let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-                println!("Condition is: {:?}", schedule.is_empty());
-                schedule.is_empty()
+                println!("Condition is: {:?}", !schedule.is_empty());
+                !schedule.is_empty()
             }) as Arc<dyn Fn() -> bool + Send + Sync>
         )
     ));
@@ -130,8 +130,8 @@ lazy_static! {
             Arc::new(|| -> bool {
                 // Your condition closure code here
                 let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-                println!("Condition is: {:?}", schedule.is_empty());
-                schedule.is_empty()
+                println!("Condition is: {:?}", !schedule.is_empty());
+                !schedule.is_empty()
             }) as Arc<dyn Fn() -> bool + Send + Sync>
         )
     ));
