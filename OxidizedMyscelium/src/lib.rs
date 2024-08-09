@@ -129,7 +129,8 @@ lazy_static! {
             }) as Arc<dyn Fn() + Send + Sync>,
             Arc::new(|| -> bool {
                 // Your condition closure code here
-                let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+                let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+                schedule.retain(|x| x.auto_collect); // > This is only required in client since client can receive auto_collect == False and those aren't tranposed
                 println!("Condition is: {:?}", !schedule.is_empty());
                 schedule.is_empty()
             }) as Arc<dyn Fn() -> bool + Send + Sync>

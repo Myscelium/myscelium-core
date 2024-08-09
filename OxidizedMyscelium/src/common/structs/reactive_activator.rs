@@ -32,6 +32,7 @@ impl ReactiveActivator {
                 loop {
                     println!("Executing action...");
                     action();
+                    println!("Condition arrived in reactive activator: {:?}", condition());
                     if condition() {
                         println!("Condition failed, stopping loop.");
                         break;
