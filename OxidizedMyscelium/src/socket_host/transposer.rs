@@ -560,6 +560,8 @@ fn clear_old_data() {
 }
 
 pub fn initialize_socket_host_transposer() {
+    println!("🔁 >>> Transposer working!");
+
     let logger = acquire_logger!("Transposer");
 
     let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();

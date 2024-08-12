@@ -20,6 +20,9 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+use common::enhanced_buffer;
+use common::enhanced_buffer::buffer_down_manager::DownCommand;
+use common::structs::reactive_activator::{CloneableBox, ReactiveActivator};
 use indexmap::IndexMap;
 use oxidized_myscelium_macros::callback;
 
@@ -93,6 +96,46 @@ lazy_static! {
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
+
+}
+
+// -> HOST BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
+
+lazy_static! {
+    pub static ref HOST_BUFFER_ACTIVATION_CONTROLLER: Arc<Mutex<Arc<ReactiveActivator>>> = Arc::new(Mutex::new(
+        ReactiveActivator::new(
+            Arc::new(|| {
+                // Your action closure code here
+                initialize_socket_host_transposer();
+            }) as Arc<dyn Fn() + Send + Sync>,
+            Arc::new(|| -> bool {
+                // Your condition closure code here
+                let schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+                println!("Condition is: {:?}", !schedule.is_empty());
+                schedule.is_empty()
+            }) as Arc<dyn Fn() -> bool + Send + Sync>
+        )
+    ));
+}
+
+// -> CLIENT BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
+
+lazy_static! {
+    pub static ref CLIENT_BUFFER_ACTIVATION_CONTROLLER: Arc<Mutex<Arc<ReactiveActivator>>> = Arc::new(Mutex::new(
+        ReactiveActivator::new(
+            Arc::new(|| {
+                // Your action closure code here
+                initialize_socket_client_transposer();
+            }) as Arc<dyn Fn() + Send + Sync>,
+            Arc::new(|| -> bool {
+                // Your condition closure code here
+                let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+                schedule.retain(|x| x.auto_collect); // > This is only required in client since client can receive auto_collect == False and those aren't tranposed
+                println!("Condition is: {:?}", !schedule.is_empty());
+                schedule.is_empty()
+            }) as Arc<dyn Fn() -> bool + Send + Sync>
+        )
+    ));
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;
@@ -472,15 +515,16 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         loop {
-            println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
+            // println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
 
             if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                 println!("Stop the core!");
                 break;
             }
 
-            initialize_socket_client_transposer();
-            println!("Socket transposer working!!");
+            thread::sleep(Duration::from_secs(5));
+            // initialize_socket_client_transposer();
+            // println!("Socket transposer working!!");
         }
     }
 
@@ -758,14 +802,14 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
     });
 
     loop {
-        initialize_socket_host_transposer();
-
+        // initialize_socket_host_transposer();
         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
             println!("Stop the core!");
             thread::sleep(Duration::from_secs(7));
             break;
         }
+        thread::sleep(Duration::from_secs(5));
     }
 
-    println!("Socket transposer exited successfully!");
+    // println!("Socket transposer exited successfully!");
 }
