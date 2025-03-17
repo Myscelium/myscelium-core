@@ -435,6 +435,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
     if direct_functions.contains(&translated_command.command.actf.clone()) {
         // -> HANDLE DIRECT FUNCTIONS:
+        logger.debug(format!("Command is a direct function!"));
         callable_result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
     } else {
         // -> VERIFY IF THE COMMAND EXIST:
@@ -459,6 +460,8 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
             }
         }
 
+        logger.debug(format!("The command exists and is registered in global_command_patterns!"));
+
         // -> EXTRACT CALLBACK FUNCTION
         let command_instructions = translated_command.command.clone();
         let kwargs_to_call: HashMap<String, Value>;
@@ -477,12 +480,16 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
 
+        logger.debug(format!("Command Kwargs successfully extracted!"));
+
         let response;
 
         {
             // > THIS WAS DONE THIS WAY TO BE ABLE TO USE MULTITHREADING WITH HIGH INTENSIVE FUNCTION WITHOUT ANY PROBLEM
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
+
+            logger.debug(format!("Trying to obtain the required argument pattern for the command"));
 
             {
                 let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
@@ -493,6 +500,8 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                 // Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
             }
+
+            logger.debug(format!("Successfully obtained the expected argument pattern for the command! Trying to call the callback:"));
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
             // -> CALL CALLBACK FUNCTION
@@ -507,12 +516,16 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                     if let Some(c_id) = down_command.command_id {
                         responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
                     } else {
-                        logger.warn("Can't process a command that doesn't have command id".to_string());
+                        logger.warn("Can't process a command that doesn't have a command ID".to_string());
                     }
                     return responses;
                 },
             };
+
+            logger.debug(format!("Successfully executed the callback caller"));
         }
+
+        logger.debug(format!("Callback Response: {:?}", response));
 
         // -> PROCESS CALLBACK RESPONSE:
         callable_result = match response.downcast::<Option<CommandInstructions>>() {
