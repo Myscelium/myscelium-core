@@ -18,9 +18,9 @@ syn = { version = "2.0.72", features = ["full"] }
 quote = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-rusqlite = { version = "*", features = ["bundled"] }
+rusqlite = { version = "0.34.0", features = ["bundled"] }
 lazy_static = "1.4.0"
-rand = "0.8.5"
+rand = "0.9.0"
 chrono = "0.4"
 ctrlc = "3.1.9"
 parking_lot = { version = "0.12.3", features = ["deadlock_detection"] }

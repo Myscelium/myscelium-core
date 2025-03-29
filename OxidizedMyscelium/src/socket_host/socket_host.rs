@@ -798,7 +798,7 @@ fn handle_connection(stream: &mut TcpStream) {
                 command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
             }
 
-            logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
+            // println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
 
             logger.debug(format!("\nCommand.Command: {:?}", command.command));
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
