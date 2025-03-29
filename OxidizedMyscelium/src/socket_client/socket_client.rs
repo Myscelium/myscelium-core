@@ -597,6 +597,8 @@ pub fn initialize_client(address: String) -> Option<String> {
         }
     }
 
+    // -> Connection loop:
+
     loop {
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
