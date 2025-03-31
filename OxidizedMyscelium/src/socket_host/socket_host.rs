@@ -1,13 +1,21 @@
 use std::io::prelude::*;
-use std::net::TcpListener;
-use std::net::TcpStream;
 
-use std::sync::{mpsc, Arc, Mutex};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    io::{Error, ErrorKind},
+    sync::Arc,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, Mutex},
+};
+
 use std::thread;
 
 use indexmap::IndexMap;
 use serde_json::{from_str, Value};
-use std::collections::HashMap;
 use syn::Index;
 
 use crate::common::enhanced_buffer::utilities::CommandVariant;
@@ -58,6 +66,16 @@ use crate::socket_host::sync_controller::controller::{ClientStatusPoolError, Cli
 
 use crate::CLIENTS_SYNC_CONTROLLER;
 use crate::HOST_COMMAND_PATTERNS;
+
+/// Dispatcher Units: for example, Transposer is a "worker" that processes certain messages.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum Unit {
+    Transposer,
+}
+
+/// Type aliases for clarity.
+type ClientMap = Arc<Mutex<HashMap<String, mpsc::Sender<String>>>>;
+type UnitSenders = Arc<HashMap<Unit, mpsc::Sender<(String, String)>>>;
 
 lazy_static! {
     static ref MAX_CONS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
@@ -359,19 +377,39 @@ pub fn initialize_host_buffer(buffer_location: String) {
 
 use std::panic;
 
-pub fn initialize_host(address: String, client_key: String) {
+pub async fn initialize_host(address: String, client_key: String) -> std::io::Result<()> {
     let logger = acquire_logger!("Core");
 
     {
-        let mut actual_client_id = CLIENT_ID.lock().unwrap();
+        let mut actual_client_id = CLIENT_ID.lock().await;
         *actual_client_id = client_key;
     }
 
-    let listener = TcpListener::bind(&address).unwrap();
+    let listener = TcpListener::bind(&address).await?;
 
     logger.info(format!("Listening: {}", address));
 
+    // Shared map from client_id -> Sender, so we can reply to each client.
+    let client_txs: ClientMap = Arc::new(Mutex::new(HashMap::new()));
+
+    // Create a channel for the Transposer unit, spawn its async task
+    let (tx_transposer, rx_transposer) = mpsc::channel::<(String, String)>(32);
+    {
+        // Clone for the transposer background task
+        // let client_txs_clone = Arc::clone(&client_txs);
+        // tokio::spawn(async move {
+        //     transposer(rx_transposer, client_txs_clone).await;
+        // });
+    }
+
+    // Put the transposer channel sender into a global map, in case we have more units later.
+    let mut senders = HashMap::new();
+    senders.insert(Unit::Transposer, tx_transposer);
+    let unit_senders = Arc::new(senders);
+
     loop {
+        let logger = acquire_logger!("Core");
+
         logger.info("Waiting conn!".to_string());
 
         // Keep the thread alive until HOST_IS_RUNNING is set to false
@@ -380,28 +418,21 @@ pub fn initialize_host(address: String, client_key: String) {
             break;
         }
 
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                // Spawn a new thread for each connection
-                thread::spawn(move || {
-                    let logger = acquire_logger!("Core");
+        let (stream, addr) = listener.accept().await?;
+        println!("Accepted connection from {:?}", addr);
 
-                    // Set a read timeout of 5 seconds
-                    stream.set_read_timeout(Some(std::time::Duration::new(5, 0))).unwrap();
+        let unit_senders_clone = Arc::clone(&unit_senders);
+        let client_txs_clone = Arc::clone(&client_txs);
 
-                    match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                        handle_connection(&mut stream);
-                    })) {
-                        Ok(_) => logger.info("Connection handled successfully".to_string()),
-                        Err(e) => logger.warn(format!("Connection handler panicked: {:?}", e)),
-                    }
-                });
-            },
-            Err(e) => {
-                logger.warn(format!("Failed to accept a connection: {}", e));
-            },
-        }
+        // Spawn a new task per connection
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(stream, unit_senders_clone, client_txs_clone).await {
+                logger.exception(format!("Connection handler panicked: {:?}", e));
+            }
+        });
     }
+
+    return Ok(());
 }
 
 // The incoming method is called on the listener, which returns an iterator that gives us a sequence of
@@ -655,7 +686,7 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
 /// - The TODO within the function indicates a need to enhance error handling during deserialization of the command.
 /// - Special care is given to the handling of special functions, which are identified by specific codes (e.g., "C202" and "C206").
 /// - There is a mechanism in place to check if a command's parity ID is already registered and to retrieve existing responses if necessary.
-fn handle_connection(stream: &mut TcpStream) {
+async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
     // Aquire logger to section Handle Conn
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
@@ -663,62 +694,18 @@ fn handle_connection(stream: &mut TcpStream) {
     // -> Before join in the loop, schedule a request of the client commands
     // let mut client: Option<Client> = None;
 
+    // TODO >>> Remove the loop, make it reactive
+    // TODO >>> Remove conver the strams senders into tx for the dispatcher thread
+
     loop {
-        let mut size_buffer = [0; 4];
-
-        //> Read the size of the incoming data
-        let data_size = match stream.read_exact(&mut size_buffer) {
-            Ok(_) => u32::from_be_bytes(size_buffer) as usize,
-            Err(e) => {
-                logger.debug(format!("Failed to read from the stream: {:?}", e));
-                eprintln!("Failed to read from the stream: {:?}", e);
-                //> Handle the error, e.g., by returning from the function or taking corrective action
-                handle_client_disconnect(&client_key);
-                break; //> or handle differently
-            },
-        };
-
-        if data_size > MAX_DATA_SIZE {
-            logger.exception(format!("Data size too large: {}", data_size));
-            break; //> Close connection or handle appropriately
-        }
-
-        logger.debug(format!("Receiving data with length: {}", data_size));
-
-        //> Allocate a buffer of the appropriate size
-        let mut data_buffer = vec![0; data_size];
-
-        //> Read the data into the buffer
-        let buffer_string = match stream.read_exact(&mut data_buffer) {
-            Ok(_) => String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(),
-            Err(e) => {
-                logger.debug(format!("Failed to read from the stream: {:?}", e));
-                eprintln!("Failed to read from the stream: {:?}", e);
-                //> Handle the error, e.g., by returning from the function or taking corrective action
-                handle_client_disconnect(&client_key);
-                break; //> or handle differently
-            },
-        };
-
-        let command: Command = serde_json::from_str(&buffer_string).unwrap();
         logger.debug(format!("Command received:\n{:?}\n", command));
 
         // -> Drop clients that aren't in the white list:
         if !check_if_client_key_exists(command.client_key.clone()) {
             // -> In case client isn't registered in the clients allowed
-
             let response: Command = create_error_command_response!(command.client_key, command.parity_id, "Your client isn't registered in the whitelist!");
             logger.exception(format!("WARNING: Client isn't registered, sending back: {:?}", response));
-
-            match send(stream, response) {
-                Ok(_) => {},
-                Err(e) => {
-                    handle_send_error!(e, logger, command.client_key);
-                    break;
-                },
-            };
-
-            break;
+            return Ok(Some(response));
         }
 
         client_key = command.client_key.clone();
@@ -804,19 +791,16 @@ fn handle_connection(stream: &mut TcpStream) {
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
             logger.debug(format!("Command function: {}", command.command.actf));
 
-            fn special_fn_handling(stream: &mut TcpStream, command: &Command) {
+            fn special_fn_handling(command: &Command) -> Result<Command, String> {
                 let logger = acquire_logger!("Core");
                 let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
 
                 if special_functions.contains(&command.command.actf) {
                     let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone());
-                    logger.debug(format!("Sending back: {:?}", response));
-
-                    match send(stream, response) {
-                        Ok(_) => {},
-                        Err(e) => handle_send_error!(e, logger, command.client_key),
-                    };
+                    return Ok(response);
                 }
+
+                Err("Command Isn't A Special Function!".to_string())
             }
 
             /// Updates the tasks in the task table based in the
@@ -889,13 +873,18 @@ fn handle_connection(stream: &mut TcpStream) {
             }
 
             //> Early return for command type:
-
             update_task_table(&command, true); // This is important to be here to handle the cases were we need to verify the confirmation received
-
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
-                    special_fn_handling(stream, &command);
+                    match special_fn_handling(&command) {
+                        Ok(c) => {
+                            return Ok(Some(c));
+                        },
+                        Err(e) => {
+                            logger.warn(e); // TODO >>> Maybe implement something here to prevent spamming the buffer with warns if the methods aren't allowed
+                        },
+                    };
                     continue;
                 },
                 _ => {},
@@ -918,38 +907,17 @@ fn handle_connection(stream: &mut TcpStream) {
                         match get_response(command.clone()) {
                             Response::Command(c) => {
                                 if c.client_key == command.client_key {
-                                    match send(stream, c) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(c));
                                 } else {
                                     logger.info("Response is None!".to_string());
                                     let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    match send(stream, res) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(res));
                                 }
                             },
                             Response::None => {
                                 logger.info("Response is None!".to_string());
                                 let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                match send(stream, res) {
-                                    Ok(_) => continue,
-                                    Err(e) => {
-                                        handle_send_error!(e, logger, client_key);
-                                        handle_client_disconnect(&client_key);
-                                        break;
-                                    },
-                                };
+                                return Ok(Some(res));
                             },
                         }
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
@@ -963,14 +931,7 @@ fn handle_connection(stream: &mut TcpStream) {
                             match command {
                                 CommandVariant::Command(res) => {
                                     update_task_table(&res, false);
-                                    match send(stream, res) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(res));
                                 },
                                 CommandVariant::UpCommand(up) => {
                                     enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
@@ -988,14 +949,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     let res: Command = host_commands_processing(&command);
                     update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", res));
-                    match send(stream, res) {
-                        Ok(_) => continue,
-                        Err(e) => {
-                            handle_send_error!(e, logger, command.client_key);
-                            handle_client_disconnect(&client_key);
-                            break;
-                        },
-                    };
+                    return Ok(Some(res));
                 },
                 CommandTarget::Origin => {
                     let mut command: Command = command.clone();
@@ -1022,38 +976,17 @@ fn handle_connection(stream: &mut TcpStream) {
                         match get_response(command.clone()) {
                             Response::Command(c) => {
                                 if c.client_key == command.client_key {
-                                    match send(stream, c) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(c));
                                 } else {
                                     logger.info("Response is None!".to_string());
                                     let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    match send(stream, res) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(res));
                                 }
                             },
                             Response::None => {
                                 logger.info("Response is None!".to_string());
                                 let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                match send(stream, res) {
-                                    Ok(_) => continue,
-                                    Err(e) => {
-                                        handle_send_error!(e, logger, client_key);
-                                        handle_client_disconnect(&client_key);
-                                        break;
-                                    },
-                                };
+                                return Ok(Some(res));
                             },
                         }
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
@@ -1091,14 +1024,7 @@ fn handle_connection(stream: &mut TcpStream) {
                                         tasks_manager.show_node_tasks(&command.client_key);
                                     }
 
-                                    match send(stream, res) {
-                                        Ok(_) => continue,
-                                        Err(e) => {
-                                            handle_send_error!(e, logger, client_key);
-                                            handle_client_disconnect(&client_key);
-                                            break;
-                                        },
-                                    };
+                                    return Ok(Some(res));
                                 },
                                 CommandVariant::UpCommand(up) => {
                                     enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
@@ -1120,10 +1046,7 @@ fn handle_connection(stream: &mut TcpStream) {
                     update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", &res));
                     let client_key = res.client_key.clone();
-                    match send(stream, res) {
-                        Ok(_) => {},
-                        Err(e) => handle_send_error!(e, logger, client_key),
-                    };
+                    return Ok(Some(res));
                     handle_client_disconnect(&client_key);
                     break;
                 },
@@ -1132,4 +1055,152 @@ fn handle_connection(stream: &mut TcpStream) {
     }
 
     handle_client_disconnect(&client_key);
+
+    return Ok(None);
+}
+
+async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, client_txs: ClientMap) -> std::io::Result<()> {
+    // Aquire logger to section Handle Conn
+    let logger = acquire_logger!("Core");
+    let mut client_key: String = "".to_string();
+
+    // Create the channel for sending data back to this client from the transposer.
+    let (tx_to_client, mut rx_from_transposer) = mpsc::channel::<String>(32);
+
+    let client_id = "".to_string();
+
+    // TODO >>> Late initialize the txs with the client id received from the client, but do all verifications first
+    // Insert into the global client map
+    {
+        let mut guard = client_txs.lock().await;
+        guard.insert(client_id.clone(), tx_to_client);
+    }
+
+    // Split the stream into reading and writing parts
+    let (mut reader, mut writer) = stream.into_split();
+
+    let read_task = tokio::spawn(async move {
+        loop {
+            let mut size_buffer = [0u8; 4];
+
+            // Read exactly 4 bytes to get the size
+            if let Err(e) = reader.read_exact(&mut size_buffer).await {
+                match e.kind() {
+                    ErrorKind::UnexpectedEof => {
+                        println!("Client {} disconnected", client_id);
+                    },
+                    _ => {
+                        logger.exception(format!("Failed to read size from client {}: {:?}", client_id, e));
+                    },
+                }
+                handle_client_disconnect(&client_key);
+                break;
+            }
+
+            let data_size = u32::from_be_bytes(size_buffer) as usize;
+            if data_size > MAX_DATA_SIZE {
+                logger.exception(format!("Client {} sent data too large: {}", client_id, data_size));
+                handle_client_disconnect(&client_key);
+                break;
+            }
+
+            let mut data_buffer = vec![0u8; data_size];
+            if let Err(e) = reader.read_exact(&mut data_buffer).await {
+                logger.exception(format!("Failed to read payload from client {}: {}", client_id, e));
+                handle_client_disconnect(&client_key);
+                break;
+            }
+
+            let buffer_string = String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string();
+
+            match serde_json::from_str::<Command>(&buffer_string) {
+                Ok(command) => {
+                    // 🔁 Await the command handler
+
+                    match handle_incoming(command).await {
+                        Ok(response) => {
+                            let command_response_json: String = json!(response).to_string();
+                            let guard = client_txs.lock().await;
+                            if let Some(tx) = guard.get(&client_id) {
+                                // TODO >>> Verify if the tx will correctly send the response for the writer.
+                                // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
+                                // > from multiple sources without cause some kind of racing condition between the senders, this way
+                                // > We make the structure simpler and more event driven, more reactive and simpler than having to have multiple layers of nested senders all over the place.
+                                if let Err(e) = tx.send(command_response_json).await {
+                                    logger.exception(format!("Error sending response to client {}: {}", client_id, e));
+                                }
+                            } else {
+                                logger.exception(format!("No client sender found for {}", client_id));
+                            }
+                        },
+                        Err(e) => {
+                            // TODO >>> Send an copy of the tx that connects to the client socket reactive task rx
+                            logger.warn(format!("Error handling command for client {}: {}", client_id, e));
+                        },
+                    }
+                },
+                Err(e) => {
+                    logger.warn(format!("Failed to deserialize command from client {}: {}", client_id, e));
+                },
+            }
+        }
+    });
+
+    // >---------------------------------------------------------------------------------------------------------
+
+    let client_id: String = "".to_string();
+    let mut client_key: String = "".to_string();
+    let logger = acquire_logger!("Core");
+
+    // let command_response_json: String = json!(data).to_string();
+
+    // A task for writing responses from the transposer back to the client
+    let write_task = tokio::spawn(async move {
+        while let Some(command_response_json) = rx_from_transposer.recv().await {
+            logger.debug(format!("📨 Sending to client {}: {}", client_id, command_response_json));
+
+            // Check if the connection was closed
+            if writer.peer_addr().is_err() {
+                return Err(StreamError::ConnectionClosed);
+            }
+
+            let data_size: u32 = command_response_json.len() as u32;
+            let size_buffer: [u8; 4] = data_size.to_be_bytes();
+
+            // Send the size of the data
+            if let Err(e) = writer.write_all(&size_buffer).await {
+                logger.exception(format!("Error writing size to client {}: {}", client_id, e));
+                handle_client_disconnect(&client_key);
+                break;
+            }
+
+            // Send the actual data
+            if let Err(e) = writer.write_all(command_response_json.as_bytes()).await {
+                logger.exception(format!("Error writing to client {}: {}", client_id, e));
+                handle_client_disconnect(&client_key);
+                break;
+            }
+        }
+
+        Ok::<_, StreamError>(()) // <- Fix: ensure this async block returns a Result
+    });
+
+    // -> Wait for either the reading or writing side to finish
+    tokio::select! {
+        _ = read_task => {},
+        _ = write_task => {},
+    }
+
+    let client_id = "".to_string();
+
+    // -> Once either side is done, remove the client from the map
+    {
+        let mut guard = client_txs.lock().await;
+        guard.remove(&client_id);
+    }
+
+    let logger = acquire_logger!("Core");
+    logger.info(format!("🔌 Removed client {} from map.", client_id));
+
+    Ok(())
 }

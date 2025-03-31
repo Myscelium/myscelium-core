@@ -27,3 +27,4 @@ chrono = "0.4"
 ctrlc = "3.1.9"
 parking_lot = { version = "0.12.2", features = ["deadlock_detection"] }
 lock_api = "0.4"
+tokio = { version = "1.28", features = ["net", "sync", "io-util", "rt-multi-thread", "macros"] }
