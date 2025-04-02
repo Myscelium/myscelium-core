@@ -18,6 +18,7 @@ type Job = Option<Box<dyn FnOnce() + Send + 'static>>;
 /// - Wait for a free worker thread before executing a task.
 /// - Gracefully shut down and stop the workers.
 /// - Track the status of workers (busy or free).
+#[derive(Debug)]
 pub struct UnifiedThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Job>,
@@ -30,6 +31,7 @@ pub struct UnifiedThreadPool {
 ///
 /// Each worker runs in its own thread and is responsible for executing jobs.
 /// The worker maintains a status indicating whether it is busy or free.
+#[derive(Debug)]
 struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,

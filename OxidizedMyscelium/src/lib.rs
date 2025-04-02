@@ -35,6 +35,7 @@ use oxidized_myscelium_macros::callback;
 use lazy_static::lazy_static;
 use socket_client::response_watcher::watch_response;
 use socket_client::scheduler::SchedulingError;
+use tokio::runtime::Runtime;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -606,9 +607,9 @@ fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
     return;
 }
 
-fn set_socket_host_max_connections(n_max_conns: u32) {
+async fn set_socket_host_max_connections(n_max_conns: u32) {
     set_host_clients_manager__pool_workers_num(n_max_conns.clone());
-    set_max_conns(n_max_conns);
+    set_max_conns(n_max_conns).await;
     return;
 }
 
@@ -732,11 +733,11 @@ fn stop_socket_host() {
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
 
-pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
+pub async fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
     initialize_host_buffer_tables(buffer_path.clone());
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
-    set_socket_host_max_connections(n_max_conns.clone());
+    set_socket_host_max_connections(n_max_conns.clone()).await;
 
     // -> Partially initialize the host node without the handlers
     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
@@ -797,8 +798,17 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         })
         .expect("Error setting Ctrl-C handler");
 
-        initialize_host(address, client_id);
-        println!("Socket host exited successfully!");
+        // Create a new Tokio runtime inside this thread (To be able to call the async function from a sync function, since the myscelium Python Bridge PyO3 integration crate doesn't support it).
+        let rt = Runtime::new().expect("Failed to create Tokio runtime");
+
+        rt.block_on(async {
+            match initialize_host(address, client_id).await {
+                Ok(_) => {},
+                Err(e) => panic!("Error from host: {:?}", e),
+            }
+
+            println!("Socket host exited successfully!");
+        });
     });
 
     loop {

@@ -1,5 +1,6 @@
 use std::io::prelude::*;
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -9,7 +10,10 @@ use std::{
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::{mpsc, Mutex},
+    sync::{
+        mpsc::{self, Sender},
+        Mutex, OnceCell,
+    },
 };
 
 use std::thread;
@@ -78,21 +82,13 @@ type ClientMap = Arc<Mutex<HashMap<String, mpsc::Sender<String>>>>;
 type UnitSenders = Arc<HashMap<Unit, mpsc::Sender<(String, String)>>>;
 
 lazy_static! {
-    static ref MAX_CONS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
+    static ref MAX_CONS: Lazy<Arc<Mutex<u32>>> = Lazy::new(|| Arc::new(Mutex::new(5)));
     static ref CLIENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(' '.to_string()));
     static ref HEARTBEAT_CALLBACK: Arc<Mutex<std::collections::HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>>> = {
         let m = std::collections::HashMap::new();
         Arc::new(Mutex::new(m))
     };
-    static ref CONNECTION_HANDLER_POOL: Arc<Mutex<UnifiedThreadPool>> = {
-        let max_connections;
-        {
-            let max_conns = MAX_CONS.lock().unwrap();
-            max_connections = *max_conns;
-        }
-
-        init_thread_pool!(max_connections as usize)
-    };
+    pub static ref CONNECTION_HANDLER_POOL: OnceCell<Arc<std::sync::Mutex<UnifiedThreadPool>>> = OnceCell::const_new();
 }
 
 macro_rules! create_error_command_response {
@@ -295,9 +291,9 @@ macro_rules! send_error_response {
     };
 }
 
-pub fn set_heartbeat_callback(callback_pattern: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>) {
+pub async fn set_heartbeat_callback(callback_pattern: HashMap<&'static str, Box<dyn Fn() + Send + Sync + 'static>>) {
     {
-        let mut heart_beat_callback = HEARTBEAT_CALLBACK.lock().unwrap();
+        let mut heart_beat_callback = HEARTBEAT_CALLBACK.lock().await;
         *heart_beat_callback = callback_pattern;
     }
 }
@@ -345,9 +341,9 @@ pub fn update_last_contact(client_key: String) {
 ///
 /// # Parameters
 /// - `n_max_conns`: The desired maximum number of connections.
-pub fn set_max_conns(n_max_conns: u32) {
+pub async fn set_max_conns(n_max_conns: u32) {
     // host_logger::register::old_register_manager::set_workers_num(n_max_conns.clone() * 7); // 7 * n because we need 7 for each
-    let mut default_max_conns = MAX_CONS.lock().unwrap();
+    let mut default_max_conns = MAX_CONS.lock().await;
     *default_max_conns = n_max_conns;
 }
 
@@ -377,7 +373,21 @@ pub fn initialize_host_buffer(buffer_location: String) {
 
 use std::panic;
 
+// Call this during app startup
+pub async fn initialize_connection_pool() {
+    // Lock the MAX_CONS mutex and extract the value
+    let max_conns = MAX_CONS.lock().await;
+    let max_connections = *max_conns;
+
+    // Initialize your thread pool
+    let pool = init_thread_pool!(max_connections as usize);
+
+    // Wrap it in Arc<Mutex<...>> and store it globally
+    CONNECTION_HANDLER_POOL.set(pool).expect("CONNECTION_HANDLER_POOL already set");
+}
+
 pub async fn initialize_host(address: String, client_key: String) -> std::io::Result<()> {
+    initialize_connection_pool();
     let logger = acquire_logger!("Core");
 
     {
@@ -421,8 +431,8 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
         let (stream, addr) = listener.accept().await?;
         println!("Accepted connection from {:?}", addr);
 
-        let unit_senders_clone = Arc::clone(&unit_senders);
-        let client_txs_clone = Arc::clone(&client_txs);
+        let unit_senders_clone: Arc<HashMap<Unit, Sender<(String, String)>>> = Arc::clone(&unit_senders);
+        let client_txs_clone: Arc<Mutex<HashMap<String, Sender<String>>>> = Arc::clone(&client_txs);
 
         // Spawn a new task per connection
         tokio::spawn(async move {
@@ -588,34 +598,34 @@ enum StreamError {
     ConnectionClosed,
 }
 
-pub fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
-    let command_response_json = json!(data).to_string();
-    let data_size = command_response_json.len() as u32;
-    let size_buffer = data_size.to_be_bytes();
+// pub fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
+//     let command_response_json = json!(data).to_string();
+//     let data_size = command_response_json.len() as u32;
+//     let size_buffer = data_size.to_be_bytes();
 
-    // Check if the connection was closed
-    if stream.peer_addr().is_err() {
-        return Err(StreamError::ConnectionClosed);
-    }
+//     // Check if the connection was closed
+//     if stream.peer_addr().is_err() {
+//         return Err(StreamError::ConnectionClosed);
+//     }
 
-    // Send the size of the data
-    match stream.write(&size_buffer) {
-        Ok(_) => {},
-        Err(e) => {
-            return Err(StreamError::WriteSizeError(e));
-        },
-    };
+//     // Send the size of the data
+//     match stream.write(&size_buffer) {
+//         Ok(_) => {},
+//         Err(e) => {
+//             return Err(StreamError::WriteSizeError(e));
+//         },
+//     };
 
-    // Send the actual data
-    match stream.write(command_response_json.as_bytes()) {
-        Ok(_) => {},
-        Err(e) => {
-            return Err(StreamError::WriteError(e));
-        },
-    };
+//     // Send the actual data
+//     match stream.write(command_response_json.as_bytes()) {
+//         Ok(_) => {},
+//         Err(e) => {
+//             return Err(StreamError::WriteError(e));
+//         },
+//     };
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// This function updates the node sync status attempt
 /// > Important! - This function require globals:
@@ -1066,15 +1076,17 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
     // Create the channel for sending data back to this client from the transposer.
     let (tx_to_client, mut rx_from_transposer) = mpsc::channel::<String>(32);
-
     let client_id = "".to_string();
 
     // TODO >>> Late initialize the txs with the client id received from the client, but do all verifications first
+
     // Insert into the global client map
     {
         let mut guard = client_txs.lock().await;
         guard.insert(client_id.clone(), tx_to_client);
     }
+
+    let mut cloned_ref_client_txs: ClientMap = Arc::clone(&client_txs);
 
     // Split the stream into reading and writing parts
     let (mut reader, mut writer) = stream.into_split();
@@ -1120,7 +1132,7 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                     match handle_incoming(command).await {
                         Ok(response) => {
                             let command_response_json: String = json!(response).to_string();
-                            let guard = client_txs.lock().await;
+                            let guard = cloned_ref_client_txs.lock().await;
                             if let Some(tx) = guard.get(&client_id) {
                                 // TODO >>> Verify if the tx will correctly send the response for the writer.
                                 // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks

@@ -12,6 +12,7 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "lock_api",
+ "once_cell",
  "oxidized_myscelium_macros",
  "parking_lot",
  "proc-macro2",
