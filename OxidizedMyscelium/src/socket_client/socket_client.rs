@@ -595,6 +595,7 @@ pub fn initialize_client(address: String) -> Option<String> {
             let dif: Duration = last_attempt_time - now;
             println!("Trying to connect again in: {} secs", dif.as_secs());
         }
+        thread::sleep(Duration::from_secs(1));
     }
 
     // -> Connection loop:

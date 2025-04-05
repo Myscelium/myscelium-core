@@ -733,11 +733,18 @@ fn stop_socket_host() {
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
 
-pub async fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
+pub fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) {
     initialize_host_buffer_tables(buffer_path.clone());
     set_socket_host_log_level(log_level.clone());
     set_socket_host_transposer_num_of_workers(n_workers.clone());
-    set_socket_host_max_connections(n_max_conns.clone()).await;
+
+    // Create a short-lived runtime
+    let rt = Runtime::new().unwrap();
+
+    // Use block_on to run your async initialization
+    rt.block_on(async {
+        set_socket_host_max_connections(n_max_conns.clone()).await;
+    });
 
     // -> Partially initialize the host node without the handlers
     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
