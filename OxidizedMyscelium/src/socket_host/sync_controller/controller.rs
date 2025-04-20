@@ -8,6 +8,7 @@ use chrono::prelude::Utc;
 
 use crate::chrono::TimeZone;
 use crate::handle_client_controller_error;
+use crate::socket_host::socket_host::ChangeStatusError;
 use crate::NodeStatus;
 use crate::CLIENTS_SYNC_CONTROLLER;
 use crate::HOST_ALLOWED_COMMANDS;
@@ -35,6 +36,17 @@ pub enum ClientStatusPoolError {
     ClientDoesNotExist(String),
     MaxSyncAttemptsReached(String),
     ClientAlreadySync(String),
+}
+
+impl From<ClientStatusPoolError> for ChangeStatusError {
+    fn from(error: ClientStatusPoolError) -> Self {
+        match error {
+            ClientStatusPoolError::ClientAlreadyExist(s) => ChangeStatusError::ClientAlreadyExist(s),
+            ClientStatusPoolError::ClientDoesNotExist(s) => ChangeStatusError::ClientDoesNotExist(s),
+            ClientStatusPoolError::MaxSyncAttemptsReached(s) => ChangeStatusError::MaxSyncAttemptsReached(s),
+            ClientStatusPoolError::ClientAlreadySync(s) => ChangeStatusError::ClientAlreadySync(s),
+        }
+    }
 }
 
 impl Client {

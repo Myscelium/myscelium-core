@@ -113,6 +113,22 @@ impl ClientState {
         });
     }
 
+    pub fn is_fully_initialized(&self) -> bool {
+        self.name.is_some()
+            && self.key.is_some()
+            && self.network_map.is_some()
+            && self.client_node_configs.is_some()
+            && self.is_initialized.is_some()
+            && self.is_ready.is_some()
+            && self.is_connected.is_some()
+            && self.is_sync.is_some()
+            && self.last_change.is_some()
+    }
+
+    pub fn is_not_fully_initialized(&self) -> bool {
+        !self.is_fully_initialized()
+    }
+
     pub fn empty() -> Self {
         Self {
             name: None,
@@ -125,10 +141,6 @@ impl ClientState {
             is_sync: None,
             last_change: None,
         }
-    }
-
-    pub fn is_fully_initialized(&self) -> bool {
-        self.name.is_some() && self.key.is_some() && self.network_map.is_some() && self.client_node_configs.is_some() && self.is_initialized.is_some() && self.is_connected.is_some() && self.is_sync.is_some() && self.last_change.is_some()
     }
 
     pub fn update_storage_with_self(&self) -> Result<(), StateManagerError> {

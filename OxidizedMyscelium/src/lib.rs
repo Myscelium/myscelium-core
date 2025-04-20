@@ -538,7 +538,7 @@ pub fn change_client_to_initialized() {
     client_state.save_in_storage().unwrap();
 }
 
-pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) {
+pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) -> Result<(), String> {
     common::logs_register::register::initialize_logs_file(buffer_path.as_str()).unwrap();
     initialize_client_buffer_tables(&buffer_path);
     set_socket_client_log_level(&log_level);
@@ -571,16 +571,42 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
             let mut client_state = CLIENT_STATE_MANAGER.lock();
             client_state.clean_storage(); // remove any old state
             let new_client_state = ClientState::new(client_name.clone(), client_uid.clone(), NetworkMap::new(Vec::new()), client_node.clone(), false, false, false, false);
-            new_client_state.save_in_storage().unwrap();
+            match new_client_state.save_in_storage() {
+                Ok(_) => {},
+                Err(e) => return Err(format!("Error trying to save client status in storage, error: {:?}", e)),
+            }
             *client_state = new_client_state.clone();
         }
     } else {
+        let mut loading_attempts: u64 = 0u64;
+        loop {
+            thread::sleep(Duration::from_secs(1));
+
+            {
+                let client_state = CLIENT_STATE_MANAGER.lock();
+                if client_state.is_fully_initialized() {
+                    break;
+                }
+            }
+
+            if loading_attempts > 10u64 {
+                return Err(format!("Client STATE_MANAGER ins't fully initialized!"));
+            }
+
+            loading_attempts += 1;
+        }
+
+        let new_client_state = match ClientState::load_from_storage() {
+            Ok(cs) => cs,
+            Err(e) => return Err(format!("Error trying to load client status in storage, error: {:?}", e)),
+        };
         {
             let mut client_state = CLIENT_STATE_MANAGER.lock();
-            let new_client_state = ClientState::load_from_storage().unwrap();
             *client_state = new_client_state.clone();
         }
     }
+
+    return Ok(());
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------

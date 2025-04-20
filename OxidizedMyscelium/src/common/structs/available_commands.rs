@@ -1,5 +1,6 @@
 use crate::common::enhanced_buffer::utilities::CommandType;
 use crate::common::structs::results_structs::ResultType;
+use crate::socket_host::socket_host::ChangeStatusError;
 
 use chrono::{DateTime, Duration, Utc};
 use indexmap::IndexMap;
@@ -293,6 +294,17 @@ pub enum NetworkMapError {
     IncorrectValueMapPattern(String),
     IncorrectValuePattern,
     NodeNotInitialized(String),
+}
+
+impl From<NetworkMapError> for ChangeStatusError {
+    fn from(error: NetworkMapError) -> Self {
+        match error {
+            NetworkMapError::NodeDoNotExists(s) => ChangeStatusError::NodeDoNotExists(s),
+            NetworkMapError::IncorrectValueMapPattern(s) => ChangeStatusError::IncorrectValueMapPattern(s),
+            NetworkMapError::IncorrectValuePattern => ChangeStatusError::IncorrectValuePattern,
+            NetworkMapError::NodeNotInitialized(s) => ChangeStatusError::NodeNotInitialized(s),
+        }
+    }
 }
 
 impl NetworkMap {

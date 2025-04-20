@@ -462,13 +462,30 @@ pub fn get_available_commands_registered() -> HashMap<std::string::String, Index
     return global_command_patterns.extract_all_commands().unwrap();
 }
 
-pub fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ChangeStatusError {
+    NodeDoNotExists(String),
+    IncorrectValueMapPattern(String),
+    IncorrectValuePattern,
+    NodeNotInitialized(String),
+    ClientAlreadyExist(String),
+    ClientDoesNotExist(String),
+    MaxSyncAttemptsReached(String),
+    ClientAlreadySync(String),
+}
+
+pub fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) -> Result<(), ChangeStatusError> {
     let logger = acquire_logger!("Core");
     logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status));
 
     // -> Change client to offline in network map
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
-    let mut node = network_map.get_node_by_key(&client_key).unwrap();
+    let mut node = match network_map.get_node_by_key(&client_key) {
+        Ok(n) => n,
+        Err(e) => {
+            return Err(e.into());
+        },
+    };
 
     // if node.get_node_status() == new_status {
     //     logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
@@ -482,11 +499,18 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 
         //> Reinitialize the status of the client that disconnects, so when it reconnects the
         //> First sync can occur naturally.
-        client_sync_manager.get_client(&client_key).unwrap().reinitialize();
+        let csm = match client_sync_manager.get_client(&client_key) {
+            Ok(csm) => csm,
+            Err(e) => return Err(e.into()),
+        };
+
+        csm.reinitialize();
     }
 
     // -> Make all the client related to this client need to sync again by change this node status to Offline
     node.change_node_status(new_status);
+
+    return Ok(());
 }
 
 pub fn handle_client_disconnect(client_key: &String) {
@@ -632,7 +656,7 @@ enum StreamError {
 /// - HOST_COMMAND_PATTERNS
 /// - CLIENT_SYNC_CONTROLLER
 /// Make sure to have them free before try to call this function to avoid blockages
-fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
+fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Result<(), ChangeStatusError> {
     let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
 
     let client = controller.get_client(client_key).unwrap();
@@ -663,15 +687,18 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> bool {
         match e {
             ClientStatusPoolError::ClientAlreadyExist(_) => unreachable!(),
             ClientStatusPoolError::ClientDoesNotExist(_) => unreachable!(),
-            ClientStatusPoolError::MaxSyncAttemptsReached(_) => {
+            ClientStatusPoolError::MaxSyncAttemptsReached(s) => {
                 handle_client_disconnect(&client_key); // Disconnect the client, what should trigger sync in all dependent ones
-                return true;
+                return Err(ChangeStatusError::MaxSyncAttemptsReached(s));
             },
-            ClientStatusPoolError::ClientAlreadySync(_) => change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online),
+            ClientStatusPoolError::ClientAlreadySync(_) => match change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online) {
+                Ok(_) => {},
+                Err(e) => return Err(e),
+            },
         }
     }
 
-    return false;
+    return Ok(());
 }
 
 /// Handles an individual connection to the server.
@@ -762,9 +789,16 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                 if should_attempt_sync {
                     logger.info(format!("Try to sync with: {}", command.client_key));
                     send_network_available_commands(command.client_key.clone());
-                    if update_client_sync_attempt(&command.client_key, &logger) {
-                        break;
-                    };
+
+                    match update_client_sync_attempt(&command.client_key, &logger) {
+                        Ok(()) => {
+                            break;
+                        },
+                        Err(e) => {
+                            logger.warn(format!("Trying to change the client status result in an error: {:?}", e));
+                        },
+                    }
+
                     //> The new system only stream that the node connect here and is trying to sync so this new
                     //> node is with NotSyncYet status.
                     //> Then wen this node connects we change the status to Sync. If node isn't able to sync, we
@@ -815,7 +849,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
 
             /// Updates the tasks in the task table based in the
             /// incomming commands and the outcome tasks.
-            fn update_task_table(command: &Command, incoming: bool) {
+            async fn update_task_table(command: &Command, incoming: bool) {
                 // Bypass (itisaspecialcase) that means bypass all internal tasks
                 if command.parity_id == "itisaspecialcase" {
                     return;
@@ -883,7 +917,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             }
 
             //> Early return for command type:
-            update_task_table(&command, true); // This is important to be here to handle the cases were we need to verify the confirmation received
+            update_task_table(&command, true).await; // This is important to be here to handle the cases were we need to verify the confirmation received
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
@@ -940,7 +974,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         for command in commands {
                             match command {
                                 CommandVariant::Command(res) => {
-                                    update_task_table(&res, false);
+                                    update_task_table(&res, false).await;
                                     return Ok(Some(res));
                                 },
                                 CommandVariant::UpCommand(up) => {
@@ -957,7 +991,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                     // < WARNING: This locks command_patterns!
                     let res: Command = host_commands_processing(&command);
-                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    update_task_table(&res, false).await; // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", res));
                     return Ok(Some(res));
                 },
@@ -1024,7 +1058,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                             println!("Task: {} removed", &command.parity_id);
                                         }
                                     } else {
-                                        update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                                        update_task_table(&res, false).await; // update to the tasks is done here in case res is a response to something pendent to this client
                                     }
 
                                     println!("Tasks updated");
@@ -1053,7 +1087,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         command.parity_id,
                         format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
                     );
-                    update_task_table(&res, false); // update to the tasks is done here in case res is a response to something pendent to this client
+                    update_task_table(&res, false).await; // update to the tasks is done here in case res is a response to something pendent to this client
                     logger.debug(format!("Sending back: {:?}", &res));
                     let client_key = res.client_key.clone();
                     return Ok(Some(res));
