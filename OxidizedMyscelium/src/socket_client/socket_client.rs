@@ -270,8 +270,16 @@ fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool {
     };
 
     println!("Confirmation data decoded!");
+    println!("String: {:?}", &buffer_string);
 
-    let command: Command = serde_json::from_str(&buffer_string).unwrap();
+    let command: Command = match serde_json::from_str(&buffer_string) {
+        Ok(c) => c,
+        Err(e) => {
+            // TODO >>> Create a form to do the error handling of this!!! # Very important!
+            logger.exception(format!("Error trying to downcast the command from str: {:?}", e));
+            panic!("Error trying to downcast the command from str: {:?}", e)
+        },
+    };
 
     logger.debug(format!("Received: {:?}", command));
 

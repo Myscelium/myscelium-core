@@ -480,12 +480,7 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 
     // -> Change client to offline in network map
     let mut network_map = HOST_COMMAND_PATTERNS.lock();
-    let mut node = match network_map.get_node_by_key(&client_key) {
-        Ok(n) => n,
-        Err(e) => {
-            return Err(e.into());
-        },
-    };
+    let mut node = network_map.get_node_by_key(&client_key).map_err::<ChangeStatusError, _>(Into::into)?;
 
     // if node.get_node_status() == new_status {
     //     logger.debug(format!("Client {} is alwready with status: {:?}!", client_key, new_status));
@@ -499,11 +494,7 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
 
         //> Reinitialize the status of the client that disconnects, so when it reconnects the
         //> First sync can occur naturally.
-        let csm = match client_sync_manager.get_client(&client_key) {
-            Ok(csm) => csm,
-            Err(e) => return Err(e.into()),
-        };
-
+        let csm = client_sync_manager.get_client(&client_key).map_err::<ChangeStatusError, _>(Into::into)?;
         csm.reinitialize();
     }
 
@@ -533,24 +524,23 @@ pub fn handle_client_disconnect(client_key: &String) {
 ///
 /// # Returns
 /// - A `Command` object representing the response for the special function.
-fn handle_special_functions(client_key: String, function: String) -> Command {
+async fn handle_special_functions(client_key: String, function: String) -> Command {
     let command;
     let logger = acquire_logger!("Core");
 
     if function == "C202" {
         // -> Connection conf request
         command = create_special_command_response!(client_key, "C200");
+        println!("Received connection conf request C202, casting C200!");
     } else if function == "C206" {
         // -> Ping request
 
         let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule_fo_client_id(client_key.clone());
-
         if !(up_schedule.len() > 0) {
             return create_special_command_response!(client_key, "C207"); // If don't have any response to send send C207 that is a ping confirmation
         }
 
         let command_response = &up_schedule[0];
-
         let response_command = match Command::from_up_command(&command_response) {
             Ok(c) => c,
             Err(e) => {
@@ -621,35 +611,6 @@ enum StreamError {
     WriteSizeError(std::io::Error),
     ConnectionClosed,
 }
-
-// pub fn send(stream: &mut TcpStream, data: Command) -> Result<(), StreamError> {
-//     let command_response_json = json!(data).to_string();
-//     let data_size = command_response_json.len() as u32;
-//     let size_buffer = data_size.to_be_bytes();
-
-//     // Check if the connection was closed
-//     if stream.peer_addr().is_err() {
-//         return Err(StreamError::ConnectionClosed);
-//     }
-
-//     // Send the size of the data
-//     match stream.write(&size_buffer) {
-//         Ok(_) => {},
-//         Err(e) => {
-//             return Err(StreamError::WriteSizeError(e));
-//         },
-//     };
-
-//     // Send the actual data
-//     match stream.write(command_response_json.as_bytes()) {
-//         Ok(_) => {},
-//         Err(e) => {
-//             return Err(StreamError::WriteError(e));
-//         },
-//     };
-
-//     Ok(())
-// }
 
 /// This function updates the node sync status attempt
 /// > Important! - This function require globals:
@@ -747,6 +708,9 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
 
         client_key = command.client_key.clone();
 
+        // -> ---------------------------------------------------------------------------------------------------------------------------------------------------
+        // -> SYNC CONTROLLER:
+
         // -> GET CLIENT STATUS, SEE IF IT IS SYNC OR NOT
         let client_sync_status: Option<bool>;
         let client_last_sync: Option<DateTime<Utc>>;
@@ -791,9 +755,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     send_network_available_commands(command.client_key.clone());
 
                     match update_client_sync_attempt(&command.client_key, &logger) {
-                        Ok(()) => {
-                            break;
-                        },
+                        Ok(()) => {}, // Once sync, continue the default procedure loop!
                         Err(e) => {
                             logger.warn(format!("Trying to change the client status result in an error: {:?}", e));
                         },
@@ -835,12 +797,12 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
             logger.debug(format!("Command function: {}", command.command.actf));
 
-            fn special_fn_handling(command: &Command) -> Result<Command, String> {
+            async fn special_fn_handling(command: &Command) -> Result<Command, String> {
                 let logger = acquire_logger!("Core");
                 let special_functions: Vec<String> = vec!["C202".to_string(), "C206".to_string()];
 
                 if special_functions.contains(&command.command.actf) {
-                    let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone());
+                    let response: Command = handle_special_functions(command.client_key.clone(), command.command.actf.clone()).await;
                     return Ok(response);
                 }
 
@@ -921,12 +883,12 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             match &command.command_type() {
                 CommandType::SpecialFunction => {
                     // -> HANDLE SPECIAL FUNCTION CASES:
-                    match special_fn_handling(&command) {
+                    match special_fn_handling(&command).await {
                         Ok(c) => {
                             return Ok(Some(c));
                         },
                         Err(e) => {
-                            logger.warn(e); // TODO >>> Maybe implement something here to prevent spamming the buffer with warns if the methods aren't allowed
+                            logger.exception(e); // TODO >>> Maybe implement something here to prevent spamming the buffer with warns if the methods aren't allowed
                         },
                     };
                     continue;
@@ -1163,20 +1125,27 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                 Ok(command) => {
                     // 🔁 Await the command handler
 
+                    println!("Entering in handle incoming command: {:?}", command);
+
                     match handle_incoming(command).await {
                         Ok(response) => {
-                            let command_response_json: String = json!(response).to_string();
-                            let guard = cloned_ref_client_txs.lock().await;
-                            if let Some(tx) = guard.get(&client_id) {
-                                // TODO >>> Verify if the tx will correctly send the response for the writer.
-                                // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
-                                // > from multiple sources without cause some kind of racing condition between the senders, this way
-                                // > We make the structure simpler and more event driven, more reactive and simpler than having to have multiple layers of nested senders all over the place.
-                                if let Err(e) = tx.send(command_response_json).await {
-                                    logger.exception(format!("Error sending response to client {}: {}", client_id, e));
+                            if let Some(res) = response {
+                                let command_response_json: String = json!(res).to_string();
+                                let guard = cloned_ref_client_txs.lock().await;
+                                if let Some(tx) = guard.get(&client_id) {
+                                    // TODO >>> Verify if the tx will correctly send the response for the writer.
+                                    // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
+                                    // > from multiple sources without cause some kind of racing condition between the senders, this way
+                                    // > We make the structure simpler and more event driven, more reactive and simpler than having to have multiple layers of nested senders all over the place.
+                                    if let Err(e) = tx.send(command_response_json).await {
+                                        logger.exception(format!("Error sending response to client {}: {}", client_id, e));
+                                    }
+                                } else {
+                                    logger.exception(format!("No client sender found for {}", client_id));
                                 }
                             } else {
-                                logger.exception(format!("No client sender found for {}", client_id));
+                                // TODO >>> Handle the cases were the some is none!
+                                panic!("Handle incomming response should not be None something is wrong!")
                             }
                         },
                         Err(e) => {
@@ -1203,6 +1172,10 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
     // A task for writing responses from the transposer back to the client
     let write_task = tokio::spawn(async move {
         while let Some(command_response_json) = rx_from_transposer.recv().await {
+            if command_response_json.trim().is_empty() || command_response_json.trim() == "null" {
+                continue;
+            }
+
             logger.debug(format!("📨 Sending to client {}: {}", client_id, command_response_json));
 
             // Check if the connection was closed
