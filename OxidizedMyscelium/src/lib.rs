@@ -582,6 +582,16 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
         loop {
             thread::sleep(Duration::from_secs(1));
 
+            let new_client_state = match ClientState::load_from_storage() {
+                Ok(cs) => cs,
+                Err(e) => return Err(format!("Error trying to load client status in storage, error: {:?}", e)),
+            };
+
+            {
+                let mut client_state = CLIENT_STATE_MANAGER.lock();
+                *client_state = new_client_state.clone();
+            }
+
             {
                 let client_state = CLIENT_STATE_MANAGER.lock();
                 if client_state.is_fully_initialized() {
@@ -593,16 +603,9 @@ pub fn setup_socket_client(client_name: String, client_uid: String, buffer_path:
                 return Err(format!("Client STATE_MANAGER ins't fully initialized!"));
             }
 
-            loading_attempts += 1;
-        }
+            println!("Client STATE_MANAGER isn't fully initialized, trying again in 1 sec!");
 
-        let new_client_state = match ClientState::load_from_storage() {
-            Ok(cs) => cs,
-            Err(e) => return Err(format!("Error trying to load client status in storage, error: {:?}", e)),
-        };
-        {
-            let mut client_state = CLIENT_STATE_MANAGER.lock();
-            *client_state = new_client_state.clone();
+            loading_attempts += 1;
         }
     }
 
@@ -676,21 +679,15 @@ pub fn get_socket_host_available_commands() -> HashMap<String, IndexMap<String, 
 // use crate::handle_client_error;
 use crate::common::client_manager::manager::get_all_clients;
 
-pub fn load_allowed_clients() {
-    let new_allowed_clients_list: Vec<Client> = match get_all_clients() {
-        Ok(a) => a,
-        Err(e) => match e {
-            ClientError::NotAbleToReadClientStates => {
-                panic!("Hosts needs at least one client registred to be useful!")
-            },
-            ClientError::UnexpectedError(e) => {
-                panic!("Unexpected error trying to load clients! The error was: {:?}", e)
-            },
-            _ => {
-                panic!("Unexpected error trying to load clients! Can't show error message")
-            },
-        },
-    };
+pub enum ClientLoaderError {
+    ClientDoesNotExist(String),
+    ClientAlreadyExist(String),
+    UnexpectedError(String),
+    NotAbleToReadClientStates,
+}
+
+pub fn load_allowed_clients() -> Result<(), ClientLoaderError> {
+    let new_allowed_clients_list: Vec<Client> = get_all_clients()?;
 
     //> PRE POPULATE THE HOST TASK MANAGER WITH HOST NODE
     {
@@ -701,7 +698,7 @@ pub fn load_allowed_clients() {
     //> Populate the controllers with the nodes of the network
     for client_allowed in new_allowed_clients_list.iter() {
         if !check_if_client_key_exists(client_allowed.client_key.clone()) {
-            client_allowed.save_into_db()
+            client_allowed.save_into_db()?;
         }
 
         // -> POPULATE THE HOST SYNC CONTROLLER NODES
@@ -729,6 +726,8 @@ pub fn load_allowed_clients() {
 
         println!("Successfully created client: {} of key: {}", client_allowed.client_name, client_allowed.client_key)
     }
+
+    return Ok(());
 }
 
 /// Removes all clients from the list of clients allowed to connect to the socket host.
@@ -818,7 +817,23 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         }
     });
 
-    load_allowed_clients();
+    match load_allowed_clients() {
+        Ok(_) => {},
+        Err(e) => match e {
+            ClientLoaderError::NotAbleToReadClientStates => {
+                panic!("Hosts needs at least one client registered to be useful!")
+            },
+            ClientLoaderError::UnexpectedError(e) => {
+                panic!("Unexpected error trying to load clients! The error was: {:?}", e)
+            },
+            ClientLoaderError::ClientAlreadyExist(e) => {
+                panic!("Unexpected error: clients should never be created during the loading process! Error: {:?}", e)
+            },
+            ClientLoaderError::ClientDoesNotExist(e) => {
+                panic!("Unexpected error; we never should look for specific clients during loading, something is wrong! Error: {:?}", e)
+            },
+        },
+    }
 
     let address = format!("{}:{}", ip, port);
 

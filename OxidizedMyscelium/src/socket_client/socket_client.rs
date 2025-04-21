@@ -225,7 +225,7 @@ fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool {
             },
         };
 
-        println!("Data lenght: {:?}", data_size);
+        // println!("Data lenght: {:?}", data_size);
 
         // Send the actual data
         match stream.write(command_response_json.as_bytes()) {
@@ -323,7 +323,7 @@ pub enum StreamError {
 fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamError> {
     let logger = acquire_logger!("Core");
 
-    println!("Sending: {:?}", command);
+    // println!("Sending: {:?}", command);
 
     // {
     //     let conn: bool = verify_connection(stream, &command.client_key);
@@ -346,7 +346,7 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
             },
         };
 
-        println!("Data lenght: {:?}", size_buffer);
+        // println!("Data lenght: {:?}", size_buffer);
 
         // Send the actual data
         match stream.write(command_response_json.as_bytes()) {
@@ -356,7 +356,7 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
             },
         };
 
-        println!("Data sended!")
+        // println!("Data sended!")
     }
 
     let mut size_buffer = [0; 4];
@@ -369,14 +369,14 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
         },
     };
 
-    println!("Receive incomming data lenght: {}", data_size);
+    // println!("Receive incomming data lenght: {}", data_size);
 
     if data_size > MAX_DATA_SIZE {
         logger.exception(format!("Received data size does not match expected size: {} max bytes expected, {} bytes received", MAX_DATA_SIZE, data_size));
         return Err(StreamError::ConnectionClosed); // TODO >>> Close connection or handle appropriately
     }
 
-    println!("Data isn't greather than leght limit!");
+    // println!("Data isn't greather than leght limit!");
 
     // Allocate a buffer of the appropriate size
     let mut data_buffer = vec![0; data_size];
@@ -387,11 +387,11 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
             return Err(StreamError::ReadDataError(e));
         },
     };
-    println!("Received binary data");
+    // println!("Received binary data");
 
     let command: Command = serde_json::from_str(&buffer_string).unwrap();
 
-    println!("Data received: {:?}\n", command);
+    // println!("Data received: {:?}\n", command);
 
     logger.debug(format!("Received: {:?}", command));
 
@@ -416,7 +416,7 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
 
     let command_to_request = create_special_command!(client_key, CommandMode::Function, "C206");
 
-    println!("Create C206 ping request: {:?}", command_to_request);
+    // println!("Create C206 ping request: {:?}", command_to_request);
 
     // Send command and measure time
     let start = Instant::now();
@@ -644,7 +644,7 @@ pub fn initialize_client(address: String) -> Option<String> {
             let option_down_command: Option<DownCommand> = match send_ping(&mut stream, &client_key) {
                 Ok(d) => d,
                 Err(e) => {
-                    logger.exception("A exception occurred!".to_string());
+                    logger.exception(format!("A exception occurred! Error: {:?}", e));
                     CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                     match e {
