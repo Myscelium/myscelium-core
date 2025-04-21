@@ -79,6 +79,9 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                             StateManagerError::CantgetStateFromDb(e) => {
                                 logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
                             },
+                            StateManagerError::ErrorWhileSavingClientState(e) => {
+                                logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e));
+                            },
                         };
                         CLIENT_STATE_MANAGER.lock().clone()
                     },
@@ -87,6 +90,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 client_state.is_ready = Some(true);
                 client_state.is_connected = Some(true);
                 client_state.is_sync = Some(true);
+
                 match &client_state.update_schedule_with_this() {
                     Ok(_) => {},
                     Err(e) => match &client_state.save_in_storage() {
@@ -98,9 +102,16 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                             StateManagerError::CantgetStateFromDb(e) => {
                                 logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
                             },
+                            StateManagerError::ErrorWhileSavingClientState(e) => {
+                                logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e));
+                            },
                         },
                     },
                 };
+
+                // TODO >>> Improve the error handling in the direct functions, they should better treat the error, for example:
+                // > We should return an error back to the client or do something about the connection, it can't just continue to give the error, eveen that it will close the connect for not sync correctly after a while!
+                // > We should do something else toguether with the loggin, not only log the error, one example would be count the error attempts and then disconnect the client, better treat this to avoid unecessary use of ressources
 
                 println!("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS");
                 let actual_patterns: Value;

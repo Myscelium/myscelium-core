@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use serde_json::to_string;
 
+use crate::ClientLoaderError;
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
 use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
@@ -122,6 +123,27 @@ pub enum ClientError {
     CantScheduleCommandsToItself,
     HostCantSendResponseToItself,
     TargetCantSendResponseToItself,
+}
+
+// Faster converter to simplify the error possibilities in unreachable variant scenarios.
+impl From<ClientError> for ClientLoaderError {
+    fn from(value: ClientError) -> Self {
+        match value {
+            ClientError::ClientDoesNotExist(client) => ClientLoaderError::ClientDoesNotExist(client),
+            ClientError::ClientAlreadyExist(client) => ClientLoaderError::ClientAlreadyExist(client),
+            ClientError::UnexpectedError(e) => ClientLoaderError::UnexpectedError(e),
+            ClientError::NotAbleToReadClientStates => ClientLoaderError::NotAbleToReadClientStates,
+            ClientError::ClientIsNotRunning => unreachable!("ClientError::ClientIsNotRunning should never be converted into ClientLoaderError!"),
+            ClientError::InvalidCommand(e) => unreachable!("ClientError::InvalidCommand ({:?}) should never be converted into ClientLoaderError!", e),
+            ClientError::ClientNotFullyInitialized => unreachable!("ClientError::ClientNotFullyInitialized should never be converted into ClientLoaderError!"),
+            ClientError::TargetDoesntExists => unreachable!("ClientError::TargetDoesntExists should never be converted into ClientLoaderError!"),
+            ClientError::HandlerDoesntExist => unreachable!("ClientError::HandlerDoesntExist should never be converted into ClientLoaderError!"),
+            ClientError::ResponseHandlerDoesntExist => unreachable!("ClientError::ResponseHandlerDoesntExist should never be converted into ClientLoaderError!"),
+            ClientError::CantScheduleCommandsToItself => unreachable!("ClientError::CantScheduleCommandsToItself should never be converted into ClientLoaderError!"),
+            ClientError::HostCantSendResponseToItself => unreachable!("ClientError::HostCantSendResponseToItself should never be converted into ClientLoaderError!"),
+            ClientError::TargetCantSendResponseToItself => unreachable!("ClientError::TargetCantSendResponseToItself should never be converted into ClientLoaderError!"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -250,8 +272,25 @@ impl Client {
         self.client_name.clone()
     }
 
-    pub fn save_into_db(&self) {
+    pub fn exists_in_db(&self) -> Result<bool, ClientError> {
+        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+            let result = conn.query_row("SELECT 1 FROM Clients WHERE ClientName = ? LIMIT 1", params![self.client_name], |_row| Ok(()));
+
+            match result {
+                Ok(_) => Ok(true),                                      // Found a row
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false), // No match
+                Err(e) => Err(ClientError::UnexpectedError(format!("Error checking client existence: {:?}", e))),
+            }
+        })
+    }
+
+    pub fn save_into_db(&self) -> Result<(), ClientError> {
         let serialzied_owned_sub_channels_keys = serde_json::to_string(&self.owned_sub_channels_keys).expect("Failed to serialize to JSON");
+
+        if self.exists_in_db()? {
+            self.update_to(self)?;
+            return Ok(());
+        }
 
         with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
             // let now = Utc::now();
@@ -288,13 +327,17 @@ impl Client {
                 Ok(rows) => {
                     if rows > 0 {
                         println!("Successfully inserted Client in the table Clients. {} row(s) were affected.", rows);
+                        return Ok(());
+                    } else {
+                        return Err(ClientError::UnexpectedError("No rows were affected, client wasn't properly inserted into the database!".to_string()));
                     }
                 },
                 Err(e) => {
-                    eprintln!("An error occurred while inserting the Client in the table Clients: {}", e);
+                    return Err(ClientError::UnexpectedError(format!("An error occurred while inserting the Client in the table Clients: {}", e)));
                 },
             };
-        })
+        });
+        return Ok(());
     }
 
     pub fn update_to(&self, new_client: &Client) -> Result<Self, ClientError> {
@@ -498,7 +541,7 @@ impl Client {
 
         edit_client(new_client.clone());
 
-        println!("Update client contact for client: {}!", self.client_id);
+        // println!("Update client contact for client: {}!", self.client_id);
 
         Ok(new_client)
     }
@@ -767,7 +810,7 @@ pub fn edit_client(client: Client) {
         match result {
             Ok(rows) => {
                 if rows > 0 {
-                    println!("Successfully update client: {} in database", client.client_name);
+                    // println!("Successfully update client: {} in database", client.client_name);
                 }
             },
             Err(e) => {

@@ -66,6 +66,7 @@ pub fn inialize_client_status_table_table(status_db_spath: String) {
 pub enum StateManagerError {
     NotFullyInitialized,
     CantgetStateFromDb(String),
+    ErrorWhileSavingClientState(String),
 }
 
 impl ClientState {
@@ -181,7 +182,24 @@ impl ClientState {
         Ok(())
     }
 
+    pub fn already_exists(&self) -> Result<bool, StateManagerError> {
+        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+            let result = conn.query_row("SELECT 1 FROM ClientStates WHERE Name = ? LIMIT 1", params![self.name], |_row| Ok(()));
+
+            match result {
+                Ok(_) => Ok(true),                                      // Found a row
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false), // No match
+                Err(e) => Err(StateManagerError::CantgetStateFromDb(format!("Error checking client existence: {:?}", e))),
+            }
+        })
+    }
+
     pub fn save_in_storage(&self) -> Result<(), StateManagerError> {
+        if self.already_exists()? && self.is_fully_initialized() {
+            self.update_schedule_with_this()?;
+            return Ok(());
+        }
+
         with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
             //let registered_ids = get_registred_ids(conn);
             // let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
@@ -210,9 +228,10 @@ impl ClientState {
             match result {
                 Ok(_) => {
                     println!("Successfully saved state in ClientStates table");
+                    return Ok(());
                 },
                 Err(e) => {
-                    eprintln!("An error occurred while saving a cient sate in ClientStates table: {}", e);
+                    return Err(StateManagerError::ErrorWhileSavingClientState(e.to_string()));
                 },
             };
         });
@@ -245,9 +264,9 @@ impl ClientState {
                             last_change: Some(row.get(9).unwrap()),
                         })
                     })
-                    .unwrap();
+                    .unwrap(); // TODO >>> Remove the unwrap and do the correct error handling!
                 if let Some(s) = commands_iter.next() {
-                    state = s.unwrap();
+                    state = s.unwrap(); // TODO >>> Remove the unwrap and do the correct error handling!
                 } else {
                     return Err(StateManagerError::CantgetStateFromDb("".to_string()));
                 }
