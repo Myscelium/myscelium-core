@@ -1072,7 +1072,7 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
     // Create the channel for sending data back to this client from the transposer.
     let (tx_to_client, mut rx_from_transposer) = mpsc::channel::<String>(32);
-    let client_id = "".to_string();
+    let client_id = uuid::Uuid::new_v4().to_string();
 
     // TODO >>> Late initialize the txs with the client id received from the client, but do all verifications first
 
