@@ -35,7 +35,9 @@ use oxidized_myscelium_macros::callback;
 use lazy_static::lazy_static;
 use socket_client::response_watcher::watch_response;
 use socket_client::scheduler::SchedulingError;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
+use tokio::signal;
+use tokio::sync::Notify;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -495,39 +497,33 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 
     CLIENT_IS_RUNNING.store(true, Ordering::SeqCst);
 
-    let address = format!("{}:{}", ip, port);
+    let addr = format!("{ip}:{port}");
+    let shutdown = Arc::new(Notify::new());
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().expect("Failed to create Tokio runtime");
 
-    thread::spawn(|| {
-        ctrlc::set_handler(move || {
-            if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
-                println!("\nreceived Ctrl+C!\n");
-                stop_socket_client();
-            }
-        })
-        .expect("Error setting Ctrl-C handler");
+    rt.block_on(async {
+        // ── 1. spawn Ctrl-C watcher (wakes every task that awaits `shutdown.notified()`)
+        let shutdown_watcher = shutdown.clone();
+        tokio::spawn(async move {
+            signal::ctrl_c().await.unwrap();
+            println!("CTRL-C received – notifying shutdown");
+            CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+            shutdown_watcher.notify_waiters();
+        });
 
-        initialize_client(address);
-
-        println!("Socket host exited successfully!");
-        CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
-        CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
+        // ── 2. spawn the whole client
+        let shutdown_client = shutdown.clone();
+        initialize_client(addr, shutdown_client.clone()).await;
+        shutdown_client.notify_waiters(); // stop everything when it returns
     });
 
-    if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-        loop {
-            // println!("➡️ Client status: {}", CLIENT_IS_RUNNING.load(Ordering::SeqCst));
+    // **This** is the key: block the _main_ thread on the runtime until
+    // ── 3. HOLD the runtime alive until shutdown is signalled
 
-            if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                println!("Stop the core!");
-                break;
-            }
-
-            thread::sleep(Duration::from_secs(5));
-            // initialize_socket_client_transposer();
-            // println!("Socket transposer working!!");
-        }
-    }
+    let shutdown_handler = shutdown.clone();
+    rt.block_on(async {
+        shutdown_handler.notified().await; // wait here
+    });
 
     println!("Socket transposer exited successfully!");
 }
