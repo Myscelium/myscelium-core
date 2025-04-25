@@ -6,6 +6,7 @@ use super::client_logger::log_handler::Logger;
 
 use crate::{CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
+use dashmap::DashMap;
 use indexmap::IndexMap;
 use serde_json::json;
 use serde_json::{from_str, Value};
@@ -15,7 +16,7 @@ use std::io::{ErrorKind, Read};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{
     tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -24,6 +25,7 @@ use tokio::net::{
 use tokio::select;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Notify;
+use tokio::time::Instant;
 
 use crate::CLIENT_IS_CONNECTED;
 use crate::CLIENT_IS_RUNNING;
@@ -47,6 +49,9 @@ macro_rules! acquire_logger {
 
 use crate::common::structs::available_commands::{CommandPatterns, Node};
 // use crate::CLIENT_ID;
+
+use dashmap::DashSet; // 2. lock-free, sharded set
+use once_cell::sync::Lazy; // 1. one-time init
 
 lazy_static! {
     static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<HashMap<String, Value>>> = {
@@ -73,6 +78,21 @@ lazy_static! {
         Arc::new(Mutex::new(command_patterns))
     };
     static ref CLIENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(' '.to_string()));
+    static ref COMMANDS_SENT_WAITING_RESPONSE: Lazy<DashMap<String, Instant>> = Lazy::new(DashMap::new);
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct WaitingResponse {
+    parity_id: String,
+    timestamp: Instant,
+}
+
+async fn contains(id: &str) -> bool {
+    COMMANDS_SENT_WAITING_RESPONSE.contains_key(id)
+}
+
+async fn latency(id: &str) -> Option<std::time::Duration> {
+    COMMANDS_SENT_WAITING_RESPONSE.get(id).map(|ts| ts.elapsed())
 }
 
 // >-------------------------------------------------------------------------------------------------------------------------------------------
@@ -336,8 +356,6 @@ pub fn set_client_uid(client_key: String) {
 /// - If the connection is not verified, the function logs the event and returns `Response::None`.
 pub async fn sender(mut writer: OwnedWriteHalf, mut rx: Receiver<String>) -> Result<(), StreamError> {
     while let Some(command_response_json) = rx.recv().await {
-        println!("sending: {:?}", command_response_json);
-
         // let command_response_json = json!(command).to_string();
         let data_size = command_response_json.len() as u32;
         let size_buffer = data_size.to_be_bytes();
@@ -385,8 +403,6 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         // Convert & send:
         let msg = String::from_utf8_lossy(&buf).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(); // TODO >>> Maybe switch from lossy conversion to strict conversion
 
-        println!("Received: {:?}", msg);
-
         // tx.send(msg).await.map_err(|_| StreamError::ConnectionClosed)?;
 
         if msg.len() == 0 {
@@ -394,8 +410,6 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         }
 
         let response: Command = serde_json::from_str(&msg).unwrap();
-
-        logger.debug(format!("Received: {:?}", response));
 
         // -> Match command status:
         match response.command.status {
@@ -438,6 +452,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                 if response.parity_id != "itisaspecialcase" {
                     if response.command.actf == "C210".to_string() {
                         logger.info(format!("Received Confirmation! Removing command {} of client: {} from buffer up", response.parity_id, response.client_key));
+                        COMMANDS_SENT_WAITING_RESPONSE.remove(&response.parity_id);
                         enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id);
                         continue;
                     }
@@ -483,7 +498,7 @@ pub async fn heartbeat(mut sender_tx: Sender<String>, client_key: &String) -> Re
         logger.debug("Sending ping C206".to_string());
 
         // Send command and measure time
-        tokio::time::sleep(Duration::from_millis(60)).await;
+        tokio::time::sleep(Duration::from_millis(120)).await;
         sender_tx.send(command_string).await?;
 
         // TODO >>> Save the time that the command were send, and then, in a global, save the time when the command receive confirmation have arrived.
@@ -854,7 +869,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                 // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
                 //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
 
-                let up_schedule = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+                let mut up_schedule = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
                 let up_schdule_len = up_schedule.len();
 
                 if up_schdule_len == 0 {
@@ -862,6 +877,10 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                     logger.debug(format!("Nothing in schedule to send to host, skipping!"));
                     return false; // Do Not Break!
                 }
+
+                up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
+
+                // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
 
                 if up_schdule_len > 1 {
                     logger.debug(format!("Find: {:?} command in schedule", 1));
@@ -903,6 +922,8 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                             return false; // Do Not Break!
                         },
                     };
+
+                    COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
 
                     let command_response_json: String = json!(&command_to_request).to_string();
                     match tx_outbound_loader_clone.send(command_response_json).await {
