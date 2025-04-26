@@ -47,7 +47,11 @@ fn test_buffer_up() {
 
     enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
+        Ok(bup) => bup,
+        Err(e) => panic!("{:?}", e),
+    };
+
     let command_extracted = buffer_list.first().unwrap();
     let cm = Command::from_up_command(command_extracted).unwrap();
 
@@ -55,11 +59,19 @@ fn test_buffer_up() {
 
     // -> TEST DELETE:
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
+        Ok(bup) => bup,
+        Err(e) => panic!("{:?}", e),
+    };
+
     let command_extracted = buffer_list.first().unwrap();
     enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(command_extracted.command_id.unwrap());
 
-    let buffer_list = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
+    let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
+        Ok(bup) => bup,
+        Err(e) => panic!("{:?}", e),
+    };
+
     assert_eq!(0, buffer_list.len());
 }
 

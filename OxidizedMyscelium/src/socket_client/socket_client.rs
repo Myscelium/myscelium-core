@@ -851,31 +851,35 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     // -> Connection loop:
     let delay: u64 = 30u64;
     let logger = acquire_logger!("Core");
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.tick().await; // Fire the first tick immediately
     loop {
-        tokio::time::sleep(Duration::from_secs(2));
-        select! {
+        select! { // TODO >>> Maybe use a tokio tick to execute it from time to time
             _ = shutdown.notified() => {
                 logger.info("Shutdown signal received — exiting connection loop".to_string());
                 break;
             }
-            should_break = async {
+            _ = interval.tick() => {
 
                 if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                     logger.info(format!("running is set to false, shutdown socket client main process!"));
-                    return true; // Break!
+                    continue // Break!
                 }
 
                 // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
                 //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
 
-                let mut up_schedule = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule();
-                let up_schdule_len = up_schedule.len();
+                let mut up_schedule = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
+                    Ok(ups) => ups,
+                    Err(e) => panic!("{:?}", e),
+                };
 
+                let up_schdule_len = up_schedule.len();
                 if up_schdule_len == 0 {
                     // TODO >>> Instead of looping to find data to send, when have the IPCNS working start to use tx mpsc reactive activation to send data
                     logger.debug(format!("Nothing in schedule to send to host, skipping!"));
-                    return false; // Do Not Break!
+                    continue // Do Not Break!
                 }
 
                 up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
@@ -897,7 +901,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                         CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                         logger.info(format!("running is set to false, shutdown socket client main process!"));
-                        return true; // Break!
+                        continue // Break!
                     }
 
                     let command_to_request: Command = match Command::from_up_command(&up_command) {
@@ -919,12 +923,11 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                             }
 
                             index = index + 1;
-                            return false; // Do Not Break!
+                            continue // Do Not Break!
                         },
                     };
 
                     COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
-
                     let command_response_json: String = json!(&command_to_request).to_string();
                     match tx_outbound_loader_clone.send(command_response_json).await {
                         Ok(_) => {},
@@ -935,17 +938,13 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
 
                     // -> Increment the count of the index in the queue in order to process the next.
                     index = index + 1;
-                    return false; // Do Not Break!
+                    continue // Do Not Break!
                 }
 
                 logger.debug(format!("End schedule data, so skipping >>>"));
 
-                false // Do Not Break!
-            } => {
-                if should_break {
-                logger.info("CLIENT_IS_RUNNING==false → breaking loop".to_string());
-                break;
-            }}
+                continue // Do Not Break!
+            }
         }
     }
 

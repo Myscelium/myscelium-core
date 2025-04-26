@@ -296,26 +296,23 @@ pub fn buffer_up_list_schedule_fo_client_id(client_key: String) -> Vec<UpCommand
     })
 }
 
-pub fn buffer_up_list_schedule() -> Vec<UpCommand> {
+pub fn buffer_up_list_schedule() -> Result<Vec<UpCommand>, String> {
     with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
-        let mut commands_schedule: Vec<UpCommand> = Vec::new();
-        {
-            let mut smtp = conn.prepare("SELECT * FROM ClientCommandsTosend").unwrap();
+        let mut stmt = conn.prepare("SELECT * FROM ClientCommandsTosend").map_err(|e| e.to_string())?;
 
-            let commands_iter = smtp
-                .query_map(params![], |row| {
-                    Ok(UpCommand::from(row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap(), row.get(3).unwrap(), row.get(4).unwrap(), row.get(5).unwrap()))
-                })
-                .unwrap();
+        let commands_iter = stmt
+            .query_map([], |row| {
+                // ✅ Keep this as rusqlite::Result
+                Ok(UpCommand::from(row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            })
+            .map_err(|e| e.to_string())?;
 
-            for command in commands_iter {
-                commands_schedule.push(command.unwrap());
-            }
-        }
-        commands_schedule
+        // ✅ Only map outer errors here
+        let commands_schedule: Vec<UpCommand> = commands_iter.map(|res| res.map_err(|e| e.to_string())).collect::<Result<_, _>>()?;
+
+        Ok(commands_schedule)
     })
 }
-
 pub fn buffer_up_schedule(command: UpCommand) {
     BufferHistory::new("UP").log_add_operation(&command.client_key, &command.parity_id, command.command_id.as_ref(), &command.command);
 
@@ -394,14 +391,14 @@ pub fn buffer_up_update_schedule(id: i32, client_key: String, parity_id: String,
     });
 }
 
-pub fn buffer_up_clear_old_commands() {
+pub fn buffer_up_clear_old_commands() -> Result<(), String> {
     let now = Utc::now();
     let current_timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
-    let schedule = buffer_up_list_schedule();
+    let schedule = buffer_up_list_schedule()?;
 
     if (schedule.is_empty()) {
-        return;
+        return Ok(());
     }
 
     for up_command in schedule {
@@ -415,6 +412,8 @@ pub fn buffer_up_clear_old_commands() {
             println!("\nCommand received from host: {} from client: {}, too old, clearing from the buffer up schedule!\n", up_command.parity_id, up_command.client_key);
         }
     }
+
+    return Ok(());
 }
 
 pub fn buffer_up_remove_schedule_by_id(id: u32) {
