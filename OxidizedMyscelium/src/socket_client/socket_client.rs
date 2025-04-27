@@ -15,8 +15,8 @@ use std::io::{self, Write};
 use std::io::{ErrorKind, Read};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
+use std::{cmp, thread};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{
     tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -25,7 +25,8 @@ use tokio::net::{
 use tokio::select;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Notify;
-use tokio::time::Instant;
+use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::{sleep, Instant};
 
 use crate::CLIENT_IS_CONNECTED;
 use crate::CLIENT_IS_RUNNING;
@@ -598,12 +599,14 @@ async fn connect(address: String) -> Option<TcpStream> {
 
 async fn first_connection(address: String, client_key: &String) -> TcpStream {
     let mut stream: TcpStream;
-    let delay: u64 = 30u64;
-    let mut last_attempt_time: Instant = Instant::now() - Duration::from_secs(delay);
+
+    let mut backoff = Duration::from_secs(1);
+    const MAX_BACKOFF: Duration = Duration::from_secs(30);
+    let mut last_attempt_time: Instant = Instant::now() - backoff;
 
     loop {
         let now = Instant::now();
-        if now.duration_since(last_attempt_time) >= Duration::from_secs(delay) {
+        if now.duration_since(last_attempt_time) >= backoff {
             // try to connect again
             if let Some(st) = connect(address.clone()).await {
                 stream = st;
@@ -616,10 +619,11 @@ async fn first_connection(address: String, client_key: &String) -> TcpStream {
             // Update last attempt time
             last_attempt_time = now
         } else {
-            let dif: Duration = Duration::from_secs(delay) - (now - last_attempt_time);
+            let dif: Duration = backoff - (now - last_attempt_time);
             println!("Trying to connect again in: {:?} secs", dif.as_secs());
         }
-        tokio::time::sleep(Duration::from_secs(1));
+        sleep(backoff).await;
+        backoff = cmp::min(backoff * 2, MAX_BACKOFF);
     }
 
     return stream;
@@ -755,10 +759,12 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
 
     println!("Initializing rcv task!");
 
+    let mut tasks = JoinSet::new();
+
     // -> Spawn the receiver task:
     let client_key_clone = client_key.clone();
     let recv_shutdown = shutdown.clone();
-    let recv_task = tokio::spawn(async move {
+    let recv_task = tasks.spawn(async move {
         let logger = acquire_logger!("Core");
         select! {
             res = receiver(read_half, tx_inbound) => {
@@ -778,7 +784,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     // -> Spawn the sender task:
     let client_key_clone = client_key.clone();
     let send_shutdown = shutdown.clone();
-    let send_task = tokio::spawn(async move {
+    let send_task = tasks.spawn(async move {
         let logger = acquire_logger!("Core");
         select! {
             res = sender(write_half, rx_outbound) => {
@@ -799,7 +805,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     let tx_outbound_clone = tx_outbound.clone();
     let hb_shutdown = shutdown.clone();
 
-    tokio::spawn(async move {
+    tasks.spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(1));
         interval.tick().await; // Fire the first tick immediately
         println!("Heartbeat task started");
@@ -851,52 +857,17 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     // -> Connection loop:
     let delay: u64 = 30u64;
     let logger = acquire_logger!("Core");
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.tick().await; // Fire the first tick immediately
-    loop {
-        select! { // TODO >>> Maybe use a tokio tick to execute it from time to time
-            _ = shutdown.notified() => {
-                logger.info("Shutdown signal received — exiting connection loop".to_string());
-                break;
-            }
-            _ = interval.tick() => {
-
-                if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                    CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-                    logger.info(format!("running is set to false, shutdown socket client main process!"));
-                    continue // Break!
+    let loader_shutdown = shutdown.clone();
+    tasks.spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        interval.tick().await; // Fire the first tick immediately
+        loop {
+            select! { // TODO >>> Maybe use a tokio tick to execute it from time to time
+                _ = loader_shutdown.notified() => {
+                    logger.info("Shutdown signal received — exiting connection loop".to_string());
+                    break;
                 }
-
-                // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
-                //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
-
-                let mut up_schedule = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
-                    Ok(ups) => ups,
-                    Err(e) => panic!("{:?}", e),
-                };
-
-                let up_schdule_len = up_schedule.len();
-                if up_schdule_len == 0 {
-                    // TODO >>> Instead of looping to find data to send, when have the IPCNS working start to use tx mpsc reactive activation to send data
-                    logger.debug(format!("Nothing in schedule to send to host, skipping!"));
-                    continue // Do Not Break!
-                }
-
-                up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
-
-                // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
-
-                if up_schdule_len > 1 {
-                    logger.debug(format!("Find: {:?} command in schedule", 1));
-                } else {
-                    logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
-                }
-
-                logger.debug(format!("Start to process it!"));
-
-                let mut index: u32 = 0u32;
-                for up_command in up_schedule {
-                    logger.debug(format!("processing command: {}", index));
+                _ = interval.tick() => {
 
                     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                         CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
@@ -904,47 +875,102 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                         continue // Break!
                     }
 
-                    let command_to_request: Command = match Command::from_up_command(&up_command) {
-                        Ok(c) => c,
-                        Err(error) => {
-                            match error {
-                                CommandError::InvalidCommand(e) => {
-                                    logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
-                                },
-                                CommandError::DeserializationError(e) => {
-                                    logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
-                                },
-                                CommandError::InvalidResponse(e) => {
-                                    logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
-                                },
-                                CommandError::NotAJsonObject => {
-                                    logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
-                                },
-                            }
+                    // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
+                    //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
 
-                            index = index + 1;
-                            continue // Do Not Break!
-                        },
+                    let mut up_schedule = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
+                        Ok(ups) => ups,
+                        Err(e) => panic!("{:?}", e),
                     };
 
-                    COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
-                    let command_response_json: String = json!(&command_to_request).to_string();
-                    match tx_outbound_loader_clone.send(command_response_json).await {
-                        Ok(_) => {},
-                        Err(e) => {
-                            panic!("Error trying to send a command response json to the tx_outbound (Sender) channel, the error was: {:?}", e);
-                        },
+                    let up_schdule_len = up_schedule.len();
+                    if up_schdule_len == 0 {
+                        // TODO >>> Instead of looping to find data to send, when have the IPCNS working start to use tx mpsc reactive activation to send data
+                        // logger.debug(format!("Nothing in schedule to send to host, skipping!"));
+                        continue // Do Not Break!
                     }
 
-                    // -> Increment the count of the index in the queue in order to process the next.
-                    index = index + 1;
+                    up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
+
+                    // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
+
+                    if up_schdule_len > 1 {
+                        logger.debug(format!("Find: {:?} command in schedule", 1));
+                    } else {
+                        logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
+                    }
+
+                    logger.debug(format!("Start to process it!"));
+
+                    let mut index: u32 = 0u32;
+                    for up_command in up_schedule {
+                        logger.debug(format!("processing command: {}", index));
+
+                        if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+                            CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
+                            logger.info(format!("running is set to false, shutdown socket client main process!"));
+                            continue // Break!
+                        }
+
+                        let command_to_request: Command = match Command::from_up_command(&up_command) {
+                            Ok(c) => c,
+                            Err(error) => {
+                                match error {
+                                    CommandError::InvalidCommand(e) => {
+                                        logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
+                                    },
+                                    CommandError::DeserializationError(e) => {
+                                        logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
+                                    },
+                                    CommandError::InvalidResponse(e) => {
+                                        logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
+                                    },
+                                    CommandError::NotAJsonObject => {
+                                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
+                                    },
+                                }
+
+                                index = index + 1;
+                                continue // Do Not Break!
+                            },
+                        };
+
+                        COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
+                        let command_response_json: String = json!(&command_to_request).to_string();
+                        match tx_outbound_loader_clone.send(command_response_json).await {
+                            Ok(_) => {},
+                            Err(e) => {
+                                panic!("Error trying to send a command response json to the tx_outbound (Sender) channel, the error was: {:?}", e);
+                            },
+                        }
+
+                        // -> Increment the count of the index in the queue in order to process the next.
+                        index = index + 1;
+                        continue // Do Not Break!
+                    }
+
+                    logger.debug(format!("End schedule data, so skipping >>>"));
+
                     continue // Do Not Break!
                 }
-
-                logger.debug(format!("End schedule data, so skipping >>>"));
-
-                continue // Do Not Break!
             }
+        }
+    });
+
+    while let Some(res) = tasks.join_next().await {
+        match res {
+            Ok(_) => {
+                // A task ended normally (either by shutdown or finishing its work)
+            },
+            Err(join_err) if join_err.is_panic() => {
+                // One of our tasks panicked!  Trigger the global shutdown.
+                println!("⚠️  Detected panic in a task, notifying everyone to shut down…");
+                shutdown.notify_waiters();
+            },
+            Err(join_err) => {
+                // Shouldn't happen in normal usage, but worth logging
+                eprintln!("task aborted: {}", join_err);
+            },
         }
     }
 
