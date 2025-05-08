@@ -1,6 +1,5 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use quote::ToTokens;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Attribute, Error, FnArg, ItemFn, Lit, Meta, Pat, PatType};
 

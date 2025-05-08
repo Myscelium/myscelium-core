@@ -2,9 +2,9 @@ use std::{sync::Arc, thread, time::Duration};
 
 use chrono::Utc;
 use lazy_static::lazy_static;
-use parking_lot::Mutex;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::{
     common::{
@@ -14,7 +14,7 @@ use crate::{
     set_new_path_to_buffer_db, with_connection, ClientError, NodeHandler,
 };
 
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator};
+use crate::common::sql_pool::pool::SQLiteConnectionPool;
 
 use crate::CLIENT_STATE_MANAGER;
 
@@ -22,7 +22,7 @@ lazy_static! {
     static ref STATES_BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref STATES_BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref STATES_NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref STATES_BUFFER_POOL: Mutex<SQLiteConnectionPool> = Mutex::new(SQLiteConnectionPool::empty());
+    static ref STATES_BUFFER_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,14 +38,15 @@ pub struct ClientState {
     pub last_change: Option<f64>,
 }
 
-pub fn inialize_client_status_table_table(status_db_spath: String) {
+pub async fn inialize_client_status_table_table(status_db_spath: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);
     let mutex2 = Mutex::new(0);
 
-    set_new_path_to_buffer_db!(STATES_BUFFER_POOL, STATES_NUM_WORKERS, status_db_spath, STATES_BUFFER_NAME);
+    let fut = set_new_path_to_buffer_db!(STATES_BUFFER_POOL, STATES_NUM_WORKERS, status_db_spath, STATES_BUFFER_NAME);
+    fut.await;
 
-    with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+    with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute(
             "CREATE TABLE IF NOT EXISTS ClientStates (ID INT PRIMARY KEY, Name TEXT, Key TEXT, NetMap TEXT, ClientNodeConfigs TEXT, IsInitialized BOOL, IsReady BOOL, IsConnected BOOL, IsSync BOOL, LastChange NUMBER)",
             params![],
@@ -59,7 +60,10 @@ pub fn inialize_client_status_table_table(status_db_spath: String) {
                 eprintln!("An error occurred while initializing the ClientState table, the error was: {}", e);
             },
         };
-    });
+
+        ((), conn)
+    })
+    .await;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +93,8 @@ impl ClientState {
             client_node_configs.update_handlers(new_handlers);
             Ok(())
         } else {
-            return Err(ClientError::ClientNotFullyInitialized);
+            let client_name = self.name.clone().unwrap_or("".to_string());
+            return Err(ClientError::ClientIsNotFullyInitialized(client_name));
         }
     }
 
@@ -97,10 +102,10 @@ impl ClientState {
         self.is_initialized = Some(new_state)
     }
 
-    pub fn clean_storage(&self) {
+    pub async fn clean_storage(&self) {
         // TODO >>> Finish this method;
 
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             let result = conn.execute("DELETE FROM ClientStates;", params![]);
 
             match result {
@@ -111,7 +116,10 @@ impl ClientState {
                     eprintln!("An error occurred while cleaning the ClientStates table: {}", e);
                 },
             };
-        });
+
+            ((), conn)
+        })
+        .await;
     }
 
     pub fn is_fully_initialized(&self) -> bool {
@@ -144,8 +152,8 @@ impl ClientState {
         }
     }
 
-    pub fn update_storage_with_self(&self) -> Result<(), StateManagerError> {
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+    pub async fn update_storage_with_self(&self) -> Result<(), StateManagerError> {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             //let registered_ids = get_registred_ids(conn);
             // let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
             // This on top isn't necessary since here will only have one client per per db in each
@@ -177,30 +185,36 @@ impl ClientState {
                     eprintln!("An error occurred while updating a cient sate in ClientStates table: {}", e);
                 },
             };
-        });
+
+            ((), conn)
+        })
+        .await;
 
         Ok(())
     }
 
-    pub fn already_exists(&self) -> Result<bool, StateManagerError> {
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+    pub async fn already_exists(&self) -> Result<bool, StateManagerError> {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             let result = conn.query_row("SELECT 1 FROM ClientStates WHERE Name = ? LIMIT 1", params![self.name], |_row| Ok(()));
 
-            match result {
+            let result = match result {
                 Ok(_) => Ok(true),                                      // Found a row
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false), // No match
                 Err(e) => Err(StateManagerError::CantgetStateFromDb(format!("Error checking client existence: {:?}", e))),
-            }
+            };
+
+            (result, conn)
         })
+        .await
     }
 
-    pub fn save_in_storage(&self) -> Result<(), StateManagerError> {
-        if self.already_exists()? && self.is_fully_initialized() {
+    pub async fn save_in_storage(&self) -> Result<(), StateManagerError> {
+        if self.already_exists().await? && self.is_fully_initialized() {
             self.update_schedule_with_this()?;
             return Ok(());
         }
 
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             //let registered_ids = get_registred_ids(conn);
             // let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
             // This on top isn't necessary since here will only have one client per per db in each
@@ -225,27 +239,26 @@ impl ClientState {
                 ],
             );
 
-            match result {
+            let result = match result {
                 Ok(_) => {
                     println!("Successfully saved state in ClientStates table");
-                    return Ok(());
+                    Ok(())
                 },
-                Err(e) => {
-                    return Err(StateManagerError::ErrorWhileSavingClientState(e.to_string()));
-                },
+                Err(e) => Err(StateManagerError::ErrorWhileSavingClientState(e.to_string())),
             };
-        });
+
+            (result, conn)
+        })
+        .await;
 
         Ok(())
     }
 
-    pub fn load_from_storage() -> Result<Self, StateManagerError> {
+    pub async fn load_from_storage() -> Result<Self, StateManagerError> {
         // TODO >>> Finish the impl of this method
 
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
-            let mut state: ClientState = ClientState::empty();
-
-            {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
+            let state = {
                 let mut smtp = conn.prepare("SELECT * FROM ClientStates WHERE ID = ?").unwrap();
                 let mut commands_iter = smtp
                     .query_map(params![0], |row| {
@@ -266,18 +279,19 @@ impl ClientState {
                     })
                     .unwrap(); // TODO >>> Remove the unwrap and do the correct error handling!
                 if let Some(s) = commands_iter.next() {
-                    state = s.unwrap(); // TODO >>> Remove the unwrap and do the correct error handling!
+                    Ok(s.unwrap()) // TODO >>> Remove the unwrap and do the correct error handling!
                 } else {
-                    return Err(StateManagerError::CantgetStateFromDb("".to_string()));
+                    Err(StateManagerError::CantgetStateFromDb("".to_string()))
                 }
-            }
+            };
 
-            return Ok(state);
+            (state, conn)
         })
+        .await
     }
 
     pub fn update_schedule_with_this(&self) -> Result<(), StateManagerError> {
-        with_connection!(STATES_BUFFER_POOL, |conn: &rusqlite::Connection| {
+        with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             // TODO >>> Add the correct parameters here
 
             //if !self.is_fully_initialized() {
@@ -309,6 +323,8 @@ impl ClientState {
                     eprintln!("An error occurred while update the client state in the ClientStates table: {}", e);
                 },
             };
+
+            ((), conn)
         });
         Ok(())
     }

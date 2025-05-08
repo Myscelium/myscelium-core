@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
+use super::command_handler::handle_redirect_error;
 use super::host_logger;
 use super::host_logger::log_handler::Logger;
 use super::transposer_functions::handle_direct_function::ProcessResult;
@@ -15,6 +16,7 @@ use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, Co
 use crate::common::functions::callbacks::call_callback;
 use crate::common::functions::converters::convert_to_value_map;
 use crate::common::structs::available_commands::{CommandPatterns, Node, NodeHandler, NodeVersion};
+use crate::common::types::BufferError;
 use crate::HOST_COMMAND_PATTERNS;
 use crate::HOST_LOG_LEVEL;
 use indexmap::IndexMap;
@@ -28,9 +30,9 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let host_log_level;
         {
-            host_log_level = HOST_LOG_LEVEL.lock().clone();
+            host_log_level = HOST_LOG_LEVEL.lock().await.clone();
         }
-        Logger::new(host_log_level, $section_name)
+        Logger::new(host_log_level, $section_name).await
     }};
 }
 
@@ -39,7 +41,7 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::HOST_CALLBACK_PATTERNS;
 
 lazy_static! {
-    static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
+    static ref NUM_WORKERS: Arc<tokio::sync::Mutex<u32>> = Arc::new(tokio::sync::Mutex::new(5));
 }
 
 /// Sets the number of workers for the socket host transposer and its associated modules.
@@ -70,17 +72,17 @@ lazy_static! {
 /// set_socket_host_transposer_workers_num(desired_num_workers);
 /// ```
 ///
-pub fn set_socket_host_transposer_workers_num(n_workers: u32) {
+pub async fn set_socket_host_transposer_workers_num(n_workers: u32) {
     // host_logger::register::old_register_manager::set_workers_num(n_workers.clone() * 7); // 7 * n because we need 7 for each
-    let mut default_num_of_workers = NUM_WORKERS.lock();
+    let mut default_num_of_workers = NUM_WORKERS.lock().await;
 
     *default_num_of_workers = n_workers;
 
-    enhanced_buffer::buffer_down_manager::set_workers_num(n_workers);
-    enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
+    enhanced_buffer::buffer_down_manager::set_workers_num(n_workers).await;
+    enhanced_buffer::buffer_up_manager::set_workers_num(n_workers).await;
 }
 
-pub fn set_socket_host_transposer_callbacks(key: String, callback: CallbackClosure) {
+pub async fn set_socket_host_transposer_callbacks(key: String, callback: CallbackClosure) {
     let logger = acquire_logger!("Transposer");
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS"));
     let patterns = &HOST_CALLBACK_PATTERNS;
@@ -170,7 +172,7 @@ use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
 /// // Handle the response and client_key as needed
 /// ```
 /// // TODO >>> Remake this Doc string!
-pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_id: &String, priority: &u8, command_id: &Option<u32>) -> (Value, String) {
+pub async fn process_map_result(m: &CommandInstructions, client_key: &String, parity_id: &String, priority: &u8, command_id: &Option<u32>) -> (Value, String) {
     let logger = acquire_logger!("Transposer - Process");
 
     let mut client_to_send: String = client_key.clone();
@@ -188,7 +190,7 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
             let mut result: ProcessResult = ProcessResult::Empty;
 
             if let Some(id) = command_id {
-                result = handle_direct_function(client_key, &m.actf, m.clone(), Some(*id));
+                result = handle_direct_function(client_key, &m.actf, m.clone(), Some(*id)).await;
 
                 match result {
                     ProcessResult::CommandInstructions(c) => c.to_value_map(),
@@ -213,7 +215,11 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
         CommandTarget::Origin => m.to_value_map(),
         CommandTarget::ClientKey(key) => {
             // TODO >>> Implement the handle redirect
-            let resp: CommandInstructions = handle_redirect(&m, &mut client_to_send, parity_id.clone(), priority.clone());
+            let resp: CommandInstructions = match handle_redirect(&m, &mut client_to_send, parity_id.clone(), priority.clone()).await {
+                Ok(r) => r,
+                Err(e) => handle_redirect_error(e, client_to_send.clone(), &parity_id).await.command,
+            };
+
             resp.to_value_map()
         },
     };
@@ -264,7 +270,7 @@ pub fn process_map_result(m: &CommandInstructions, client_key: &String, parity_i
 /// ```rust
 /// let result = process_response(resulttype_command, client_key, parity_id, priority, command_id);
 /// ```
-fn process_response(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
+async fn process_response(resulttype_command: ProcessResult, mut client_key: String, parity_id: &String, priority: &u8, command_id: u32) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
     let response: Value; // Errors are attached in the response and sent in the same way
     let mut client_to_send_back: String;
@@ -272,7 +278,7 @@ fn process_response(resulttype_command: ProcessResult, mut client_key: String, p
 
     match resulttype_command {
         ProcessResult::CommandInstructions(m) => {
-            (response, client_key) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
+            (response, client_key) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id)).await;
         },
         ProcessResult::List(l) => {
             let mut counter: u64 = 0;
@@ -281,13 +287,23 @@ fn process_response(resulttype_command: ProcessResult, mut client_key: String, p
                     // -> This is designed to not use infinite recursion nested lists, here we only expect CommandInstructions, Errors or Empty Cases
                     ProcessResult::CommandInstructions(m) => {
                         if counter == 0 {
-                            let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
+                            let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id)).await;
                             let up_command = UpCommand::new(&client_to_send_back, &parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
                             responses.push(up_command);
                         } else {
                             // -> Send to clients based in the target id. Gen 20 digits parity id based on client.
-                            let special_parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_special_parity_id(&client_key);
-                            let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id));
+                            let special_parity_id: String = match enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_special_parity_id(&client_key).await {
+                                Ok(spid) => spid,
+                                Err(e) => {
+                                    // TODO >>> Handle this erro pattern
+                                    logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                                    let response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                                    let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
+                                    responses.push(up_command);
+                                    continue; // Continue to process the other commands in case they don't present any errors to don't block the processing queue or stop it.
+                                },
+                            };
+                            let (processed_resp, client_to_send_back) = process_map_result(&m, &client_key, parity_id, priority, &Some(command_id)).await;
                             let up_command = UpCommand::new(&client_to_send_back, &special_parity_id, priority.clone(), &to_string(&processed_resp).unwrap());
                             responses.push(up_command);
                         }
@@ -332,9 +348,15 @@ fn process_response(resulttype_command: ProcessResult, mut client_key: String, p
     return responses;
 }
 
-fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
+async fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
     for resp in responses {
-        enhanced_buffer::buffer_up_manager::buffer_up_schedule(resp)
+        match enhanced_buffer::buffer_up_manager::buffer_up_schedule(resp).await {
+            Ok(_) => {},
+            Err(e) => {
+                // TODO >>> Handle this error correctly!
+                eprintln!("An error happened while trying to schedule commands, the error is: {:?}", e)
+            },
+        }
     }
     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 }
@@ -387,9 +409,9 @@ fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
 /// process(py, down_command);
 /// ```
 ///
-pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
+pub async fn process(down_command: DownCommand) -> Vec<UpCommand> {
     let logger = acquire_logger!("Transposer - Process");
-    logger.debug(format!("Initializing processing!"));
+    logger.debug(format!("Initializing processing!")).await;
 
     let mut responses: Vec<UpCommand> = Vec::new();
 
@@ -414,7 +436,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
     let translated_command: Command = match Command::from_down_command(&down_command) {
         Ok(c) => c,
         Err(_) => {
-            logger.warn(format!("Error converting COMMAND from down_command."));
+            logger.warn(format!("Error converting COMMAND from down_command.")).await;
 
             let response = error_response!(format!("Error! Converting command {:?} from down_command!", &down_command));
             let up_command = UpCommand::new(&down_command.client_key, &down_command.parity_id, down_command.priority.clone(), &to_string(&response).unwrap());
@@ -424,7 +446,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
         },
     };
 
-    logger.debug(format!("Translated command: {:?}", translated_command));
+    logger.debug(format!("Translated command: {:?}", translated_command)).await;
 
     // TODO >>> Add a direct way to verify if it is a direct function by use the command.commandinstruction.commandtype
     let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
@@ -435,19 +457,19 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
     if direct_functions.contains(&translated_command.command.actf.clone()) {
         // -> HANDLE DIRECT FUNCTIONS:
-        logger.debug(format!("Command is a direct function!"));
-        callable_result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id));
+        logger.debug(format!("Command is a direct function!")).await;
+        callable_result = handle_direct_function(&translated_command.client_key, &translated_command.command.actf.clone(), translated_command.command.clone(), Some(command_id)).await;
     } else {
         // -> VERIFY IF THE COMMAND EXIST:
         {
-            let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
+            let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock().await;
 
             // -> Remove command from schedule if it isn't on the patterns
             if !global_command_patterns.handler_exists_in("host", &translated_command.command.actf) {
                 // TODO >>> Add a mecanism to check if the command exist for the target client
                 // TODO >>> Also adda mecanism to commands have a target by default, and if target is host then target is host
 
-                logger.warn(format!("Command: {:?} isn't registered in the patterns so it was skipped!", &translated_command.command.actf));
+                logger.warn(format!("Command: {:?} isn't registered in the patterns so it was skipped!", &translated_command.command.actf)).await;
                 let response = error_response!(format!(
                     "Error! Command activation function: {:?} not listed as host function or you doesn't have the required permission!",
                     &translated_command.command.actf
@@ -460,7 +482,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
             }
         }
 
-        logger.debug(format!("The command exists and is registered in global_command_patterns!"));
+        logger.debug(format!("The command exists and is registered in global_command_patterns!")).await;
 
         // -> EXTRACT CALLBACK FUNCTION
         let command_instructions = translated_command.command.clone();
@@ -480,7 +502,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
         let mut kwargs = command_instructions.kwargs.clone();
         kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
 
-        logger.debug(format!("Command Kwargs successfully extracted!"));
+        logger.debug(format!("Command Kwargs successfully extracted!")).await;
 
         let response;
 
@@ -489,10 +511,10 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
             let callback_patterns = HOST_CALLBACK_PATTERNS.clone();
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
 
-            logger.debug(format!("Trying to obtain the required argument pattern for the command"));
+            logger.debug(format!("Trying to obtain the required argument pattern for the command")).await;
 
             {
-                let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
+                let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock().await;
                 let host_node = global_command_patterns.get_node_by_key(&"host".to_string()).unwrap();
                 let host_handlers = host_node.get_node_handlers().unwrap();
                 let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
@@ -501,7 +523,7 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                 args_pattern = target_handler_params.clone();
             }
 
-            logger.debug(format!("Successfully obtained the expected argument pattern for the command! Trying to call the callback:"));
+            logger.debug(format!("Successfully obtained the expected argument pattern for the command! Trying to call the callback:")).await;
 
             // TODO >>> Add the node map required to organize the callback calling arguments array
             // -> CALL CALLBACK FUNCTION
@@ -510,31 +532,31 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                 Ok(r) => r,
                 Err(e) => {
                     // Existing logic to handle the error
-                    logger.exception(format!("Callback error: {:?}", e));
+                    logger.exception(format!("Callback error: {:?}", e)).await;
                     let result = ProcessResult::Error(format!("{:?}", e));
                     let client_key = down_command.client_key.clone();
                     if let Some(c_id) = down_command.command_id {
-                        responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+                        responses = process_response(result, client_key, &down_command.parity_id, &down_command.priority, c_id).await;
                     } else {
-                        logger.warn("Can't process a command that doesn't have a command ID".to_string());
+                        logger.warn("Can't process a command that doesn't have a command ID".to_string()).await;
                     }
                     return responses;
                 },
             };
 
-            logger.debug(format!("Successfully executed the callback caller"));
+            logger.debug(format!("Successfully executed the callback caller")).await;
         }
 
-        logger.debug(format!("Callback Response: {:?}", response));
+        logger.debug(format!("Callback Response: {:?}", response)).await;
 
         // -> PROCESS CALLBACK RESPONSE:
         callable_result = match response.downcast::<Option<CommandInstructions>>() {
             Ok(optional_instructions_box) => {
                 // Successfully downcasted, optional_instructions_box is now a Box<Option<CommandInstructions>>
-                logger.debug(format!("Successfully downcasted to Option<CommandInstructions>!"));
+                logger.debug(format!("Successfully downcasted to Option<CommandInstructions>!")).await;
 
                 // Additional logging: Inspect the contents of optional_instructions_box
-                logger.debug(format!("Option<CommandInstructions> details: {:?}", optional_instructions_box));
+                logger.debug(format!("Option<CommandInstructions> details: {:?}", optional_instructions_box)).await;
 
                 match *optional_instructions_box {
                     Some(mut instruction) => {
@@ -544,25 +566,25 @@ pub fn process(down_command: DownCommand) -> Vec<UpCommand> {
                         ProcessResult::CommandInstructions(instruction)
                     },
                     None => {
-                        logger.debug("Callback response was None.".to_string());
+                        logger.debug("Callback response was None.".to_string()).await;
                         ProcessResult::Empty // Handle the case where there are no instructions
                     },
                 }
             },
             Err(e) => {
                 // The downcast operation failed. Logging the error for more details
-                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
+                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e)).await;
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
     }
 
-    logger.debug(format!("Callback call response converted to rust: {:?}", callable_result));
+    logger.debug(format!("Callback call response converted to rust: {:?}", callable_result)).await;
     let client_key = down_command.client_key.clone();
     if let Some(c_id) = down_command.command_id {
-        responses = process_response(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id);
+        responses = process_response(callable_result, client_key, &down_command.parity_id, &down_command.priority, c_id).await;
     } else {
-        logger.warn("Can't process a command that doesn't have command id".to_string())
+        logger.warn("Can't process a command that doesn't have command id".to_string()).await
     }
     return responses;
 }
@@ -572,18 +594,31 @@ fn clear_old_data() {
     enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands();
 }
 
-pub fn initialize_socket_host_transposer() {
+#[derive(Debug, Clone)]
+pub enum TranspositionError {
+    BufferError(String),
+    UnexpectedError(String),
+}
+
+impl From<BufferError> for TranspositionError {
+    fn from(e: BufferError) -> TranspositionError {
+        match e {
+            BufferError::UnexpectedError(e) => TranspositionError::BufferError(e),
+        }
+    }
+}
+
+pub async fn initialize_socket_host_transposer() -> Result<(), TranspositionError> {
     println!("🔁 >>> Transposer working!");
 
     let logger = acquire_logger!("Transposer");
-
-    let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+    let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.map_err(|e| TranspositionError::from(e))?;
 
     if !(schedule.len() > 0) {
         // logger.debug(format!("Nothing in the schedule, skipping >>>"));
         clear_old_data();
         thread::sleep(Duration::from_millis(100));
-        return;
+        return Ok(());
     }
 
     // -> Put the schedule in crescent order:
@@ -593,30 +628,33 @@ pub fn initialize_socket_host_transposer() {
     // schedule = schedule.into_iter().filter(|s| s.auto_collect).collect();
     // logger.debug(format!("Schedule to process:\n{:?}\n", schedule));
 
-    logger.info(format!("Data found in schedule!"));
+    logger.info(format!("Data found in schedule!")).await;
 
     // -> Process all commands
     for down_command in schedule {
         let logger = acquire_logger!("Transposer");
-        logger.info(format!("get a pool worker in transposer!"));
+        logger.info(format!("get a pool worker in transposer!")).await;
         {
-            logger.debug(format!("Start to process task!"));
+            logger.debug(format!("Start to process task!")).await;
 
-            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
+            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone())
+                .await
+                .map_err(|e| TranspositionError::from(e))?;
+
             let command_id: u32 = down_command.command_id.clone().unwrap();
 
             if !command_is_not_registry {
                 enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
-                logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone()));
+                logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone())).await;
                 continue;
             }
 
-            let responses = process(down_command.clone());
+            let responses = process(down_command.clone()).await;
             schedule_up_commands(responses, down_command.command_id.unwrap());
-            logger.debug(format!("Finalize a process task!"));
+            logger.debug(format!("Finalize a process task!")).await;
         }
     }
 
     thread::sleep(Duration::from_millis(100));
-    return;
+    return Ok(());
 }

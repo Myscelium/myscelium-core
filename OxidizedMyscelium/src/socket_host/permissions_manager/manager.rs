@@ -1,13 +1,12 @@
 use lazy_static::lazy_static;
 
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
+use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
 use crate::{set_new_path_to_buffer_db, with_connection};
 
 use rusqlite::params;
 
 use std::sync::Arc;
-
-use parking_lot::Mutex;
+use tokio::sync::Mutex;
 
 use serde_json::{from_str, Value};
 
@@ -24,12 +23,11 @@ lazy_static! {
     static ref BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref SQL_POOL: Mutex<SQLiteConnectionPool> = Mutex::new(SQLiteConnectionPool::empty());
+    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
-pub fn set_workers_num(n_workers: u32) {
-    let mut default_num_of_workers = NUM_WORKERS.lock();
-
+pub async fn set_workers_num(n_workers: u32) {
+    let mut default_num_of_workers = NUM_WORKERS.lock().await;
     *default_num_of_workers = n_workers;
 }
 
@@ -60,8 +58,8 @@ pub fn groups_mananger_initialize_table(buffer_path: String) {
 
     set_new_path_to_buffer_db!(SQL_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME);
 
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
-        let result = conn.execute("CREATE TABLE IF NOT EXISTS PermissionGroups (ID INT PRIMARY KEY, GroupName TEXT, AllowedCallbacks TEXT, AllowCreateNewClients BOOL, AllowCreateSubChannels BOOL, MaxSubChannelsAllowed BOOL, AllowRedirect BOOL, AllowedToRedirectAreBlacklist BOOL, AllowToRedirect TEXT, AllowFileTransfer BOOL, AllowFileTransferAreBlackList BOOL, AllowTransferTo TEXT)", params![]);
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
+        let result = conn.execute("CREATE TABLE IF NOT EXISTS PermissionGroups (ID INT PRIMARY KEY AUTOINCREMENT, GroupName TEXT, AllowedCallbacks TEXT, AllowCreateNewClients BOOL, AllowCreateSubChannels BOOL, MaxSubChannelsAllowed BOOL, AllowRedirect BOOL, AllowedToRedirectAreBlacklist BOOL, AllowToRedirect TEXT, AllowFileTransfer BOOL, AllowFileTransferAreBlackList BOOL, AllowTransferTo TEXT)", params![]);
 
         match result {
             Ok(_) => {
@@ -71,6 +69,8 @@ pub fn groups_mananger_initialize_table(buffer_path: String) {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsToSend table: {}", e);
             },
         };
+
+        ((), conn)
     });
 }
 
@@ -82,7 +82,7 @@ pub enum GroupError {
 
 #[derive(Debug, Clone)]
 pub struct PermissionGroup {
-    group_id: u32,
+    group_id: Option<u32>,
     group_name: String,
     clients_allowed_to_use: Vec<String>,
     allowed_callbacks: Vec<String>,
@@ -102,7 +102,7 @@ pub struct PermissionGroup {
 
 impl PermissionGroup {
     fn from(
-        group_id: u32,
+        group_id: Option<u32>,
         group_name: String,
         clients_allowed_to_use: Vec<String>,
         allowed_callbacks: Vec<String>,
@@ -140,7 +140,7 @@ impl PermissionGroup {
         group
     }
 
-    pub fn create(
+    pub async fn create(
         group_name: String,
         clients_allowed_to_use: Vec<String>,
         allowed_callbacks: Vec<String>,
@@ -157,23 +157,18 @@ impl PermissionGroup {
         allow_transfer_to_are_blacklist: bool,
         allow_transfer_to: Vec<String>,
     ) -> Result<PermissionGroup, GroupError> {
-        if check_if_permission_group_name_exists(group_name.clone()) {
+        if check_if_permission_group_name_exists(group_name.clone()).await {
             return Err(GroupError::GroupAlreadyExist(group_name));
         }
 
         let registered_ids = get_registred_ids();
 
-        let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
-
-        let group_id = id_generator.gen();
-
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+        with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
             // let now = Utc::now();
             // let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
             let result = conn.execute(
-                "INSERT INTO PermissionGroups (ID, 
-                                               GroupName, 
+                "INSERT INTO PermissionGroups (GroupName, 
                                                ClientAllowedToUse, 
                                                AllowedCallbacks, 
                                                AllowCreateNewClients, 
@@ -184,9 +179,8 @@ impl PermissionGroup {
                                                AllowRedirectTo, 
                                                AllowFileTransfer, 
                                                FileTransferWithelistAreBlackList, 
-                                               AllowFileTransferTo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                                               AllowFileTransferTo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 params![
-                    group_id.clone(),
                     group_name,
                     serde_json::to_string(&clients_allowed_to_use).unwrap(),
                     serde_json::to_string(&allowed_callbacks).unwrap(),
@@ -214,10 +208,12 @@ impl PermissionGroup {
                     eprintln!("An error occurred while inserting the Log in the table PermissionGroups: {}", e);
                 },
             };
+
+            ((), conn)
         });
 
         let group = Self {
-            group_id,
+            group_id: None,
             group_name,
             clients_allowed_to_use,
             allowed_callbacks,
@@ -237,8 +233,8 @@ impl PermissionGroup {
         Ok(group)
     }
 
-    pub fn from_name(group_name: String) -> Result<Self, GroupError> {
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+    pub async fn from_name(group_name: String) -> Result<Self, GroupError> {
+        with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
             let mut groups: Vec<PermissionGroup> = Vec::new();
 
             {
@@ -269,15 +265,20 @@ impl PermissionGroup {
                 }
             }
 
-            if groups.len() == 0 {
-                return Err(GroupError::GroupDoesNotExist(group_name));
-            } else {
-                return Ok(groups[0].clone());
-            }
+            let result = {
+                if groups.len() == 0 {
+                    Err(GroupError::GroupDoesNotExist(group_name))
+                } else {
+                    Ok(groups[0].clone())
+                }
+            };
+
+            (result, conn)
         })
+        .await
     }
 
-    pub fn edit(
+    pub async fn edit(
         &self,
         group_name: String,
         clients_allowed_to_use: Vec<String>,
@@ -297,7 +298,7 @@ impl PermissionGroup {
     ) -> Result<PermissionGroup, GroupError> {
         let group_id = self.group_id;
 
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+        with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
             let result = conn.execute(
                 "UPDATE PermissionGroups SET ID,
                 GroupName = ?, 
@@ -339,7 +340,10 @@ impl PermissionGroup {
                     eprintln!("Error while update PermissionGroups: {} in the databse, the error is: {}", group_name, e);
                 },
             }
-        });
+
+            ((), conn)
+        })
+        .await;
 
         let new_group = Self {
             group_id,
@@ -363,8 +367,8 @@ impl PermissionGroup {
         Ok(new_group)
     }
 
-    pub fn delete(self) -> Result<(), GroupError> {
-        with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+    pub async fn delete(self) -> Result<(), GroupError> {
+        with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
             let result = conn.execute("DELETE from PermissionGroups WHERE ID = ?", params![self.group_id]);
 
             match result {
@@ -375,13 +379,16 @@ impl PermissionGroup {
                     eprintln!("An error occurred while deleting PermissionGroups: {} from groups! And the error was: {}", self.group_name, e);
                 },
             }
-        });
+
+            ((), conn)
+        })
+        .await;
         Ok(())
     }
 }
 
-pub fn check_if_permission_group_name_exists(group_name: String) -> bool {
-    let group_names: Vec<String> = get_permission_group_names_registred();
+pub async fn check_if_permission_group_name_exists(group_name: String) -> bool {
+    let group_names: Vec<String> = get_permission_group_names_registred().await;
 
     if group_names.contains(&group_name) {
         return true;
@@ -390,8 +397,8 @@ pub fn check_if_permission_group_name_exists(group_name: String) -> bool {
     }
 }
 
-fn get_permission_group_names_registred() -> Vec<String> {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+async fn get_permission_group_names_registred() -> Vec<String> {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let mut names: Vec<String> = Vec::new();
         {
             let mut smtp: Statement<'_> = conn.prepare("SELECT * FROM PermissionGroups").unwrap();
@@ -407,12 +414,13 @@ fn get_permission_group_names_registred() -> Vec<String> {
             }
         }
 
-        names
+        (names, conn)
     })
+    .await
 }
 
-fn get_registred_ids() -> Vec<u32> {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+async fn get_registred_ids() -> Vec<u32> {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let mut ids: Vec<u32> = Vec::new();
 
         {
@@ -429,8 +437,9 @@ fn get_registred_ids() -> Vec<u32> {
             }
         }
 
-        ids
+        (ids, conn)
     })
+    .await
 }
 
 // pub fn registry_permission_group(
@@ -591,8 +600,8 @@ fn get_registred_ids() -> Vec<u32> {
 //     });
 // }
 
-fn remove_permission_group(group: PermissionGroup) {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+async fn remove_permission_group(group: PermissionGroup) {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute("DELETE from PermissionGroups WHERE ID = ?", params![group.group_id]);
 
         match result {
@@ -603,5 +612,8 @@ fn remove_permission_group(group: PermissionGroup) {
                 eprintln!("An error occurred while deleting PermissionGroups: {} from groups! And the error was: {}", group.group_name, e);
             },
         }
-    });
+
+        ((), conn)
+    })
+    .await;
 }

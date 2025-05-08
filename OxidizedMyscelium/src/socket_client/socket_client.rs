@@ -6,11 +6,14 @@ use super::client_logger::log_handler::Logger;
 
 use crate::{CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
+use core::{fmt, panic};
 use dashmap::DashMap;
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
+use std::fmt::format;
 use std::io::{self, Write};
 use std::io::{ErrorKind, Read};
 use std::sync::atomic::Ordering;
@@ -41,10 +44,10 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
         {
-            let log_level = CLIENT_LOG_LEVEL.lock().clone();
+            let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
             client_log_level = log_level.clone();
         }
-        Logger::new(client_log_level, $section_name)
+        Logger::new(client_log_level, $section_name).await
     }};
 }
 
@@ -78,7 +81,7 @@ lazy_static! {
         let command_patterns: HashMap<String, Value> = from_str(json_str).unwrap();
         Arc::new(Mutex::new(command_patterns))
     };
-    static ref CLIENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(' '.to_string()));
+    static ref CLIENT_ID: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new(' '.to_string()));
     static ref COMMANDS_SENT_WAITING_RESPONSE: Lazy<DashMap<String, Instant>> = Lazy::new(DashMap::new);
 }
 
@@ -114,14 +117,14 @@ use crate::common::enhanced_buffer::history::register::register::initialize_buff
 /// # Side Effects
 /// - If not already initialized, the function will create and initialize the buffer database
 ///   at the specified location.
-pub fn initialize_client_buffer(buffer_location: String) {
+pub async fn initialize_client_buffer(buffer_location: String) {
     println!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location);
 
-    initialize_buffer_history(&buffer_location);
+    initialize_buffer_history(&buffer_location).await;
 
     // -> INITIALIZE TABLES
-    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone());
-    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone());
+    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone()).await;
+    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone()).await;
 
     println!("All buffer initialized successfully!");
 
@@ -330,11 +333,11 @@ pub enum StreamError {
     InvalidUtf8(std::string::FromUtf8Error),
 }
 
-pub fn set_client_uid(client_key: String) {
+pub async fn set_client_uid(client_key: String) {
     let logger = acquire_logger!("Core");
     {
         logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
-        let mut c_uid = CLIENT_ID.lock();
+        let mut c_uid = CLIENT_ID.lock().await;
         logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID"));
         *c_uid = client_key
     }
@@ -599,31 +602,33 @@ async fn connect(address: String) -> Option<TcpStream> {
 
 async fn first_connection(address: String, client_key: &String) -> TcpStream {
     let mut stream: TcpStream;
-
-    let mut backoff = Duration::from_secs(1);
-    const MAX_BACKOFF: Duration = Duration::from_secs(30);
-    let mut last_attempt_time: Instant = Instant::now() - backoff;
+    let delay: u64 = 30u64;
+    let mut last_attempt_time: Instant = Instant::now() - Duration::from_secs(delay);
+    let mut interval = tokio::time::interval(Duration::from_secs(delay));
+    interval.tick().await; // Fire the first tick immediately
 
     loop {
-        let now = Instant::now();
-        if now.duration_since(last_attempt_time) >= backoff {
-            // try to connect again
-            if let Some(st) = connect(address.clone()).await {
-                stream = st;
-                if verify_connection(&mut stream, &client_key).await {
-                    CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
-                    break;
+        select! {
+            _ = interval.tick() => {
+                let now = Instant::now();
+                if now.duration_since(last_attempt_time) >= Duration::from_secs(delay) {
+                    // try to connect again
+                    if let Some(st) = connect(address.clone()).await {
+                        stream = st;
+                        if verify_connection(&mut stream, &client_key).await {
+                            CLIENT_IS_CONNECTED.store(true, Ordering::SeqCst);
+                            break;
+                        }
+                    }
+
+                    // Update last attempt time
+                    last_attempt_time = now
+                } else {
+                    let dif: Duration = Duration::from_secs(delay) - (now - last_attempt_time);
+                    println!("Trying to connect again in: {:?} secs", dif.as_secs());
                 }
             }
-
-            // Update last attempt time
-            last_attempt_time = now
-        } else {
-            let dif: Duration = backoff - (now - last_attempt_time);
-            println!("Trying to connect again in: {:?} secs", dif.as_secs());
         }
-        sleep(backoff).await;
-        backoff = cmp::min(backoff * 2, MAX_BACKOFF);
     }
 
     return stream;
@@ -652,12 +657,111 @@ async fn reconnect(address: String, client_key: &String) -> TcpStream {
                 let dif: Duration = Duration::from_secs(delay) - (now - last_attempt_time);
                 println!("Trying to connect again in: {} secs", dif.as_secs());
             }
-            tokio::time::sleep(Duration::from_secs(1u64));
+            tokio::time::sleep(Duration::from_secs(1u64)).await;
             continue;
         }
     }
 
     return stream;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TaskError {
+    UnexpectedError(String),
+    ClientIsNotRunning,
+}
+
+impl fmt::Display for TaskError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskError::UnexpectedError(msg) => write!(f, "unexpected error: {msg}"),
+            TaskError::ClientIsNotRunning => write!(f, "client is not running"),
+        }
+    }
+}
+
+async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskError> {
+    let logger = acquire_logger!("Core");
+
+    if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
+        logger.info(format!("running is set to false, shutdown socket client main process!"));
+        return Err(TaskError::ClientIsNotRunning);
+    }
+
+    // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
+    //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
+
+    let mut up_schedule = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await.map_err(|e| TaskError::UnexpectedError(format!("{:?}", e)))?;
+
+    let up_schdule_len = up_schedule.len();
+    if up_schdule_len == 0 {
+        return Ok(()); // TODO >>> Instead of looping to find data to send, when have the IPCNS working start to use tx mpsc reactive activation to send data
+    }
+
+    up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
+
+    // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
+
+    if up_schdule_len > 1 {
+        logger.debug(format!("Find: {:?} command in schedule", 1));
+    } else {
+        logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
+    }
+
+    logger.debug(format!("Start to process it!"));
+
+    let mut index: u32 = 0u32;
+    for up_command in up_schedule {
+        logger.debug(format!("processing command: {}", index));
+
+        if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
+            CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
+            logger.info(format!("running is set to false, shutdown socket client main process!"));
+            return Err(TaskError::ClientIsNotRunning);
+        }
+
+        let command_to_request: Command = match Command::from_up_command(&up_command) {
+            Ok(c) => c,
+            Err(error) => {
+                match error {
+                    CommandError::InvalidCommand(e) => {
+                        logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
+                    },
+                    CommandError::DeserializationError(e) => {
+                        logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
+                    },
+                    CommandError::InvalidResponse(e) => {
+                        logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
+                    },
+                    CommandError::NotAJsonObject => {
+                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
+                    },
+                    CommandError::UnexpectedError(e) => {
+                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object! Error: {:?}", up_command, e));
+                    },
+                }
+
+                index = index + 1;
+                continue; // Do Not Break!
+            },
+        };
+
+        COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
+        let command_response_json: String = json!(&command_to_request).to_string();
+
+        tx_outbound
+            .send(command_response_json)
+            .await
+            .map_err(|e| TaskError::UnexpectedError(format!("Error trying to send a command response json to the tx_outbound (Sender) channel, the error was: {:?}", e)))?;
+
+        // -> Increment the count of the index in the queue in order to process the next.
+        index = index + 1;
+        continue; // Do Not Break!
+    }
+
+    logger.debug(format!("End schedule data, so skipping for the next iteration >>>"));
+    return Ok(()); // Do Not Break!
 }
 
 /// Initializes the client and sets up communication with the specified server address.
@@ -721,11 +825,13 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     let client_key: String;
 
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
+
     {
-        let c_uid = CLIENT_ID.lock();
+        let c_uid = CLIENT_ID.lock().await;
         logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID"));
         client_key = c_uid.clone()
     }
+
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
 
     // -> ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -751,6 +857,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     // -> Make two channels:
     // >  - inbound:  host → client:
     let (tx_inbound, mut rx_inbound) = mpsc::channel::<String>(100);
+
     // >  - outbound: client → host:
     let (tx_outbound, mut rx_outbound) = mpsc::channel::<String>(100);
 
@@ -851,107 +958,23 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     // -> ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     println!("Initializing buffer up retriever!");
-
-    let tx_outbound_loader_clone = tx_outbound.clone();
-
     // -> Connection loop:
     let delay: u64 = 30u64;
     let logger = acquire_logger!("Core");
     let loader_shutdown = shutdown.clone();
+    let tx_outbound_loader_clone = tx_outbound.clone();
+    let tx = tx_outbound.clone();
     tasks.spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(50));
-        interval.tick().await; // Fire the first tick immediately
+        interval.tick().await;
         loop {
-            select! { // TODO >>> Maybe use a tokio tick to execute it from time to time
-                _ = loader_shutdown.notified() => {
-                    logger.info("Shutdown signal received — exiting connection loop".to_string());
-                    break;
-                }
+            tokio::select! {
+                _ = loader_shutdown.notified() => break,
                 _ = interval.tick() => {
-
-                    if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                        CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-                        logger.info(format!("running is set to false, shutdown socket client main process!"));
-                        continue // Break!
+                    if let Err(e) = load_buffer_and_send(tx.clone()).await {
+                        eprintln!("buffer loader failed: {e}");
+                        break;
                     }
-
-                    // TODO >>> If client loses the connection maybe break or give some sign here, just try to reconnect here inside will not work
-                    //> we will need another solution maybe send a signal or activate a task to try to reconnect externaly
-
-                    let mut up_schedule = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule() {
-                        Ok(ups) => ups,
-                        Err(e) => panic!("{:?}", e),
-                    };
-
-                    let up_schdule_len = up_schedule.len();
-                    if up_schdule_len == 0 {
-                        // TODO >>> Instead of looping to find data to send, when have the IPCNS working start to use tx mpsc reactive activation to send data
-                        // logger.debug(format!("Nothing in schedule to send to host, skipping!"));
-                        continue // Do Not Break!
-                    }
-
-                    up_schedule.retain(|c| !COMMANDS_SENT_WAITING_RESPONSE.contains_key(&c.parity_id));
-
-                    // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
-
-                    if up_schdule_len > 1 {
-                        logger.debug(format!("Find: {:?} command in schedule", 1));
-                    } else {
-                        logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
-                    }
-
-                    logger.debug(format!("Start to process it!"));
-
-                    let mut index: u32 = 0u32;
-                    for up_command in up_schedule {
-                        logger.debug(format!("processing command: {}", index));
-
-                        if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                            CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-                            logger.info(format!("running is set to false, shutdown socket client main process!"));
-                            continue // Break!
-                        }
-
-                        let command_to_request: Command = match Command::from_up_command(&up_command) {
-                            Ok(c) => c,
-                            Err(error) => {
-                                match error {
-                                    CommandError::InvalidCommand(e) => {
-                                        logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
-                                    },
-                                    CommandError::DeserializationError(e) => {
-                                        logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
-                                    },
-                                    CommandError::InvalidResponse(e) => {
-                                        logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
-                                    },
-                                    CommandError::NotAJsonObject => {
-                                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
-                                    },
-                                }
-
-                                index = index + 1;
-                                continue // Do Not Break!
-                            },
-                        };
-
-                        COMMANDS_SENT_WAITING_RESPONSE.insert(command_to_request.parity_id.clone(), Instant::now());
-                        let command_response_json: String = json!(&command_to_request).to_string();
-                        match tx_outbound_loader_clone.send(command_response_json).await {
-                            Ok(_) => {},
-                            Err(e) => {
-                                panic!("Error trying to send a command response json to the tx_outbound (Sender) channel, the error was: {:?}", e);
-                            },
-                        }
-
-                        // -> Increment the count of the index in the queue in order to process the next.
-                        index = index + 1;
-                        continue // Do Not Break!
-                    }
-
-                    logger.debug(format!("End schedule data, so skipping >>>"));
-
-                    continue // Do Not Break!
                 }
             }
         }

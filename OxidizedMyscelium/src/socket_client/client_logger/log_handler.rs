@@ -22,9 +22,9 @@ lazy_static! {
 
 // TODO >>> Add a mechanism to set the node host name, to be able to identify in the logs
 
-pub fn set_client_log_level(log_level: String) {
+pub async fn set_client_log_level(log_level: String) {
     {
-        let mut current_log_level = CLIENT_LOG_LEVEL.lock();
+        let mut current_log_level = CLIENT_LOG_LEVEL.lock().await;
         *current_log_level = log_level.clone();
         println!("Client log levels defined to: {:?}", log_level);
     }
@@ -39,7 +39,7 @@ pub fn set_client_log_level(log_level: String) {
 // }
 
 // This function takes log parameters and writes them to a file in a structured JSON format.
-fn log_event(node_name: String, log_time: f64, log_name: String, log_level: String, log_msg: String) {
+async fn log_event(node_name: String, log_time: f64, log_name: String, log_level: String, log_msg: String) {
     // Serialize the log event into a JSON string.
     let log_entry = json!({
         "node_name": node_name,
@@ -51,7 +51,7 @@ fn log_event(node_name: String, log_time: f64, log_name: String, log_level: Stri
     .to_string();
 
     // Write the JSON string to the log file.
-    write_to_file(log_entry);
+    write_to_file(log_entry).await.unwrap();
 }
 
 pub struct Logger {
@@ -61,10 +61,10 @@ pub struct Logger {
 }
 
 impl Logger {
-    pub fn new(log_level: String, section: &str) -> Self {
+    pub async fn new(log_level: String, section: &str) -> Self {
         // Placeholder for other initializations
 
-        let node_name: String = CLIENT_NODE_NAME.lock().clone();
+        let node_name: String = CLIENT_NODE_NAME.lock().await.clone();
 
         Logger {
             log_level: log_level.to_string(),
@@ -73,31 +73,31 @@ impl Logger {
         }
     }
 
-    pub fn debug(&self, log: String) {
+    pub async fn debug(&self, log: String) {
         if self.log_level == "DEBUG" {
             let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "DEBUG".to_string(), log.to_string());
+            log_event(self.node_name.clone(), ts, self.section.clone(), "DEBUG".to_string(), log.to_string()).await;
         }
     }
 
-    pub fn info(&self, log: String) {
+    pub async fn info(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "DEBUG") {
             let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "INFO".to_string(), log.to_string());
+            log_event(self.node_name.clone(), ts, self.section.clone(), "INFO".to_string(), log.to_string()).await;
         }
     }
 
-    pub fn warn(&self, log: String) {
+    pub async fn warn(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") {
             let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "WARN".to_string(), log.to_string());
+            log_event(self.node_name.clone(), ts, self.section.clone(), "WARN".to_string(), log.to_string()).await;
         }
     }
 
-    pub fn exception(&self, log: String) {
+    pub async fn exception(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") || (self.log_level == "EXCEPTION") {
             let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "EXCEPTION".to_string(), log.to_string());
+            log_event(self.node_name.clone(), ts, self.section.clone(), "EXCEPTION".to_string(), log.to_string()).await;
         }
     }
 }

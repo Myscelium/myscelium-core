@@ -4,6 +4,7 @@ use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget};
 use crate::common::functions::callbacks::call_callback;
 use crate::common::structs::available_commands::NetworkMap;
+use crate::common::types::BufferError;
 use crate::socket_client::functions::direct_functions::handle_direct_function;
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
@@ -27,10 +28,10 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
         {
-            let log_level = CLIENT_LOG_LEVEL.lock().clone();
+            let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
             client_log_level = log_level.clone();
         }
-        Logger::new(client_log_level, $section_name)
+        Logger::new(client_log_level, $section_name).await
     }};
 }
 
@@ -45,7 +46,7 @@ use crate::common::structs::callbacks::{CallbackClosure, MyCallbacks};
 use crate::CLIENT_CALLBACK_PATTERNS;
 
 lazy_static! {
-    static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
+    static ref NUM_WORKERS: Arc<tokio::sync::Mutex<u32>> = Arc::new(tokio::sync::Mutex::new(5));
 }
 
 /// Sets the number of worker threads for the socket client transposer.
@@ -56,19 +57,20 @@ lazy_static! {
 ///
 /// # Arguments
 /// - `n_workers`: The desired number of worker threads for the transposer.
-pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
+pub async fn set_socket_client_transposer_workers_num(n_workers: u32) {
     let logger = acquire_logger!("Transposer");
-    {
-        logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - NUM_WORKERS"));
-        let mut default_num_of_workers = NUM_WORKERS.lock();
-        logger.debug(format!("[CLIENT][GLOBAL][Lock] - NUM_WORKERS"));
-        *default_num_of_workers = n_workers;
-    }
 
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - NUM_WORKERS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - NUM_WORKERS")).await;
 
-    enhanced_buffer::buffer_down_manager::set_workers_num(n_workers);
-    enhanced_buffer::buffer_up_manager::set_workers_num(n_workers);
+    let mut default_num_of_workers = NUM_WORKERS.lock().await;
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - NUM_WORKERS")).await;
+
+    *default_num_of_workers = n_workers;
+
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - NUM_WORKERS")).await;
+
+    enhanced_buffer::buffer_down_manager::set_workers_num(n_workers).await;
+    enhanced_buffer::buffer_up_manager::set_workers_num(n_workers).await;
 }
 
 /// Sets the command patterns and callback patterns for the socket client transposer.
@@ -80,13 +82,13 @@ pub fn set_socket_client_transposer_workers_num(n_workers: u32) {
 /// # Arguments
 /// - `commands_patterns`: A map of recognized command patterns.
 /// - `callbacks_patterns`: A map of associated Python functions and arguments for each recognized command.
-pub fn set_socket_client_transposer_callbacks(key: String, callback: Box<CallbackClosure>) {
+pub async fn set_socket_client_transposer_callbacks(key: String, callback: Box<CallbackClosure>) {
     let logger = acquire_logger!("Transposer");
-    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_CALLBACK_PATTERNS")).await;
     let patterns = &CLIENT_CALLBACK_PATTERNS;
-    logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_CALLBACK_PATTERNS")).await;
     patterns.insert(key, callback);
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_CALLBACK_PATTERNS")).await;
 }
 
 // Transposer:
@@ -110,6 +112,9 @@ pub enum ProcessError {
 
     /// Represents a generic error condition with an associated error message.
     Error(String),
+
+    // Buffer error
+    BufferError(String),
 
     /// Indicates that the type of the command is unknown or not recognized.
     UnknownCommandType,
@@ -152,13 +157,13 @@ pub enum ProcessError {
 /// # Returns
 /// - `Ok(())` if the command was processed successfully.
 /// - `Err(ProcessError)` if an error occurred during processing.
-fn process(down_command: &DownCommand, client_key: &String) -> Result<(), ProcessError> {
+async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
+    logger.info(format!("Initializing processing!")).await;
 
-    logger.info(format!("Initializing processing!"));
+    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone()).await?;
 
     // Check if the command has already been registered in the up buffer
-    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone());
     let command_id: u32 = down_command.command_id.unwrap().clone();
 
     {
@@ -175,34 +180,34 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     let translated_command: Command = match Command::from_down_command(down_command) {
         Ok(c) => c.clone(),
         Err(e) => {
-            logger.debug(format!("error converting down_command into command: {:?}", e));
+            logger.debug(format!("error converting down_command into command: {:?}", e)).await;
             return Err(ProcessError::Error(format!("{:?}", e)));
         },
     };
 
-    logger.debug(format!("Translated command: {:?}", translated_command));
+    logger.debug(format!("Translated command: {:?}", translated_command)).await;
 
     // logger.info(format!("Command function: {} is a valid function!", activation_key));
 
     let client_key = translated_command.client_key.clone();
-    logger.debug(format!("Client key is: {:?}", client_key));
+    logger.debug(format!("Client key is: {:?}", client_key)).await;
 
     let starter_command_origin = translated_command.command.origin.clone();
 
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
 
     let resp: ProcessResult;
-    logger.debug(format!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction"));
+    logger.debug(format!("Command is a direct function: {:?}", translated_command.command.command_type == "DirectFunction")).await;
 
     if translated_command.command.command_type == "DirectFunction" {
-        logger.debug(format!("Command is a direct function!"));
-        logger.info(format!("Command function: {} is a valid function!", translated_command.command.actf));
-        resp = handle_direct_function(&translated_command.command, &client_key, command_id)?.clone(); // This cloen avoids locking
-        logger.debug(format!("Direct Function Result: {:?}", resp));
+        logger.debug(format!("Command is a direct function!")).await;
+        logger.info(format!("Command function: {} is a valid function!", translated_command.command.actf)).await;
+        resp = handle_direct_function(&translated_command.command, &client_key, command_id).await?;
+        logger.debug(format!("Direct Function Result: {:?}", resp)).await;
     } else {
-        logger.debug(format!("Command isn't a direct function"));
+        logger.debug(format!("Command isn't a direct function")).await;
 
-        logger.debug(format!("Calling the callback!\n"));
+        logger.debug(format!("Calling the callback!\n")).await;
         // Execute the associated Python callback for the command
 
         // -> EXTRACT CALLBACK FUNCTION AND CALL IT
@@ -229,7 +234,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             let mut kwargs = command_instructions.kwargs.clone();
             kwargs.insert("info".to_string(), serde_json::to_value(map).unwrap());
 
-            logger.debug(format!("kwargs to pass to external function: {:?}", kwargs));
+            logger.debug(format!("kwargs to pass to external function: {:?}", kwargs)).await;
 
             //> Get the Node Configs, Here in client we can directly acess it
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
@@ -246,12 +251,12 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             //> Call the callback
             response = match callback_patterns.call(translated_command.command.clone().actf.as_str(), kwargs, args_pattern) {
                 Ok(r) => {
-                    logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone()));
+                    logger.info(format!("External function: {} is a valid function!", translated_command.command.actf.clone())).await;
                     r
                 },
                 Err(e) => {
                     // Existing logic to handle the error
-                    logger.exception(format!("Callback error: {:?}", e));
+                    logger.exception(format!("Callback error: {:?}", e)).await;
                     return Err(ProcessError::Error(format!("{:?}", e)));
                 },
             };
@@ -261,7 +266,7 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
         resp = match response.downcast::<Option<CommandInstructions>>() {
             Ok(optional_instructions_box) => {
                 // Successfully downcasted, optional_instructions_box is now a Box<Option<CommandInstructions>>
-                logger.debug("Successfully downcasted to Option<CommandInstructions>!".to_string());
+                logger.debug("Successfully downcasted to Option<CommandInstructions>!".to_string()).await;
 
                 match *optional_instructions_box {
                     Some(mut instruction) => {
@@ -269,14 +274,14 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
                         ProcessResult::CommandInstructions(instruction)
                     },
                     None => {
-                        logger.debug("Callback response was None.".to_string());
+                        logger.debug("Callback response was None.".to_string()).await;
                         ProcessResult::Empty // Handle the case where there are no instructions
                     },
                 }
             },
             Err(e) => {
                 // The downcast operation failed
-                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e));
+                logger.debug(format!("Failed to downcast callback response! Error: {:?}", e)).await;
                 ProcessResult::Error("Failed to downcast callback response!".to_string())
             },
         };
@@ -288,12 +293,12 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
     // TODO >>> Remake the command, in a way that it accept Values instead of only string, to we be able to use Value map instead of a json str
     //> This will allow to easily manage commands, reducing the times that it needs to be parsed from str and allowing convert from value directly.
 
-    logger.debug(format!("Function returned: {:?}", resp));
-    logger.info(format!("Command: {:?}, processed!", down_command.parity_id.clone()));
+    logger.debug(format!("Function returned: {:?}", resp)).await;
+    logger.info(format!("Command: {:?}, processed!", down_command.parity_id.clone())).await;
 
     match resp {
         ProcessResult::CommandInstructions(c) => {
-            logger.debug(format!("Received response: {:?}", c));
+            logger.debug(format!("Received response: {:?}", c)).await;
             let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
             let up_command: UpCommand = UpCommand::from_command(command);
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
@@ -303,13 +308,13 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             for c in l {
                 match c {
                     ProcessResult::Error(e) => {
-                        logger.debug(format!("Receive a error: {:?}", e));
+                        logger.debug(format!("Receive a error: {:?}", e)).await;
                     },
                     ProcessResult::Empty => {
-                        logger.debug(format!("Response is empty, continuing!"));
+                        logger.debug(format!("Response is empty, continuing!")).await;
                     },
                     ProcessResult::List(_) => {
-                        logger.debug(format!("Receive a ilegal process Result List inside a Process Resul List!"));
+                        logger.debug(format!("Receive a ilegal process Result List inside a Process Resul List!")).await;
                     },
                     ProcessResult::CommandInstructions(c) => {
                         let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
@@ -321,11 +326,11 @@ fn process(down_command: &DownCommand, client_key: &String) -> Result<(), Proces
             }
         },
         ProcessResult::Error(e) => {
-            logger.debug(format!("Receive a error: {:?}", e));
+            logger.debug(format!("Receive a error: {:?}", e)).await;
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
         },
         ProcessResult::Empty => {
-            logger.debug(format!("Response is empty, continuing!"));
+            logger.debug(format!("Response is empty, continuing!")).await;
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
         },
     }
@@ -352,11 +357,20 @@ fn clear_old_data() {
 /// - If the client is not running, the transposer shuts down.
 /// - If there are no scheduled commands, the function clears old data and goes to sleep for 500ms.
 /// - The function uses a logger named "Transposer" for logging various stages of the process.
-pub fn initialize_socket_client_transposer() {
+pub async fn initialize_socket_client_transposer() {
     let logger = acquire_logger!("Transposer");
 
     // Retrieve scheduled commands
-    let mut schedule: Vec<DownCommand> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
+    let mut schedule: Vec<DownCommand> = {
+        let schedule_retrieved: Result<Vec<DownCommand>, BufferError> = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await;
+        match schedule_retrieved {
+            Ok(scr) => scr,
+            Err(e) => {
+                logger.exception(format!("Error retrieving down commands list, the error is: {:?}", e)).await;
+                return;
+            },
+        }
+    };
 
     // -> Sort commands by priority in ascending order
     schedule.sort_by(|a, b| b.priority.cmp(&a.priority));
@@ -364,36 +378,36 @@ pub fn initialize_socket_client_transposer() {
     // -> Filter only auto collect == true or any that is diferent of a Response (Only responses have auto collect == false)
     schedule = schedule.into_iter().filter(|s| s.command_mode != "Response" || s.auto_collect).collect();
 
-    logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule));
+    logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule)).await;
 
     let schedule_len = schedule.len();
 
     // If there are no commands to process, clear old data and sleep
     if !(schedule_len > 0) {
-        logger.debug(format!("Nothing in the schedule, skipping >>>"));
+        logger.debug(format!("Nothing in the schedule, skipping >>>")).await;
         clear_old_data();
         thread::sleep(Duration::from_millis(100));
         return;
     } else {
         if schedule_len > 1 {
-            logger.debug(format!("Find {} commands to process", schedule_len))
+            logger.debug(format!("Find {} commands to process", schedule_len)).await
         } else {
-            logger.debug(format!("Find {} command to process", 1))
+            logger.debug(format!("Find {} command to process", 1)).await
         }
     }
 
-    logger.info(format!("\nData found in schedule!"));
+    logger.info(format!("\nData found in schedule!")).await;
 
     // Validate the command against known command patterns
     let client_key;
 
-    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY")).await;
     {
-        let client_n = CLIENT_NODE_KEY.lock();
+        let client_n = CLIENT_NODE_KEY.lock().await;
         logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY"));
         client_key = client_n.clone();
     }
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY")).await;
 
     // Process each scheduled command
     for dow_command in schedule {
@@ -404,13 +418,13 @@ pub fn initialize_socket_client_transposer() {
             continue;
         }
 
-        logger.info(format!("Get a pool worker in transposer!"));
+        logger.info(format!("Get a pool worker in transposer!")).await;
 
         {
-            logger.debug(format!("Acquired Python in a process task!"));
+            logger.debug(format!("Acquired Python in a process task!")).await;
 
             // Process the command and handle potential errors
-            let result = process(&dow_command, &client_key).map_err(|e| match e {
+            let result = process(&dow_command, &client_key).await.map_err(|e| match e {
                 ProcessError::CommandAlreadyProcessed(m) => {
                     format!("Command: {:?} already processed! So skipping", m)
                 },
@@ -433,14 +447,17 @@ pub fn initialize_socket_client_transposer() {
                     format!("An error occurred while processing command: {:?}", e)
                 },
                 ProcessError::UnknownCommandType => "Unknown Command type".to_string(),
+                ProcessError::BufferError(e) => {
+                    format!("A Buffer error happened while processing down commands, the error is: {:?}", e)
+                },
             });
 
             match result {
                 Ok(()) => {
-                    logger.info(format!("Finalized a process task!"));
+                    logger.info(format!("Finalized a process task!")).await;
                 },
                 Err(e) => {
-                    logger.warn(format!("\nWarning: {:?}\n", e));
+                    logger.warn(format!("\nWarning: {:?}\n", e)).await;
                 },
             }
         }

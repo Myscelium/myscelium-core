@@ -44,6 +44,7 @@ pub enum CommandError {
     InvalidCommand(String),
     NotAJsonObject,
     DeserializationError(serde_json::Error),
+    UnexpectedError(String),
 }
 
 impl From<serde_json::Error> for CommandError {
@@ -59,6 +60,7 @@ impl fmt::Display for CommandError {
             CommandError::InvalidCommand(ref msg) => write!(f, "Invalid Command: {}", msg),
             CommandError::NotAJsonObject => write!(f, "The value is not a JSON object!"),
             CommandError::DeserializationError(ref err) => write!(f, "Deserialization error: {}", err),
+            CommandError::UnexpectedError(ref err) => write!(f, "Unexpected error: {}", err),
         }
     }
 }

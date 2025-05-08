@@ -7,6 +7,7 @@ use crate::common::enhanced_buffer::utilities::{ResponseTarget, ResponseType};
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
 use crate::common::structs::results_structs::ResultType;
+use crate::common::types::SchedulingError;
 use serde_json::to_string;
 
 use lazy_static::lazy_static;
@@ -27,9 +28,9 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
         {
-            client_log_level = HOST_LOG_LEVEL.lock().clone();
+            client_log_level = HOST_LOG_LEVEL.lock().await.clone();
         }
-        Logger::new(client_log_level, $section_name)
+        Logger::new(client_log_level, $section_name).await
     }};
 }
 
@@ -53,7 +54,7 @@ macro_rules! acquire_logger {
 ///
 /// This function prepares a command request for the host to retrieve the list of
 /// registered commands. The constructed request is then scheduled for processing.
-pub fn request_client_available_commands(client_key: String) {
+pub async fn request_client_available_commands(client_key: String) -> Result<(), SchedulingError> {
     let command_instructions: CommandInstructions = CommandInstructions::new(
         CommandMode::Function,
         CommandType::DirectFunction,
@@ -69,10 +70,10 @@ pub fn request_client_available_commands(client_key: String) {
         true,
     );
 
-    schedule(&command_instructions, 11, client_key, "itisaspecialcase".to_string())
+    schedule(&command_instructions, 11, client_key, "itisaspecialcase".to_string()).await
 }
 
-pub fn send_network_available_commands(client_key: String) {
+pub async fn send_network_available_commands(client_key: String) -> Result<(), SchedulingError> {
     let logger = acquire_logger!("Scheduler");
 
     // TODO >>> Update the network known in the node since we are sending the new network know
@@ -84,14 +85,14 @@ pub fn send_network_available_commands(client_key: String) {
     //> status is updted since now it is marked as not sync yet. Also if this isn't syncing the controller
     //> changes the sync status to NotSyncYet, if it persists it will be changed to Offline.
 
-    logger.info(format!("Send update_available_host_commands to client trying to sync!"));
+    logger.info(format!("Send update_available_host_commands to client trying to sync!")).await;
 
     // Lock the HOST_COMMAND_PATTERNS and insert the new map
 
     let mut filtered_commands: HashMap<String, Value> = HashMap::new();
 
     {
-        let mut command_patterns = HOST_COMMAND_PATTERNS.lock();
+        let mut command_patterns = HOST_COMMAND_PATTERNS.lock().await;
 
         // -> Get the known network that this node should know (updated one)
         let mut nodes: Vec<Node> = command_patterns.get_all_nodes_except_node_with_key(&client_key);
@@ -128,7 +129,7 @@ pub fn send_network_available_commands(client_key: String) {
         true,
     );
 
-    schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string())
+    schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string()).await
 }
 
 /// Schedules a command for processing.
@@ -141,21 +142,20 @@ pub fn send_network_available_commands(client_key: String) {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command: &CommandInstructions, priority: u8, client_key: String, parity_id: String) {
+pub async fn schedule(command: &CommandInstructions, priority: u8, client_key: String, parity_id: String) -> Result<(), SchedulingError> {
     let response: Value;
     let new_client_key: String;
 
-    (response, new_client_key) = process_map_result(&command, &client_key, &parity_id, &priority, &None);
-
+    (response, new_client_key) = process_map_result(&command, &client_key, &parity_id, &priority, &None).await;
     let logger = acquire_logger!("Core - Scheduler");
 
-    logger.debug("Enter Scheduler".to_string());
+    logger.debug("Enter Scheduler".to_string()).await;
 
-    let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-
+    let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await?;
     let command_to_schedule = UpCommand::new(&new_client_key, &parity_id, priority, &to_string(&response).unwrap());
-
     enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
 
-    logger.info(format!("Command: {:?} scheduled!", command_to_schedule));
+    logger.info(format!("Command: {:?} scheduled!", command_to_schedule)).await;
+
+    Ok(())
 }

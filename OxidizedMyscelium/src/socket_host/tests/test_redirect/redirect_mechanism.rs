@@ -79,7 +79,8 @@ fn test_redirect_command_response_pointing_to_origin() {
     let mut network_map = NetworkMap::new(nodes);
 
     // -> Test responses
-    let response = redirect_commands_processing(&command, target, &mut network_map);
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    let response = rt.block_on(async { redirect_commands_processing(&command, target, &mut network_map).await });
 
     println!("processed: {:?}", response);
 

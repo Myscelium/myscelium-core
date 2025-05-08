@@ -21,7 +21,10 @@ fn test_buffer_down() {
     enhanced_buffer::buffer_down_manager::buffer_down_initialize_table("./Temp/".to_string());
 
     let client_key: String = "randomsclientids".to_string();
-    let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.unwrap() });
+
     let priority = 1u8;
 
     let command_instruction = CommandInstructions::new(
@@ -46,18 +49,20 @@ fn test_buffer_down() {
 
     enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
 
-    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-    let command_extracted = buffer_list.first().unwrap();
-    let cm = Command::from_down_command(command_extracted).unwrap();
+    rt.block_on(async {
+        let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
+        let command_extracted = buffer_list.first().unwrap();
+        let cm = Command::from_down_command(command_extracted).unwrap();
 
-    assert_eq!(serde_json::to_string(&command).unwrap(), serde_json::to_string(&cm).unwrap());
+        assert_eq!(serde_json::to_string(&command).unwrap(), serde_json::to_string(&cm).unwrap());
 
-    // -> TEST DELETE:
+        // -> TEST DELETE:
 
-    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-    let command_extracted = buffer_list.first().unwrap();
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_extracted.command_id.unwrap());
+        let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
+        let command_extracted = buffer_list.first().unwrap();
+        enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_extracted.command_id.unwrap());
 
-    let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule();
-    assert_eq!(0, buffer_list.len());
+        let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
+        assert_eq!(0, buffer_list.len());
+    });
 }

@@ -34,21 +34,58 @@ macro_rules! create_error_response_and_return {
     }};
 }
 use crate::socket_host::host_logger::log_handler::Logger;
-use crate::HOST_LOG_LEVEL;
+use crate::{ClientError, HOST_LOG_LEVEL};
 
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let host_log_level;
         {
-            let log_level = HOST_LOG_LEVEL.lock();
+            let log_level = HOST_LOG_LEVEL.lock().await;
             host_log_level = log_level.clone()
         }
-        Logger::new(host_log_level, $section_name)
+        Logger::new(host_log_level, $section_name).await
     }};
 }
 
 //> ------------------------------------------------------------------------------------------------------------------------------------------------
 //> Handle Redirect
+
+pub enum RedirectError {
+    ClientDoesnNotExist(String),
+    UnexpectedError(String),
+    ClientIsNotFullyInitialized(String),
+    ClientIsNotRunning(String),
+    CanNotRedirectFromOriginToHost,
+    CanNotRedirectFromHostToOrigin,
+    TargetDoesntExists(String),
+    HandlerDoesntExist(String),
+    ResponseHandlerDoesntExist(String),
+    CantScheduleCommandsToItself,
+    HostCantSendResponseToItself,
+    TargetCantSendResponseToItself,
+}
+
+impl From<ClientError> for RedirectError {
+    fn from(value: ClientError) -> Self {
+        match value {
+            ClientError::BufferError(e) => RedirectError::UnexpectedError(e),
+            ClientError::ClientDoesNotExist(client) => RedirectError::ClientDoesnNotExist(client),
+            ClientError::ClientAlreadyExist(String) => unreachable!("ClientError::ClientAlreadyExist should never be converted into RedirectError!"),
+            ClientError::UnexpectedError(e) => RedirectError::UnexpectedError(e),
+            ClientError::InvalidCommand(_) => unreachable!("ClientError::InvalidCommand should never be converted into RedirectError!"),
+            ClientError::ClientIsNotRunning(_) => unreachable!("ClientError::ClientIsNotRunning should never be converted into RedirectError!"),
+            ClientError::ClientIsNotFullyInitialized(c) => RedirectError::ClientIsNotFullyInitialized(c),
+            ClientError::NotAbleToReadClientStates => RedirectError::UnexpectedError("Not able to read client states!".to_string()),
+            ClientError::TargetDoesntExists(t) => RedirectError::TargetDoesntExists(t),
+            ClientError::HandlerDoesntExist(h) => RedirectError::HandlerDoesntExist(h),
+            ClientError::ResponseHandlerDoesntExist(rh) => RedirectError::ResponseHandlerDoesntExist(rh),
+            ClientError::CantScheduleCommandsToItself => RedirectError::CantScheduleCommandsToItself,
+            ClientError::HostCantSendResponseToItself => RedirectError::HostCantSendResponseToItself,
+            ClientError::TargetCantSendResponseToItself => RedirectError::TargetCantSendResponseToItself,
+            ClientError::BufferError(e) => RedirectError::UnexpectedError(format!("Buffer Error happened, the error: {:?}", e)),
+        }
+    }
+}
 
 /// Handles redirection logic for incoming commands.
 ///
@@ -95,7 +132,7 @@ macro_rules! acquire_logger {
 /// let response = handle_redirect(m, &mut client_id, down_command);
 /// ```
 ///
-pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_id: String, priority: u8) -> CommandInstructions {
+pub async fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_id: String, priority: u8) -> Result<CommandInstructions, RedirectError> {
     let logger = acquire_logger!("[Process][Handle Redirect]");
 
     println!("Try to redirect: {:?}", m);
@@ -109,17 +146,20 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
     // -> Filter not allowed cases:
     let redirect_to = match &m.target {
         CommandTarget::Host => {
-            logger.warn("Error! Cont redirect from origin to host, this is a Origin to Host direct case!".to_string());
-            return create_error_response_and_return!("Error! Cont redirect from origin to host, this is a Origin to Host direct case!");
+            logger.warn("Error! Cont redirect from origin to host, this is a Origin to Host direct case!".to_string()).await;
+            return Err(RedirectError::CanNotRedirectFromOriginToHost);
+            // (create_error_response_and_return!("Error! Cont redirect from origin to host, this is a Origin to Host direct case!"));
         },
         CommandTarget::Origin => {
-            logger.warn("Error! Cont redirect from host to origin, this is a host to origin direct case!".to_string());
-            return create_error_response_and_return!("Error! Cant redirect from host to origin, this is a Origin to Host direct case!");
+            logger.warn("Error! Cont redirect from host to origin, this is a host to origin direct case!".to_string()).await;
+            return Err(RedirectError::CanNotRedirectFromHostToOrigin);
+            // create_error_response_and_return!("Error! Cant redirect from host to origin, this is a Origin to Host direct case!");
         },
         CommandTarget::ClientKey(c) => {
-            if !check_if_client_key_exists(c.clone()) {
-                logger.warn(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
-                return create_error_response_and_return!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
+            if !check_if_client_key_exists(c.clone()).await? {
+                logger.warn(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c)).await;
+                return Err(RedirectError::ClientDoesnNotExist(c.to_string()));
+                // create_error_response_and_return!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
                 // return error_response!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to.to_string()));
             }
             c.clone()
@@ -155,5 +195,5 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
 
     *client_id = redirect_to; // > Update the client id that it will send to
 
-    return new_command_instructions;
+    return Ok(new_command_instructions);
 }

@@ -8,3 +8,4 @@ pub mod helpers;
 pub mod logs_register;
 pub mod sql_pool;
 pub mod structs;
+pub mod types;

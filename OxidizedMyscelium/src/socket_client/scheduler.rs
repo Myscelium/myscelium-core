@@ -3,6 +3,7 @@ use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandTarget, CommandType, ResponseTarget};
 use crate::common::functions::advanced_lockers::smart_lock;
+use crate::common::types::{BufferError, SchedulingError};
 use crate::socket_client::states_manager::manager::ClientState;
 
 use lazy_static::lazy_static;
@@ -11,7 +12,7 @@ use serde_json::{from_str, Value};
 use std::collections::HashMap;
 
 use super::client_logger::log_handler::Logger;
-use crate::{CLIENT_LOG_LEVEL, CLIENT_STATE_MANAGER};
+use crate::{Client, CLIENT_LOG_LEVEL, CLIENT_STATE_MANAGER};
 
 use parking_lot::Mutex;
 
@@ -21,22 +22,10 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
         {
-            client_log_level = CLIENT_LOG_LEVEL.lock().clone();
+            client_log_level = CLIENT_LOG_LEVEL.lock().await.clone();
         }
-        Logger::new(client_log_level, $section_name)
+        Logger::new(client_log_level, $section_name).await
     }};
-}
-
-pub enum SchedulingError {
-    ClientIsntFullyInitialized,
-    CantReadStates,
-    TargetDoesntExists,
-    HandlerDoesntExist,
-    ResponseHandlerDoesntExist,
-    CantScheduleCommandsToItself,
-    HostCantSendResponseToItself,
-    TargetCantSendResponseToItself,
-    UnsuportedAction(String),
 }
 
 /// Schedules a command for processing.
@@ -49,19 +38,32 @@ pub enum SchedulingError {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
+pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
     let mut command_instructions: CommandInstructions = command_instructions;
 
     let logger: Logger = acquire_logger!("Core - Scheduler");
 
-    logger.debug("Enter Scheduler".to_string());
+    logger.debug("Enter Scheduler".to_string()).await;
 
-    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID")).await;
 
-    let mut state_manager = match ClientState::load_from_storage() {
-        Ok(s) => s,
-        Err(_) => return Err(SchedulingError::CantReadStates),
-    };
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    let state_manager: Option<ClientState>;
+
+    let result = rt.block_on(async {
+        match ClientState::load_from_storage().await {
+            Ok(s) => Ok(Some(s)),
+            Err(_) => Err(SchedulingError::CantReadStates),
+        }
+    });
+
+    let states_manager = result?; // ? will propagate the error if it's Err
+    let mut state_manager: ClientState;
+    if let Some(state) = states_manager {
+        state_manager = state;
+    } else {
+        return Err(SchedulingError::CantReadStates);
+    }
 
     // if !state_manager.is_fully_initialized() {
     //    return Err(SchedulingError::ClientIsntFullyInitialized);
@@ -71,18 +73,18 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     if let Some(ready) = state_manager.is_ready {
         if !ready {
-            return Err(SchedulingError::ClientIsntFullyInitialized);
+            return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
         }
     } else {
-        return Err(SchedulingError::ClientIsntFullyInitialized);
+        return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
     if let Some(sync) = state_manager.is_sync {
         if !sync {
-            return Err(SchedulingError::ClientIsntFullyInitialized);
+            return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
         }
     } else {
-        return Err(SchedulingError::ClientIsntFullyInitialized);
+        return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
     let this_client_key_ref: String;
@@ -90,7 +92,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     if let Some(this_client_key) = &state_manager.key {
         this_client_key_ref = this_client_key.clone();
     } else {
-        return Err(SchedulingError::ClientIsntFullyInitialized);
+        return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
     let mut command_target: String;
@@ -98,12 +100,12 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     //> CHECK IF THE COMMAND TARGET ISN'T SELF
     match command_instructions.target.clone() {
         CommandTarget::Origin => {
-            return Err(SchedulingError::CantScheduleCommandsToItself);
+            return Err(SchedulingError::CantScheduleCommandsToItself(command_instructions.origin.to_string()));
         },
         CommandTarget::Host => command_target = "host".to_string(),
         CommandTarget::ClientKey(k) => {
             if &k == &this_client_key_ref {
-                return Err(SchedulingError::CantScheduleCommandsToItself);
+                return Err(SchedulingError::CantScheduleCommandsToItself(command_instructions.origin.to_string()));
             }
             command_target = k;
         },
@@ -114,17 +116,17 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
         match network_map.target_is_reachable(&command_target) {
             Ok(v) => {
                 if !v {
-                    return Err(SchedulingError::TargetDoesntExists);
+                    return Err(SchedulingError::TargetDoesntExists(command_target));
                 }
             },
             Err(_) => {
-                return Err(SchedulingError::TargetDoesntExists);
+                return Err(SchedulingError::TargetDoesntExists(command_target));
             },
         }
 
         //> VERIFY IF THE HANDLER EXISTS IN THE TARGET
         if !network_map.handler_exists_in(command_target.as_str(), command_instructions.actf.as_str()) {
-            return Err(SchedulingError::HandlerDoesntExist);
+            return Err(SchedulingError::HandlerDoesntExist(command_instructions.actf.clone()));
         }
 
         if let Some(response_target) = command_instructions.response_target.clone() {
@@ -136,7 +138,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         let this_node_handlers = match this_node.get_node_handlers() {
                             Ok(n) => n,
                             Err(_) => {
-                                return Err(SchedulingError::ClientIsntFullyInitialized);
+                                return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
                             },
                         };
 
@@ -146,7 +148,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                                 if response_actf != "".to_string() {
                                     //> See if this node has the expected handler
                                     if !this_node_handlers.contains_key(&response_actf) {
-                                        return Err(SchedulingError::ResponseHandlerDoesntExist);
+                                        return Err(SchedulingError::ResponseHandlerDoesntExist(response_actf.clone()));
                                     }
                                 }
                             }
@@ -167,7 +169,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         if let Some(response_actf) = command_instructions.response_actf.clone() {
                             if response_actf != "".to_string() {
                                 if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
-                                    return Err(SchedulingError::HandlerDoesntExist);
+                                    return Err(SchedulingError::HandlerDoesntExist(response_actf.clone()));
                                 }
                             }
                         } else {
@@ -190,7 +192,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         if let Some(response_actf) = command_instructions.response_actf.clone() {
                             if response_actf != "".to_string() {
                                 if !network_map.handler_exists_in("host", response_actf.as_str()) {
-                                    return Err(SchedulingError::HandlerDoesntExist);
+                                    return Err(SchedulingError::HandlerDoesntExist(response_actf.clone()));
                                 }
                             }
                         } else {
@@ -203,32 +205,34 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
             }
         } else {
             //* If response target is none then response will be ignored
+            // TODO >>> Verify it is correct!
         }
     } else {
-        return Err(SchedulingError::ClientIsntFullyInitialized);
+        return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID")).await;
 
     let client_key = state_manager.key.clone().unwrap();
 
     if client_key == "".to_string() {
-        return Err(SchedulingError::ClientIsntFullyInitialized);
+        return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
-    logger.debug(format!("Client id is: {:?}", client_key));
+    logger.debug(format!("Client id is: {:?}", client_key)).await;
 
-    let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(SchedulingError::from) })?;
 
     let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
 
-    logger.debug(format!("[CLIENT] - Scheduling: {:?}", command));
+    logger.debug(format!("[CLIENT] - Scheduling: {:?}", command)).await;
 
     let command_to_schedule: UpCommand = UpCommand::from_command(command);
 
     enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
 
-    logger.info(format!("Command: {:?} scheduled!", command_to_schedule));
+    logger.info(format!("Command: {:?} scheduled!", command_to_schedule)).await;
 
     Ok(parity_id)
 }

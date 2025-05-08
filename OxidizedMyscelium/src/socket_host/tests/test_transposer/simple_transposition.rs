@@ -207,7 +207,9 @@ fn test_down_command_transposition() {
 
         let command = Command::new("someclientid".to_string(), "xNmlMpN34x14s".to_string(), 1u8, instruction.clone());
         let down_command = DownCommand::from_command(command);
-        let responses = process(down_command);
+
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+        let responses = rt.block_on(async { process(down_command).await });
 
         println!("Response:\n{:?}\n", responses);
 

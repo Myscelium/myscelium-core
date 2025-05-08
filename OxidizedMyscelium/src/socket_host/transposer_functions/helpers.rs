@@ -7,8 +7,6 @@ use crate::common::client_manager::manager::{Client, ClientError};
 use crate::common::enhanced_buffer::utilities::{CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
 use crate::socket_host::transposer_functions::handle_direct_function::ProcessResult;
 
-use crate::handle_manager_client_error;
-
 macro_rules! create_error_response_and_return {
     ($error:expr) => {{
         let new_command_instructions = CommandInstructions::new(
@@ -100,7 +98,7 @@ pub fn cast_new_client(new_client: &HashMap<String, Value>) -> Result<Client, Pr
     let client_handlers: Vec<HashMap<String, Value>> = Vec::new();
 
     // TODO >>> Create a better mechanism to unpack these kwargs from json and return errors when need!
-    let new_client = handle_manager_client_error!(Client::new(
+    let new_client = Client::new(
         verified_client_value.get("client_name").unwrap().as_str().map(|s| s.to_string()).unwrap(),
         client_key.clone(),
         verified_client_value.get("client_type").unwrap().as_str().map(|s| s.to_string()).unwrap(),
@@ -109,7 +107,8 @@ pub fn cast_new_client(new_client: &HashMap<String, Value>) -> Result<Client, Pr
         verified_client_value.get("max_sub_channels").unwrap().as_f64().unwrap() as u32, // TODO >>> Create a better handler to cases greather than u32
         owned_sub_channels_keys,
         client_handlers,
-    ));
+    )
+    .map_err(ProcessResult::from)?;
 
     // logger.debug(format!("New client: {:?}", new_client));
 

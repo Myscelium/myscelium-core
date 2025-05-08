@@ -1,5 +1,6 @@
 use crate::common::structs::available_commands::CommandPatterns;
 use crate::common::structs::results_structs::ResultType;
+use crate::common::types::BufferError;
 
 use crate::socket_client::states_manager::manager::{ClientState, StateManagerError};
 use crate::{NodeStatus, CLIENT_NODE_CONFIGS, CLIENT_STATE_MANAGER};
@@ -29,17 +30,25 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
         {
-            let log_level = CLIENT_LOG_LEVEL.lock().clone();
+            let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
             client_log_level = log_level.clone();
         }
-        Logger::new(client_log_level, $section_name)
+        Logger::new(client_log_level, $section_name).await
     }};
 }
 
-pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, command_id: u32) -> Result<ProcessResult, ProcessError> {
+impl From<BufferError> for ProcessError {
+    fn from(e: BufferError) -> ProcessError {
+        match e {
+            BufferError::UnexpectedError(e) => ProcessError::BufferError(e),
+        }
+    }
+}
+
+pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String, command_id: u32) -> Result<ProcessResult, ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
 
-    logger.info(format!("Initializing Direct Function processing!"));
+    logger.info(format!("Initializing Direct Function processing!")).await;
 
     // TODO >>> Change this for a mathc
 
@@ -47,15 +56,13 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
 
     match c.actf.as_str() {
         "update_available_host_commands" => {
-            logger.info(format!("Receive Host Allowed Commands"));
+            logger.info(format!("Receive Host Allowed Commands")).await;
 
             // Clone the object to get a HashMap<String, Value>
             let response_map: HashMap<String, Value> = c.kwargs.clone();
 
             // TODO >>> Maybe create a mechanism to validate the new_patterns received, maybe using regex, idk...
-
             println!("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS");
-
             let mut filtered_commands_map = HashMap::new();
 
             {
@@ -68,24 +75,29 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     },
                 }
 
+                let state_manager: Option<ClientState>;
+
                 // -> CLIENT STATE NETWORK MAP LOADING
-                let mut client_state = match ClientState::load_from_storage() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        match e {
-                            StateManagerError::NotFullyInitialized => {
-                                logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!"));
-                            },
-                            StateManagerError::CantgetStateFromDb(e) => {
-                                logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
-                            },
-                            StateManagerError::ErrorWhileSavingClientState(e) => {
-                                logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e));
-                            },
-                        };
-                        CLIENT_STATE_MANAGER.lock().clone()
-                    },
+                let mut client_state = {
+                    match ClientState::load_from_storage().await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            match e {
+                                StateManagerError::NotFullyInitialized => {
+                                    logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!")).await;
+                                },
+                                StateManagerError::CantgetStateFromDb(e) => {
+                                    logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e)).await;
+                                },
+                                StateManagerError::ErrorWhileSavingClientState(e) => {
+                                    logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e)).await;
+                                },
+                            };
+                            CLIENT_STATE_MANAGER.lock().clone()
+                        },
+                    }
                 };
+
                 client_state.network_map = Some(host_allowed_commands.clone());
                 client_state.is_ready = Some(true);
                 client_state.is_connected = Some(true);
@@ -93,17 +105,17 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
 
                 match &client_state.update_schedule_with_this() {
                     Ok(_) => {},
-                    Err(e) => match &client_state.save_in_storage() {
+                    Err(e) => match &client_state.save_in_storage().await {
                         Ok(_) => {},
                         Err(e) => match e {
                             StateManagerError::NotFullyInitialized => {
-                                logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!"));
+                                logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!")).await;
                             },
                             StateManagerError::CantgetStateFromDb(e) => {
-                                logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
+                                logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e)).await;
                             },
                             StateManagerError::ErrorWhileSavingClientState(e) => {
-                                logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e));
+                                logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e)).await;
                             },
                         },
                     },
@@ -120,7 +132,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 {
                     let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
                     println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
-                    logger.info(format!("Lock In Host Command Patterns!"));
+                    logger.info(format!("Lock In Host Command Patterns!")).await;
                     command_patterns.change_node_status(NodeStatus::Online);
                     command_patterns.update_known_network(host_allowed_commands.get_all_nodes_except_node_with_key(&"".to_string()).clone());
                     actual_patterns = command_patterns.to_value();
@@ -128,7 +140,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
 
                 println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
 
-                logger.info(format!("Successfully actualize the host available commands!"));
+                logger.info(format!("Successfully actualize the host available commands!")).await;
 
                 // TODO >>> Change this to use NetworkMap instead of commands
                 filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
@@ -155,7 +167,8 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
             // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
-            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+            let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from)?;
+
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 
@@ -168,7 +181,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
         "get_socket_client_available_handlers" => {
             // -> DINAMIC RESPONSE IMPLEMENTED:
 
-            logger.info(format!("Receive Available Handlers Request"));
+            logger.info(format!("Receive Available Handlers Request")).await;
 
             // Lock the CLIENT_NODE_CONFIGS and insert the new map
 
@@ -182,7 +195,7 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             }
             println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
 
-            logger.info(format!("Successfully actualize the host available commands!"));
+            logger.info(format!("Successfully actualize the host available commands!")).await;
 
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 
@@ -204,7 +217,9 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 true,
             );
 
-            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+            let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+            let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from) })?;
+
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
 
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);

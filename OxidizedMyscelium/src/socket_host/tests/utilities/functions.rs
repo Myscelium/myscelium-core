@@ -65,8 +65,12 @@ pub fn registry_handlers(handlers: Vec<FunctionMetadata>) {
     }
 
     // -> UPDATE HOST NODE WITH THE HANDLERS
-    let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock();
-    let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
-    let host_node: Node = Node::new("host".to_string(), "host".to_string(), "".to_string(), node_version, node_handlers, NodeStatus::Online);
-    global_command_patterns.add_or_update_if_exists(host_node);
+
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    rt.block_on(async {
+        let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock().await;
+        let node_version = NodeVersion::cast_version(1, 3, 0, VersionIndentifier::ReleaseCandidate);
+        let host_node: Node = Node::new("host".to_string(), "host".to_string(), "".to_string(), node_version, node_handlers, NodeStatus::Online);
+        global_command_patterns.add_or_update_if_exists(host_node);
+    });
 }

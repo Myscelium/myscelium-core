@@ -22,7 +22,7 @@ use indexmap::IndexMap;
 use serde_json::{from_str, Value};
 use syn::Index;
 
-use crate::common::enhanced_buffer::utilities::CommandVariant;
+use crate::common::{enhanced_buffer::utilities::CommandVariant, types::BufferError};
 use crate::socket_host::command_handler::{host_commands_processing, redirect_commands_processing};
 use crate::socket_host::task_manager::manager::NodeTask;
 use crate::TASKS_MANAGER;
@@ -41,7 +41,6 @@ use crate::NetworkMap;
 use crate::NodeStatus;
 use serde_json::to_string;
 
-use crate::handle_manager_client_error;
 use crate::socket_host::scheduler::{request_client_available_commands, send_network_available_commands};
 
 #[macro_use]
@@ -123,16 +122,16 @@ macro_rules! handle_client_controller_error {
     ($error:expr, $client_key:expr, $logger:expr) => {
         match $error {
             ClientStatusPoolError::ClientDoesNotExist(c) => {
-                $logger.warn(format!("WARNING: Client: {:?} does not exist so can't sync!", c));
+                $logger.warn(format!("WARNING: Client: {:?} does not exist so can't sync!", c)).await;
             },
             ClientStatusPoolError::ClientAlreadySync(c) => {
-                $logger.warn(format!("WARNING: Client: {:?} is already sync!", c));
+                $logger.warn(format!("WARNING: Client: {:?} is already sync!", c)).await;
             },
             ClientStatusPoolError::MaxSyncAttemptsReached(c) => {
-                $logger.warn(format!("WARNING: Max attempts trying to sync with Client: {:?} reached!", c));
+                $logger.warn(format!("WARNING: Max attempts trying to sync with Client: {:?} reached!", c)).await;
             },
             _ => {
-                $logger.warn(format!("WARNING: Unexpected error trying to sync with client: {:?}!", $client_key));
+                $logger.warn(format!("WARNING: Unexpected error trying to sync with client: {:?}!", $client_key)).await;
             },
         }
     };
@@ -142,9 +141,9 @@ macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let host_log_level;
         {
-            host_log_level = HOST_LOG_LEVEL.lock().clone();
+            host_log_level = HOST_LOG_LEVEL.lock().await.clone();
         }
-        Logger::new(host_log_level, $section_name)
+        Logger::new(host_log_level, $section_name).await
     }};
 }
 macro_rules! create_special_command_confirmation {
@@ -223,15 +222,15 @@ macro_rules! handle_send_error {
     ($error:expr, $logger:expr, $client_key:expr) => {
         match $error {
             StreamError::ConnectionClosed => {
-                $logger.warn(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+                $logger.warn(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key)).await;
             },
             StreamError::WriteError(e) => {
-                $logger.exception(format!("[HOST][SOCKET][WRITE ERROR] - {:?}", e));
-                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+                $logger.exception(format!("[HOST][SOCKET][WRITE ERROR] - {:?}", e)).await;
+                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key)).await;
             },
             StreamError::WriteSizeError(e) => {
-                $logger.exception(format!("[HOST][SOCKET][WRITE SIZE ERROR] - {:?}", e));
-                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key));
+                $logger.exception(format!("[HOST][SOCKET][WRITE SIZE ERROR] - {:?}", e)).await;
+                $logger.exception(format!("[HOST][SOCKET][CLOSE CONNECTION] - {}", $client_key)).await;
             },
         }
     };
@@ -280,7 +279,7 @@ macro_rules! handle_client_manager_error {
 macro_rules! send_error_response {
     ($stream:expr, $command:expr, $logger:expr, $message:expr) => {
         let response = create_error_command_response!($command.client_key, $command.parity_id, $message);
-        $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response));
+        $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response)).await;
         match send($stream, response) {
             Ok(_) => {},
             Err(e) => {
@@ -305,31 +304,32 @@ pub async fn set_heartbeat_callback(callback_pattern: HashMap<&'static str, Box<
 ///
 /// # Parameters
 /// - `client_key`: The unique key associated with the client whose last contact time needs to be updated.
-pub fn update_last_contact(client_key: String) {
-    let client = Client::get_by_key(&client_key);
+pub async fn update_last_contact(client_key: String) -> Result<(), ClientError> {
+    let client = Client::get_by_key(&client_key).await;
 
     let logger = acquire_logger!("[Socket Host][Update Last Contact]");
 
     match client {
         Ok(c) => {
-            logger.debug(format!("Receive client contact!"));
-            handle_manager_client_error!(c.update_last_contact());
+            logger.debug(format!("Receive client contact!")).await;
+            c.update_last_contact();
         },
-        Err(e) => match e {
-            ClientError::ClientAlreadyExist(e) => {
-                logger.exception(format!("Error client: {} already exist", e));
-            },
-            ClientError::ClientDoesNotExist(e) => {
-                logger.exception(format!("Error client: {} does't exist", e));
-            },
-            ClientError::UnexpectedError(e) => {
-                logger.exception(format!("Get a unexpected error: {}", e));
-            },
-            _ => {
-                logger.exception(format!("Get a unexpected error"));
-            },
-        },
+        Err(e) => return Err(e),
+        // ClientError::ClientAlreadyExist(e) => {
+        //     logger.exception(format!("Error client: {} already exist", e));
+        // },
+        // ClientError::ClientDoesNotExist(e) => {
+        //     logger.exception(format!("Error client: {} does't exist", e));
+        // },
+        // ClientError::UnexpectedError(e) => {
+        //     logger.exception(format!("Get a unexpected error: {}", e));
+        // },
+        // _ => {
+        //     logger.exception(format!("Get a unexpected error"));
+        // },
     }
+
+    Ok(())
 }
 
 // > Socket Interactive Functions:
@@ -356,17 +356,16 @@ use crate::common::enhanced_buffer::history::register::register::initialize_buff
 ///
 /// # Parameters
 /// - `buffer_location`: The location where the buffer databases should be initialized.
-pub fn initialize_host_buffer(buffer_location: String) {
+pub async fn initialize_host_buffer(buffer_location: String) {
     let logger = acquire_logger!("[Socket][Initialize Host Buffer]");
 
-    logger.info(format!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location));
+    logger.info(format!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location)).await;
 
-    initialize_buffer_history(&buffer_location);
+    initialize_buffer_history(&buffer_location); // TODO >>> This should be async?
+    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone()).await;
+    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone()).await;
 
-    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone());
-    enhanced_buffer::buffer_up_manager::buffer_up_initialize_table(buffer_location.clone());
-
-    logger.info(format!("All buffer initialized successfully!"));
+    logger.info(format!("All buffer initialized successfully!")).await;
 
     return;
 }
@@ -397,7 +396,7 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
 
     let listener = TcpListener::bind(&address).await?;
 
-    logger.info(format!("Listening: {}", address));
+    logger.info(format!("Listening: {}", address)).await;
 
     // Shared map from client_id -> Sender, so we can reply to each client.
     let client_txs: ClientMap = Arc::new(Mutex::new(HashMap::new()));
@@ -419,12 +418,11 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
 
     loop {
         let logger = acquire_logger!("Core");
-
-        logger.info("Waiting conn!".to_string());
+        logger.info("Waiting conn!".to_string()).await;
 
         // Keep the thread alive until HOST_IS_RUNNING is set to false
         if !HOST_IS_RUNNING.load(Ordering::SeqCst) {
-            logger.info("Stopped the server!".to_string());
+            logger.info("Stopped the server!".to_string()).await;
             break;
         }
 
@@ -437,7 +435,7 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
         // Spawn a new task per connection
         tokio::spawn(async move {
             if let Err(e) = handle_connection(stream, unit_senders_clone, client_txs_clone).await {
-                logger.exception(format!("Connection handler panicked: {:?}", e));
+                logger.exception(format!("Connection handler panicked: {:?}", e)).await;
             }
         });
     }
@@ -457,8 +455,8 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
 ///
 /// # Returns
 /// - A `HashMap<String, Value>` representing the cloned command patterns.
-pub fn get_available_commands_registered() -> HashMap<std::string::String, IndexMap<String, String>> {
-    let global_command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+pub async fn get_available_commands_registered() -> HashMap<std::string::String, IndexMap<String, String>> {
+    let global_command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
     return global_command_patterns.extract_all_commands().unwrap();
 }
 
@@ -474,12 +472,12 @@ pub enum ChangeStatusError {
     ClientAlreadySync(String),
 }
 
-pub fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) -> Result<(), ChangeStatusError> {
+pub async fn change_client_node_status_and_stream(client_key: String, new_status: NodeStatus) -> Result<(), ChangeStatusError> {
     let logger = acquire_logger!("Core");
-    logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status));
+    logger.info(format!("changed Client {} status: to: {:?}!", client_key, new_status)).await;
 
     // -> Change client to offline in network map
-    let mut network_map = HOST_COMMAND_PATTERNS.lock();
+    let mut network_map = HOST_COMMAND_PATTERNS.lock().await;
     let mut node = network_map.get_node_by_key(&client_key).map_err::<ChangeStatusError, _>(Into::into)?;
 
     // if node.get_node_status() == new_status {
@@ -488,9 +486,9 @@ pub fn change_client_node_status_and_stream(client_key: String, new_status: Node
     // }
 
     if new_status == NodeStatus::Offline {
-        let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock();
+        let mut client_sync_manager = CLIENTS_SYNC_CONTROLLER.lock().await;
 
-        logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager));
+        logger.debug(format!("Client Sync Manager: {:?}", client_sync_manager)).await;
 
         //> Reinitialize the status of the client that disconnects, so when it reconnects the
         //> First sync can occur naturally.
@@ -535,7 +533,13 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
     } else if function == "C206" {
         // -> Ping request
 
-        let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_list_schedule_fo_client_id(client_key.clone());
+        let up_schedule: Vec<UpCommand> = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule_fo_client_id(client_key.clone()).await {
+            Ok(ups) => ups,
+            Err(e) => {
+                logger.exception(format!("Error trying to load up_scheduler buffer for the client: {:?}, Error: {:?}, returning C207!", client_key, e)).await;
+                return create_special_command_response!(client_key, "C207"); // TODO >>> Improve the error handling of this error!
+            },
+        };
         if !(up_schedule.len() > 0) {
             return create_special_command_response!(client_key, "C207"); // If don't have any response to send send C207 that is a ping confirmation
         }
@@ -545,7 +549,7 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
             Ok(c) => c,
             Err(e) => {
                 // TODO >>> Handle the invalid Commands cases
-                logger.debug(format!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e));
+                logger.debug(format!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e)).await;
                 return create_special_command_response!(client_key, "C207");
             },
         };
@@ -559,16 +563,6 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
     }
 
     return command;
-}
-
-/// Enum representing possible responses.
-///
-/// This enum encapsulates the two possible response types:
-/// 1. A valid `Command` response.
-/// 2. An absence of a response, represented by `None`.
-pub enum Response {
-    Command(Command),
-    None,
 }
 
 /// Retrieves a response for a given command.
@@ -589,18 +583,18 @@ pub enum Response {
 /// 3. If a scheduled response is found, it is converted into a `Command` object.
 /// 4. The original scheduled response is then removed from the buffer to avoid any future retrievals.
 /// 5. The transformed command is returned as `Response::Command(response_command)`.
-pub fn get_response(command: Command) -> Response {
-    let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_get_scheduled_by_parity_id(&command.client_key, &command.parity_id);
+pub async fn get_response(command: Command) -> Result<Option<Command>, BufferError> {
+    let up_schedule: Vec<UpCommand> = enhanced_buffer::buffer_up_manager::buffer_up_get_scheduled_by_parity_id(&command.client_key, &command.parity_id).await?;
 
     if !(up_schedule.len() > 0) {
-        return Response::None;
+        return Ok(None);
     }
 
     let command_response = &up_schedule[0];
     let command_response_command = serde_json::from_str(command_response.command.as_str()).unwrap();
     let response_command = create_response_command!(command_response.client_key, command_response.parity_id, command_response.priority, command_response_command);
     enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&command.client_key, &response_command.parity_id);
-    return Response::Command(response_command);
+    return Ok(Some(response_command));
 }
 
 const MAX_DATA_SIZE: usize = 10 * 1024 * 1024; // For example, 10 MB
@@ -617,13 +611,13 @@ enum StreamError {
 /// - HOST_COMMAND_PATTERNS
 /// - CLIENT_SYNC_CONTROLLER
 /// Make sure to have them free before try to call this function to avoid blockages
-fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Result<(), ChangeStatusError> {
-    let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+async fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Result<(), ChangeStatusError> {
+    let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
 
-    let client = controller.get_client(client_key).unwrap();
+    let client = controller.get_client(client_key).map_err(ChangeStatusError::from)?;
 
     {
-        let mut actual_patterns = HOST_COMMAND_PATTERNS.lock();
+        let mut actual_patterns = HOST_COMMAND_PATTERNS.lock().await;
         let mut ref_node = actual_patterns.get_node_by_key(client_key).unwrap();
 
         // > If the sync is halth of the attempts and not sync yet, change the client status to NotSyncYet
@@ -652,7 +646,7 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Result<()
                 handle_client_disconnect(&client_key); // Disconnect the client, what should trigger sync in all dependent ones
                 return Err(ChangeStatusError::MaxSyncAttemptsReached(s));
             },
-            ClientStatusPoolError::ClientAlreadySync(_) => match change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online) {
+            ClientStatusPoolError::ClientAlreadySync(_) => match change_client_node_status_and_stream(client_key.clone(), NodeStatus::Online).await {
                 Ok(_) => {},
                 Err(e) => return Err(e),
             },
@@ -660,6 +654,29 @@ fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Result<()
     }
 
     return Ok(());
+}
+
+async fn get_response_or_error(command: Command) -> Command {
+    let logger = acquire_logger!("Core");
+    match get_response(command.clone()).await {
+        Ok(r) => {
+            if let Some(response) = r {
+                if response.client_key == command.client_key {
+                    return response;
+                } else {
+                    logger.info("Response is None!".to_string()).await;
+                    create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+                }
+            } else {
+                logger.info("Response is None!".to_string()).await;
+                create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+            }
+        },
+        Err(e) => {
+            logger.exception(format!("Error trying to get the response, buffer error: {:?}", e)).await; // TODO >>> What to do here, logout client?
+            create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+        },
+    }
 }
 
 /// Handles an individual connection to the server.
@@ -696,13 +713,22 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
     // TODO >>> Remove conver the strams senders into tx for the dispatcher thread
 
     loop {
-        logger.debug(format!("Command received:\n{:?}\n", command));
+        logger.debug(format!("Command received:\n{:?}\n", command)).await;
+
+        let client_exists = match check_if_client_key_exists(command.client_key.clone()).await {
+            Ok(ce) => ce,
+            Err(e) => {
+                let response: Command = create_error_command_response!(command.client_key, command.parity_id, format!("Error trying to check if the client key exists, the error was: {:?}", e.to_string()));
+                logger.exception(format!("Error trying to check if the client key exists, the error was: {:?}", e.to_string())).await;
+                return Ok(Some(response));
+            },
+        };
 
         // -> Drop clients that aren't in the white list:
-        if !check_if_client_key_exists(command.client_key.clone()) {
+        if !client_exists {
             // -> In case client isn't registered in the clients allowed
             let response: Command = create_error_command_response!(command.client_key, command.parity_id, "Your client isn't registered in the whitelist!");
-            logger.exception(format!("WARNING: Client isn't registered, sending back: {:?}", response));
+            logger.exception(format!("WARNING: Client isn't registered, sending back: {:?}", response)).await;
             return Ok(Some(response));
         }
 
@@ -716,7 +742,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         let client_last_sync: Option<DateTime<Utc>>;
 
         {
-            let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+            let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
             client_sync_status = match controller.get_sync_status(&command.client_key.clone()) {
                 Ok(s) => Some(s),
                 Err(e) => {
@@ -731,7 +757,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     None
                 },
             };
-            logger.debug(format!("Clients In Sync Controller: {:?}", controller));
+            logger.debug(format!("Clients In Sync Controller: {:?}", controller)).await;
         }
 
         // -> Update Client Status
@@ -745,19 +771,20 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
             if !sync {
-                logger.debug(format!("\nClient: {:?} isn't sync\n", &command.client_key));
+                logger.debug(format!("\nClient: {:?} isn't sync\n", &command.client_key)).await;
 
                 let current_time = Utc::now();
                 let should_attempt_sync = client_last_sync.map_or(true, |last_sync| current_time - last_sync > Duration::seconds(30));
 
                 if should_attempt_sync {
-                    logger.info(format!("Try to sync with: {}", command.client_key));
+                    logger.info(format!("Try to sync with: {}", command.client_key)).await;
                     send_network_available_commands(command.client_key.clone());
 
-                    match update_client_sync_attempt(&command.client_key, &logger) {
+                    match update_client_sync_attempt(&command.client_key, &logger).await {
                         Ok(()) => {}, // Once sync, continue the default procedure loop!
                         Err(e) => {
                             logger.warn(format!("Trying to change the client status result in an error: {:?}", e));
+                            // TODO >>> Enhance this error kind handling!
                         },
                     }
 
@@ -767,14 +794,16 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     //> change it to offline and disconnect it. Also another thing that we can do is impl a new Idle status that can be
                     //> represented as a pulsating orange color.
                 } else if let Some(last_sync) = client_last_sync {
-                    logger.info(format!(
-                        "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
-                        &command.client_key,
-                        (Duration::seconds(30) - (current_time - last_sync)).num_seconds()
-                    ));
+                    logger
+                        .info(format!(
+                            "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
+                            &command.client_key,
+                            (Duration::seconds(30) - (current_time - last_sync)).num_seconds()
+                        ))
+                        .await;
                 }
             } else {
-                logger.debug(format!("\nClient: {:?} is sync!\n", &command.client_key));
+                logger.debug(format!("\nClient: {:?} is sync!\n", &command.client_key)).await;
             }
         } else {
             break;
@@ -788,14 +817,14 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             let mut command_patterns;
 
             {
-                command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
             }
 
             // println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
 
-            logger.debug(format!("\nCommand.Command: {:?}", command.command));
-            logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf));
-            logger.debug(format!("Command function: {}", command.command.actf));
+            logger.debug(format!("\nCommand.Command: {:?}", command.command)).await;
+            logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf)).await;
+            logger.debug(format!("Command function: {}", command.command.actf)).await;
 
             async fn special_fn_handling(command: &Command) -> Result<Command, String> {
                 let logger = acquire_logger!("Core");
@@ -841,7 +870,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                 //> We pass the origin here just in case it isn't in the command instruction so then we can easily trace it
                                 let node_task: NodeTask = NodeTask::new(command.client_key.clone(), command.parity_id.clone(), command.command.clone());
                                 {
-                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
                                 }
                             }
@@ -849,7 +878,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             if command.client_key == command.command.target.to_string() {
                                 //> Handle the cases were we are sending some comand to a target
                                 {
-                                    let mut tasks_manager = TASKS_MANAGER.lock();
+                                    let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
                                     task.sended();
                                 }
@@ -861,8 +890,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             // -> Here theoretically the client_key of the command is the target of the command that cause this response
                             if command.client_key == command.command.target.to_string() {
                                 {
-                                    let mut tasks_manager = TASKS_MANAGER.lock();
-
+                                    let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     println!("Attempt to remove task: {} from node: {}", &command.parity_id, &command.client_key);
                                     tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
                                     println!("Task: {} removed", &command.parity_id);
@@ -888,7 +916,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             return Ok(Some(c));
                         },
                         Err(e) => {
-                            logger.exception(e); // TODO >>> Maybe implement something here to prevent spamming the buffer with warns if the methods aren't allowed
+                            logger.exception(e).await; // TODO >>> Maybe implement something here to prevent spamming the buffer with warns if the methods aren't allowed
                         },
                     };
                     continue;
@@ -905,34 +933,26 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
 
-                    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone());
+                    let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            logger.exception(format!("Error trying to check if the parity id is registered, command: {:?}, Error: {:?}", command, e)).await;
+                            let res: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying to check if the parity id is registered for the command: {:?}", command));
+                            return Ok(Some(res));
+                        },
+                    };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
                     if !command_is_not_registry {
-                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
-                        match get_response(command.clone()) {
-                            Response::Command(c) => {
-                                if c.client_key == command.client_key {
-                                    return Ok(Some(c));
-                                } else {
-                                    logger.info("Response is None!".to_string());
-                                    let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    return Ok(Some(res));
-                                }
-                            },
-                            Response::None => {
-                                logger.info("Response is None!".to_string());
-                                let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                return Ok(Some(res));
-                            },
-                        }
+                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
+                        return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
                     } else {
                         let mut command_patterns: NetworkMap;
                         {
-                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
                         }
-                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target, &mut command_patterns);
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, target, &mut command_patterns).await;
                         for command in commands {
                             match command {
                                 CommandVariant::Command(res) => {
@@ -952,9 +972,9 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                 CommandTarget::Host => {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                     // < WARNING: This locks command_patterns!
-                    let res: Command = host_commands_processing(&command);
+                    let res: Command = host_commands_processing(&command).await;
                     update_task_table(&res, false).await; // update to the tasks is done here in case res is a response to something pendent to this client
-                    logger.debug(format!("Sending back: {:?}", res));
+                    logger.debug(format!("Sending back: {:?}", res)).await;
                     return Ok(Some(res));
                 },
                 CommandTarget::Origin => {
@@ -965,46 +985,47 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     // < WANING: This locks tasks_manager!
 
                     {
-                        let mut tasks_manager = TASKS_MANAGER.lock();
+                        let mut tasks_manager = TASKS_MANAGER.lock().await;
                         println!("Current parity id to match to a task: {}", &command.parity_id);
                         // tasks_manager.show_node_tasks(&command.client_key);
-                        real_origin = tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id).unwrap().clone();
+                        real_origin = match tasks_manager.get_node_task_origin(&command.client_key, &command.parity_id) {
+                            Ok(ro) => ro,
+                            Err(e) => {
+                                logger.exception(format!("Error trying to get the node task origin for command: {:?}, Error: {:?}", command, e)).await;
+                                let res: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying to check if the parity id is registered for the command: {:?}", command));
+                                return Ok(Some(res));
+                            },
+                        };
                     }
 
                     // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
                     enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
 
-                    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone());
+                    let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone()).await {
+                        Ok(cinr) => cinr,
+                        Err(e) => {
+                            logger.exception(format!("Error trying to check if the parity id is registered for the command: {:?}", command)).await;
+                            let res: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying to check if the parity id is registered for the command: {:?}", command));
+                            return Ok(Some(res));
+                        },
+                    };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
                     if !command_is_not_registry {
-                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
-                        match get_response(command.clone()) {
-                            Response::Command(c) => {
-                                if c.client_key == command.client_key {
-                                    return Ok(Some(c));
-                                } else {
-                                    logger.info("Response is None!".to_string());
-                                    let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                    return Ok(Some(res));
-                                }
-                            },
-                            Response::None => {
-                                logger.info("Response is None!".to_string());
-                                let res = create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone());
-                                return Ok(Some(res));
-                            },
-                        }
+                        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
+                        return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
                     } else {
                         println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
                         command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
 
+                        // Get the command patterns map index with all network map variants:
                         let mut command_patterns: NetworkMap;
                         {
-                            command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
+                            command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
                         }
-                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string(), &mut command_patterns);
+
+                        let commands: Vec<CommandVariant> = redirect_commands_processing(&command, &real_origin.to_string(), &mut command_patterns).await;
 
                         for com in commands {
                             match com {
@@ -1014,7 +1035,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
 
                                     if res.command.status == "Failure" {
                                         {
-                                            let mut tasks_manager = TASKS_MANAGER.lock();
+                                            let mut tasks_manager = TASKS_MANAGER.lock().await;
                                             println!("Attempt to remove task: {} from node: {} cause it cause failure", &command.parity_id, &command.client_key);
                                             tasks_manager.remove_task_from_node(&command.client_key, &command.parity_id.clone());
                                             println!("Task: {} removed", &command.parity_id);
@@ -1026,7 +1047,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                     println!("Tasks updated");
 
                                     {
-                                        let mut tasks_manager = TASKS_MANAGER.lock();
+                                        let mut tasks_manager = TASKS_MANAGER.lock().await;
                                         tasks_manager.show_node_tasks(&command.client_key);
                                     }
 
@@ -1050,7 +1071,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         format!("Command: {:?}, isn't valid, you cant send a command to host with a target origin, this isn't allowed!", command.command)
                     );
                     update_task_table(&res, false).await; // update to the tasks is done here in case res is a response to something pendent to this client
-                    logger.debug(format!("Sending back: {:?}", &res));
+                    logger.debug(format!("Sending back: {:?}", &res)).await;
                     let client_key = res.client_key.clone();
                     return Ok(Some(res));
                     handle_client_disconnect(&client_key);
@@ -1087,6 +1108,8 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
     // Split the stream into reading and writing parts
     let (mut reader, mut writer) = stream.into_split();
 
+    let client_id_clone = client_id.clone();
+
     let read_task = tokio::spawn(async move {
         loop {
             let mut size_buffer = [0u8; 4];
@@ -1095,10 +1118,10 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
             if let Err(e) = reader.read_exact(&mut size_buffer).await {
                 match e.kind() {
                     ErrorKind::UnexpectedEof => {
-                        println!("Client {} disconnected", client_id);
+                        println!("Client {} disconnected", client_id_clone);
                     },
                     _ => {
-                        logger.exception(format!("Failed to read size from client {}: {:?}", client_id, e));
+                        logger.exception(format!("Failed to read size from client {}: {:?}", client_id_clone, e)).await;
                     },
                 }
                 handle_client_disconnect(&client_key);
@@ -1107,14 +1130,14 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
             let data_size = u32::from_be_bytes(size_buffer) as usize;
             if data_size > MAX_DATA_SIZE {
-                logger.exception(format!("Client {} sent data too large: {}", client_id, data_size));
+                logger.exception(format!("Client {} sent data too large: {}", client_id_clone, data_size)).await;
                 handle_client_disconnect(&client_key);
                 break;
             }
 
             let mut data_buffer = vec![0u8; data_size];
             if let Err(e) = reader.read_exact(&mut data_buffer).await {
-                logger.exception(format!("Failed to read payload from client {}: {}", client_id, e));
+                logger.exception(format!("Failed to read payload from client {}: {}", client_id_clone, e)).await;
                 handle_client_disconnect(&client_key);
                 break;
             }
@@ -1132,16 +1155,16 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                             if let Some(res) = response {
                                 let command_response_json: String = json!(res).to_string();
                                 let guard = cloned_ref_client_txs.lock().await;
-                                if let Some(tx) = guard.get(&client_id) {
+                                if let Some(tx) = guard.get(&client_id_clone) {
                                     // TODO >>> Verify if the tx will correctly send the response for the writer.
                                     // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
                                     // > from multiple sources without cause some kind of racing condition between the senders, this way
                                     // > We make the structure simpler and more event driven, more reactive and simpler than having to have multiple layers of nested senders all over the place.
                                     if let Err(e) = tx.send(command_response_json).await {
-                                        logger.exception(format!("Error sending response to client {}: {}", client_id, e));
+                                        logger.exception(format!("Error sending response to client {}: {}", client_id_clone, e)).await;
                                     }
                                 } else {
-                                    logger.exception(format!("No client sender found for {}", client_id));
+                                    logger.exception(format!("No client sender found for {}", client_id_clone)).await;
                                 }
                             } else {
                                 // TODO >>> Handle the cases were the some is none!
@@ -1150,24 +1173,24 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                         },
                         Err(e) => {
                             // TODO >>> Send an copy of the tx that connects to the client socket reactive task rx
-                            logger.warn(format!("Error handling command for client {}: {}", client_id, e));
+                            logger.warn(format!("Error handling command for client {}: {}", client_id_clone, e)).await;
                         },
                     }
                 },
                 Err(e) => {
-                    logger.warn(format!("Failed to deserialize command from client {}: {}", client_id, e));
+                    logger.warn(format!("Failed to deserialize command from client {}: {}", client_id_clone, e)).await;
                 },
             }
         }
     });
 
     // >---------------------------------------------------------------------------------------------------------
-
-    let client_id: String = "".to_string();
     let mut client_key: String = "".to_string();
     let logger = acquire_logger!("Core");
 
     // let command_response_json: String = json!(data).to_string();
+
+    let client_id_clone = client_id.clone();
 
     // A task for writing responses from the transposer back to the client
     let write_task = tokio::spawn(async move {
@@ -1176,7 +1199,7 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                 continue;
             }
 
-            logger.debug(format!("📨 Sending to client {}: {}", client_id, command_response_json));
+            logger.debug(format!("📨 Sending to client {}: {}", client_id_clone, command_response_json)).await;
 
             // Check if the connection was closed
             if writer.peer_addr().is_err() {
@@ -1188,14 +1211,14 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
             // Send the size of the data
             if let Err(e) = writer.write_all(&size_buffer).await {
-                logger.exception(format!("Error writing size to client {}: {}", client_id, e));
+                logger.exception(format!("Error writing size to client {}: {}", client_id_clone, e)).await;
                 handle_client_disconnect(&client_key);
                 break;
             }
 
             // Send the actual data
             if let Err(e) = writer.write_all(command_response_json.as_bytes()).await {
-                logger.exception(format!("Error writing to client {}: {}", client_id, e));
+                logger.exception(format!("Error writing to client {}: {}", client_id_clone, e)).await;
                 handle_client_disconnect(&client_key);
                 break;
             }
@@ -1210,8 +1233,6 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
         _ = write_task => {},
     }
 
-    let client_id = "".to_string();
-
     // -> Once either side is done, remove the client from the map
     {
         let mut guard = client_txs.lock().await;
@@ -1219,7 +1240,7 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
     }
 
     let logger = acquire_logger!("Core");
-    logger.info(format!("🔌 Removed client {} from map.", client_id));
+    logger.info(format!("🔌 Removed client {} from map.", client_id)).await;
 
     Ok(())
 }

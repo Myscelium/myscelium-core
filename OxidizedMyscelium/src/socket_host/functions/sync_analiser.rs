@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use crate::NodeStatus;
 use rusqlite::types::Value;
 
-use crate::{common::client_manager::manager::get_all_clients, handle_manager_client_error, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
+use crate::{common::client_manager::manager::get_all_clients, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
 
-pub fn sync_verifier() {
+pub async fn sync_verifier() {
     // -> Try to get the clients registred in the database
-    let mut clients = match get_all_clients() {
+    let mut clients = match get_all_clients().await {
         Ok(c) => c,
         Err(e) => {
             panic!("Error getting clients in the sync analiser")
@@ -19,7 +19,7 @@ pub fn sync_verifier() {
 
     // Get the global network:
     {
-        let command_patterns = HOST_COMMAND_PATTERNS.lock();
+        let command_patterns = HOST_COMMAND_PATTERNS.lock().await;
         actual_patterns = command_patterns.clone()
     }
 
@@ -61,7 +61,7 @@ pub fn sync_verifier() {
             );
 
             {
-                let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+                let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
                 controller.get_client(&client.client_key).unwrap().update_sync_status(false);
                 client.change_sync_to(false);
                 client.save_into_db();
@@ -69,7 +69,7 @@ pub fn sync_verifier() {
             }
         } else {
             {
-                let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
+                let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
                 controller.get_client(&client.client_key).unwrap().update_sync_status(true);
                 client.change_sync_to(true);
                 client.save_into_db();

@@ -2,13 +2,13 @@ use lazy_static::lazy_static;
 
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator};
+use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
 
 use rusqlite::params;
 
 use std::sync::Arc;
 
-use parking_lot::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 use rusqlite::{Connection, Result};
 
@@ -26,16 +26,15 @@ lazy_static! {
     static ref BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref SQL_POOL: Mutex<SQLiteConnectionPool> = Mutex::new(SQLiteConnectionPool::empty());
+    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
-pub fn set_workers_num(n_workers: u32) {
-    let mut default_num_of_workers = NUM_WORKERS.lock();
-
+pub async fn set_workers_num(n_workers: u32) {
+    let mut default_num_of_workers = NUM_WORKERS.lock().await;
     *default_num_of_workers = n_workers;
 }
 
-pub fn client_channel_mananger_initialize_table(buffer_path: String) {
+pub async fn client_channel_mananger_initialize_table(buffer_path: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);
     let mutex2 = Mutex::new(0);
@@ -60,11 +59,11 @@ pub fn client_channel_mananger_initialize_table(buffer_path: String) {
         }
     });
 
-    set_new_path_to_buffer_db!(SQL_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME);
+    set_new_path_to_buffer_db!(SQL_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME).await;
 
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS Channels (ID INT PRIMARY KEY, OwnerClientKey TEXT, ChanelName TEXT, ChannelPurpose TEXT, Status TEXT, ChannelLifetime NUMBER, LastContact NUMBER, Streaming BOOL)",
+            "CREATE TABLE IF NOT EXISTS Channels (ID INT PRIMARY KEY AUTOINCREMENT, OwnerClientKey TEXT, ChanelName TEXT, ChannelPurpose TEXT, Status TEXT, ChannelLifetime NUMBER, LastContact NUMBER, Streaming BOOL)",
             params![],
         );
 
@@ -76,7 +75,10 @@ pub fn client_channel_mananger_initialize_table(buffer_path: String) {
                 eprintln!("An error occurred while scheduling the command in the Channels table: {}", e);
             },
         };
-    });
+
+        ((), conn)
+    })
+    .await;
 }
 
 #[derive(Debug, Clone)]
@@ -179,8 +181,8 @@ impl Channel {
     fn get_channel_by_id(channel_id: u32) {}
 }
 
-pub fn check_if_channel_key_exists(client_key: String) -> bool {
-    let client_keys: Vec<String> = get_channels_keys_registered();
+pub async fn check_if_channel_key_exists(client_key: String) -> bool {
+    let client_keys: Vec<String> = get_channels_keys_registered().await;
 
     if client_keys.contains(&client_key) {
         return true;
@@ -189,8 +191,8 @@ pub fn check_if_channel_key_exists(client_key: String) -> bool {
     }
 }
 
-fn get_channels_keys_registered() -> Vec<String> {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+async fn get_channels_keys_registered() -> Vec<String> {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let mut keys: Vec<String> = Vec::new();
 
         {
@@ -207,12 +209,13 @@ fn get_channels_keys_registered() -> Vec<String> {
             }
         }
 
-        keys
+        (keys, conn)
     })
+    .await
 }
 
-fn get_registered_ids() -> Vec<u32> {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+async fn get_registered_ids() -> Vec<u32> {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let mut ids: Vec<u32> = Vec::new();
 
         {
@@ -229,22 +232,21 @@ fn get_registered_ids() -> Vec<u32> {
             }
         }
 
-        ids
+        (ids, conn)
     })
+    .await
 }
 
-pub fn registry_client(channel_id: u32, owner_key: String, channel_name: String, channel_purpose: ChannelPurpose, channel_status: ChannelStatus, channel_lifetime: f64, last_contact: f64) {
-    with_connection!(SQL_POOL, |conn: &rusqlite::Connection| {
+pub async fn registry_client(channel_id: u32, owner_key: String, channel_name: String, channel_purpose: ChannelPurpose, channel_status: ChannelStatus, channel_lifetime: f64, last_contact: f64) {
+    with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         // let now = Utc::now();
         // let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
-        let registered_ids = get_registered_ids();
-
-        let mut id_generator = UniqueIdGenerator { registered_ids: registered_ids };
+        let registered_ids = get_registered_ids().await;
 
         let result = conn.execute(
-            "INSERT INTO Channels (ID, OwnerClientKey, ChanelName, ChannelPurpose, Status, ChannelLifetime, LastContact, Streaming) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-            params![id_generator.gen(), owner_key, channel_name, channel_purpose, channel_status, channel_lifetime, last_contact],
+            "INSERT INTO Channels (OwnerClientKey, ChanelName, ChannelPurpose, Status, ChannelLifetime, LastContact, Streaming) VALUES (?, ?, ?, ?, ?, ?, ?);",
+            params![owner_key, channel_name, channel_purpose, channel_status, channel_lifetime, last_contact],
         );
 
         match result {
@@ -259,7 +261,10 @@ pub fn registry_client(channel_id: u32, owner_key: String, channel_name: String,
                 eprintln!("An error occurred while inserting the Log in the table Channels: {}", e);
             },
         };
+
+        ((), conn)
     })
+    .await
 }
 
 // fn get_channels_by_key(client_key: String) -> Result<Client, ClientError> {

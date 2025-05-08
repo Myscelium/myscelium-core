@@ -5,8 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use std::io::Error;
 use std::io::Write;
+use std::io::{self, Error};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,54 +14,47 @@ use std::path::{Path, PathBuf};
 use crate::common::functions::advanced_lockers::smart_lock;
 
 lazy_static! {
-    static ref FILE: Arc<Mutex<Option<File>>> = Arc::new(Mutex::new(None));
+    static ref FILE: Arc<tokio::sync::Mutex<Option<File>>> = Arc::new(tokio::sync::Mutex::new(None));
 }
 
-pub fn initialize_logs_file(file_path: &str) -> Result<(), Error> {
-    let mut full_path = Path::new(file_path).to_path_buf();
+pub async fn initialize_logs_file(path: &str) -> io::Result<()> {
+    let mut file_path = PathBuf::from(path);
 
-    // Debug print to understand the path structure
-    println!("Received path: {:?}", full_path);
+    // if it exists and is really a directory → true
+    // if it doesn’t exist → assume it’s a directory you plan to create
+    // any other error we just bubble up
+    let is_dir = match fs::metadata(&file_path) {
+        Ok(m) => m.is_dir(),
+        Err(ref e) if e.kind() == io::ErrorKind::NotFound => true,
+        Err(e) => return Err(e),
+    };
 
-    if !full_path.ends_with("logs.txt") {
-        // If the path does not end with 'logs.txt', we assume it's a directory and append the filename
-        if !full_path.is_dir() {
-            // Append a directory separator if not present
-            full_path.push(""); // Pushing an empty string appends the default directory separator
-        }
-        full_path.push("logs.txt"); // Now append the filename
+    if is_dir {
+        file_path.push("logs.txt");
     }
 
-    // At this point, full_path should end with 'logs.txt', and its parent is the directory we want to ensure exists
-    if let Some(parent_dir) = full_path.parent() {
-        // Debug print to see what directory we are trying to create
-        println!("Attempting to create directory: {:?}", parent_dir);
+    // now make sure parent exists…
+    let parent = file_path.parent().unwrap(); // always Some, even for "logs.txt"
+    fs::create_dir_all(parent)?;
 
-        fs::create_dir_all(parent_dir)?;
-    } else {
-        return Err(Error::new(std::io::ErrorKind::NotFound, "No parent directory found."));
-    }
+    println!("Opening logfile at {:?}", file_path);
+    let file = OpenOptions::new().create(true).append(true).open(&file_path)?;
 
-    // Debug print the final file path
-    println!("Final file path: {:?}", full_path);
-
-    let file = OpenOptions::new().create(true).append(true).open(&full_path)?;
-
-    // Use smart_lock to safely update FILE with the opened file
-    let mut file_option = FILE.lock().unwrap();
-    *file_option = Some(file);
-
+    let mut guard = FILE.lock().await;
+    *guard = Some(file);
     Ok(())
 }
 
-pub fn write_to_file(text: String) {
-    let file = &FILE;
-    smart_lock(file, |file_option: &mut Option<File>| {
-        if let Some(f) = file_option {
-            writeln!(f, "{}", text).unwrap();
-        } else {
-            // Handle the case where the file is not initialized
-            println!("File is not initialized.");
-        }
-    });
+pub async fn write_to_file(text: String) -> io::Result<()> {
+    let mut guard = FILE.lock().await;
+    if let Some(f) = guard.as_mut() {
+        let line = format!("{}\n", text);
+        let mut file = f.try_clone()?; // owned handle for the blocking task
+        tokio::task::spawn_blocking(move || {
+            file.write_all(line.as_bytes())?;
+            file.flush()
+        })
+        .await??; // await the JoinHandle, then the io::Result
+    }
+    Ok(())
 }
