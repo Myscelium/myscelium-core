@@ -14,6 +14,7 @@ use parking_lot::{Mutex, MutexGuard};
 use serde_json::Value;
 
 use std::collections::HashMap;
+use std::f64::consts::E;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
@@ -169,7 +170,10 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
     {
         if !command_is_not_registry {
             // If command is already registered, remove it from the down buffer schedule
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
+            match enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await {
+                Ok(_) => {},
+                Err(e) => return Err(e.into()),
+            };
             return Err(ProcessError::CommandAlreadyProcessed(down_command.parity_id.clone()));
         }
     }
@@ -240,7 +244,7 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             let mut args_pattern: IndexMap<String, String> = IndexMap::new();
 
             {
-                let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock();
+                let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                 let host_handlers = global_command_patterns.get_node_handlers().unwrap();
                 let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
 
@@ -301,8 +305,8 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             logger.debug(format!("Received response: {:?}", c)).await;
             let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
             let up_command: UpCommand = UpCommand::from_command(command);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
         },
         ProcessResult::List(l) => {
             for c in l {
@@ -319,19 +323,19 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
                     ProcessResult::CommandInstructions(c) => {
                         let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
                         let up_command: UpCommand = UpCommand::from_command(command);
-                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
                     },
                 }
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
             }
         },
         ProcessResult::Error(e) => {
             logger.debug(format!("Receive a error: {:?}", e)).await;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
         },
         ProcessResult::Empty => {
             logger.debug(format!("Response is empty, continuing!")).await;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
         },
     }
 

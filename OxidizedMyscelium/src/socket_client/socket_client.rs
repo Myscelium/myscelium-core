@@ -4,7 +4,7 @@ use crate::common::enhanced_buffer::utilities::{Command, CommandError, CommandIn
 
 use super::client_logger::log_handler::Logger;
 
-use crate::{CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
+use crate::{init_client_reactive_activator, CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
 
 use core::{fmt, panic};
 use dashmap::DashMap;
@@ -150,12 +150,12 @@ pub async fn initialize_client_buffer(buffer_location: String) {
 ///
 /// # Returns
 /// - A `HashMap` containing the available command patterns.
-pub fn get_available_handlers_registered() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
+pub async fn get_available_handlers_registered() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
     let global_command_patterns: HashMap<String, IndexMap<std::string::String, std::string::String>>;
 
     {
         println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
-        let command_patterns = CLIENT_NODE_CONFIGS.lock();
+        let command_patterns = CLIENT_NODE_CONFIGS.lock().await;
         println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
         global_command_patterns = match command_patterns.get_node_handlers() {
             Ok(h) => h,
@@ -415,11 +415,13 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
 
         let response: Command = serde_json::from_str(&msg).unwrap();
 
+        // println!("Command received on the client side: {:?}", response);
+
         // -> Match command status:
         match response.command.status {
             CommandStatus::Failure => {
                 logger.exception(format!("\nAn error occurred in host, the error was: {}\n", response.command.message));
-                enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id);
+                enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                 CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
@@ -433,10 +435,14 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
             CommandType::ExternalFunction => {
                 let down_command = DownCommand::from_command(response);
                 logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command));
-                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
                 {
-                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
-                    react_actv.start();
+                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
+                    if let Some(ractv) = react_actv.as_ref() {
+                        ractv.start();
+                    } else {
+                        panic!("Reactive activativator controller isn't initialized and at this point it is an issue!")
+                    }
                 }
                 continue;
             },
@@ -445,10 +451,14 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                 // > Also we can use a similar system to sync multiple hosts
                 logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", response.command.actf));
                 let down_command = DownCommand::from_command(response);
-                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
                 {
-                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
-                    react_actv.start();
+                    let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
+                    if let Some(ractv) = react_actv.as_ref() {
+                        ractv.start();
+                    } else {
+                        panic!("Reactive activativator controller isn't initialized and at this point it is an issue!")
+                    }
                 }
                 continue;
             },
@@ -457,7 +467,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                     if response.command.actf == "C210".to_string() {
                         logger.info(format!("Received Confirmation! Removing command {} of client: {} from buffer up", response.parity_id, response.client_key));
                         COMMANDS_SENT_WAITING_RESPONSE.remove(&response.parity_id);
-                        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id);
+                        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
                         continue;
                     }
                 }
@@ -793,6 +803,9 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
 /// - The client will continue to check for scheduled commands as long as `CLIENT_IS_RUNNING` is true.
 pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option<String> {
     // Create a global Mutex for demonstration
+
+    // Load the reactive activator only in the process that bind the host socket process and that should handle the transposition of commands.
+    init_client_reactive_activator().await;
 
     // Spawn a thread to periodically check for deadlocks
     thread::spawn(|| async {

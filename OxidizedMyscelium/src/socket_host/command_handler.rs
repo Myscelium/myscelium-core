@@ -329,7 +329,7 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
 ///
 /// # Returns
 /// - A `Command` object representing the response for the common command.
-fn handle_common_function(command: &Command) -> Command {
+async fn handle_common_function(command: &Command) -> Command {
     // >--------------------------------------------------------------------------------------------------------------
     // > Schedule to process
 
@@ -348,8 +348,12 @@ fn handle_common_function(command: &Command) -> Command {
     println!("Initializating transposer!");
 
     {
-        let react_actv = HOST_BUFFER_ACTIVATION_CONTROLLER.lock();
-        react_actv.start();
+        let react_actv = HOST_BUFFER_ACTIVATION_CONTROLLER.lock().await;
+        if let Some(ractv) = react_actv.as_ref() {
+            ractv.start();
+        } else {
+            panic!("Host buffer reactive activation controller for trasnposition should have beein initialized already up to this point!")
+        }
     }
 
     // >--------------------------------------------------------------------------------------------------------------
@@ -473,7 +477,7 @@ pub async fn host_commands_processing(command: &Command) -> Command {
 
         //> If resp target isn't origin, nor host then:
         if vec!["origin", "host"].contains(&resp_target.as_str()) {
-            response = handle_common_function(&command);
+            response = handle_common_function(&command).await;
             return response;
         }
 
@@ -512,6 +516,6 @@ pub async fn host_commands_processing(command: &Command) -> Command {
         }
     };
 
-    response = handle_common_function(&command);
+    response = handle_common_function(&command).await;
     return response;
 }

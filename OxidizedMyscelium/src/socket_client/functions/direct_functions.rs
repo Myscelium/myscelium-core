@@ -130,7 +130,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
 
                 {
-                    let mut command_patterns = CLIENT_NODE_CONFIGS.lock();
+                    let mut command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                     println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
                     logger.info(format!("Lock In Host Command Patterns!")).await;
                     command_patterns.change_node_status(NodeStatus::Online);
@@ -175,7 +175,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
             return Ok(ProcessResult::Empty);
         },
         "get_socket_client_available_handlers" => {
@@ -189,7 +189,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
 
             println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
             {
-                let command_patterns = CLIENT_NODE_CONFIGS.lock();
+                let command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                 println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
                 actual_patterns = command_patterns.to_value();
             }
@@ -197,7 +197,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
 
             logger.info(format!("Successfully actualize the host available commands!")).await;
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
 
             let mut filtered_commands_map: HashMap<String, Value> = HashMap::new();
             filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);

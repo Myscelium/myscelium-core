@@ -355,7 +355,7 @@ pub async fn buffer_up_list_schedule() -> Result<Vec<UpCommand>, BufferError> {
     .await
 }
 pub async fn buffer_up_schedule(command: UpCommand) -> Result<(), BufferError> {
-    BufferHistory::new("UP").log_add_operation(&command.client_key, &command.parity_id, command.command_id.as_ref(), &command.command);
+    BufferHistory::new("UP").log_add_operation(&command.client_key, &command.parity_id, command.command_id.as_ref(), &command.command).await;
     with_connection!(BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = 'loading: {
             let registered_ids = get_registred_ids(&conn);
@@ -452,7 +452,9 @@ pub async fn buffer_up_clear_old_commands() -> Result<(), BufferError> {
         let command_timestamp = up_command.created_time;
         let time_difference = (current_timestamp - command_timestamp);
         if time_difference >= 240.0 {
-            BufferHistory::new("UP").log_remove_operation(&up_command.client_key, &up_command.parity_id, up_command.command_id.as_ref(), &up_command.command);
+            BufferHistory::new("UP")
+                .log_remove_operation(&up_command.client_key, &up_command.parity_id, up_command.command_id.as_ref(), &up_command.command)
+                .await;
             buffer_up_remove_schedule_by_id(up_command.command_id.unwrap());
             println!("\nCommand received from host: {} from client: {}, too old, clearing from the buffer up schedule!\n", up_command.parity_id, up_command.client_key);
         }
@@ -462,7 +464,7 @@ pub async fn buffer_up_clear_old_commands() -> Result<(), BufferError> {
 }
 
 pub async fn buffer_up_remove_schedule_by_id(id: u32) -> Result<(), BufferError> {
-    BufferHistory::new("UP").log_remove_operation(&"".to_string(), &"".to_string(), Some(id).as_ref(), &format!("Remove ID: {}", id));
+    BufferHistory::new("UP").log_remove_operation(&"".to_string(), &"".to_string(), Some(id).as_ref(), &format!("Remove ID: {}", id)).await;
     with_connection!(BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute("DELETE from ClientCommandsTosend where ID = ?", params![id]);
         let result = match result {
@@ -482,7 +484,7 @@ pub async fn buffer_up_remove_schedule_by_id(id: u32) -> Result<(), BufferError>
 }
 
 pub async fn buffer_up_remove_schedule_by_parity_id(client_key: &String, parity_id: &String) -> Result<(), BufferError> {
-    BufferHistory::new("UP").log_remove_operation(&client_key, &parity_id, None.as_ref(), &"Remove From Schedule".to_string());
+    BufferHistory::new("UP").log_remove_operation(&client_key, &parity_id, None.as_ref(), &"Remove From Schedule".to_string()).await;
 
     with_connection!(BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute("DELETE from ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?", params![client_key, parity_id]);

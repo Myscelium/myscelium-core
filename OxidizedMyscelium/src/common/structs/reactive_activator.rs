@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -7,6 +8,16 @@ pub struct ReactiveActivator {
     thread_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     action: Arc<dyn Fn() + Send + Sync>,
     condition: Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl fmt::Debug for ReactiveActivator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReactiveActivator")
+            .field("thread_handle", &self.thread_handle) // this *is* Debug
+            .field("action", &"<dyn Fn>") // placeholder
+            .field("condition", &"<dyn Fn -> bool>") // placeholder
+            .finish()
+    }
 }
 
 impl ReactiveActivator {

@@ -153,7 +153,7 @@ pub async fn schedule(command: &CommandInstructions, priority: u8, client_key: S
 
     let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await?;
     let command_to_schedule = UpCommand::new(&new_client_key, &parity_id, priority, &to_string(&response).unwrap());
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
+    enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone()).await;
 
     logger.info(format!("Command: {:?} scheduled!", command_to_schedule)).await;
 

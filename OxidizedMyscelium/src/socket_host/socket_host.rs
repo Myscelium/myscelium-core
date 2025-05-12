@@ -540,9 +540,12 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
                 return create_special_command_response!(client_key, "C207"); // TODO >>> Improve the error handling of this error!
             },
         };
+
         if !(up_schedule.len() > 0) {
             return create_special_command_response!(client_key, "C207"); // If don't have any response to send send C207 that is a ping confirmation
         }
+
+        println!("Collected {:?} up_Commands to send for the client!", up_schedule.len());
 
         let command_response = &up_schedule[0];
         let response_command = match Command::from_up_command(&command_response) {
@@ -554,7 +557,7 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
             },
         };
 
-        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&client_key, &response_command.parity_id);
+        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&client_key, &response_command.parity_id).await;
 
         return response_command;
     } else {
@@ -768,17 +771,19 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         // > if is not first sync and yes,change client status to not sync
         // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
+        let sync_cooldown: i64 = 5i64;
+
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
             if !sync {
                 logger.debug(format!("\nClient: {:?} isn't sync\n", &command.client_key)).await;
 
                 let current_time = Utc::now();
-                let should_attempt_sync = client_last_sync.map_or(true, |last_sync| current_time - last_sync > Duration::seconds(30));
+                let should_attempt_sync = client_last_sync.map_or(true, |last_sync| current_time - last_sync > Duration::seconds(sync_cooldown));
 
                 if should_attempt_sync {
                     logger.info(format!("Try to sync with: {}", command.client_key)).await;
-                    send_network_available_commands(command.client_key.clone());
+                    send_network_available_commands(command.client_key.clone()).await;
 
                     match update_client_sync_attempt(&command.client_key, &logger).await {
                         Ok(()) => {}, // Once sync, continue the default procedure loop!
@@ -798,7 +803,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         .info(format!(
                             "WARNING: Client: {:?} not sync yet, trying again in: {:?} seconds!",
                             &command.client_key,
-                            (Duration::seconds(30) - (current_time - last_sync)).num_seconds()
+                            (Duration::seconds(sync_cooldown) - (current_time - last_sync)).num_seconds()
                         ))
                         .await;
                 }
