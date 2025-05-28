@@ -48,7 +48,18 @@ pub async fn inialize_client_status_table_table(status_db_spath: String) {
 
     with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS ClientStates (ID INT PRIMARY KEY, Name TEXT, Key TEXT, NetMap TEXT, ClientNodeConfigs TEXT, IsInitialized BOOL, IsReady BOOL, IsConnected BOOL, IsSync BOOL, LastChange NUMBER)",
+            "CREATE TABLE IF NOT EXISTS ClientStates (
+                ID INT PRIMARY KEY, 
+                Name TEXT, 
+                Key TEXT, 
+                NetMap TEXT, 
+                ClientNodeConfigs TEXT, 
+                IsInitialized BOOL, 
+                IsReady BOOL, 
+                IsConnected BOOL, 
+                IsSync BOOL, 
+                LastChange NUMBER
+            )",
             params![],
         );
 
@@ -162,7 +173,17 @@ impl ClientState {
             let now = Utc::now();
             let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
             let result = conn.execute(
-                "UPDATE ClientStates SET Name = ?, Key = ?, NetMap = ?, ClientNodeConfigs = ?, IsInitialized = ?, IsReady = ?, IsConnected = ?, IsSync = ?, LastChange = ? WHERE ID = ?",
+                "UPDATE ClientStates SET 
+                    Name = ?, 
+                    Key = ?, 
+                    NetMap = ?, 
+                    ClientNodeConfigs = ?, 
+                    IsInitialized = ?,
+                    IsReady = ?, 
+                    IsConnected = ?, 
+                    IsSync = ?, 
+                    LastChange = ? 
+                WHERE ID = ?",
                 params![
                     self.name.clone().unwrap_or("".to_string()),
                     self.key.clone().unwrap_or("".to_string()),
@@ -210,7 +231,7 @@ impl ClientState {
 
     pub async fn save_in_storage(&self) -> Result<(), StateManagerError> {
         if self.already_exists().await? && self.is_fully_initialized() {
-            self.update_schedule_with_this()?;
+            self.update_schedule_with_this().await?;
             return Ok(());
         }
 
@@ -224,7 +245,18 @@ impl ClientState {
             let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
             let result = conn.execute(
-                "INSERT INTO ClientStates (ID, Name, Key, NetMap, ClientNodeConfigs, IsInitialized, IsReady, IsConnected, IsSync, LastChange) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                "INSERT INTO ClientStates (
+                    ID, 
+                    Name, 
+                    Key, 
+                    NetMap, 
+                    ClientNodeConfigs, 
+                    IsInitialized, 
+                    IsReady, 
+                    IsConnected, 
+                    IsSync, 
+                    LastChange
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 params![
                     0,
                     self.name.clone().unwrap_or("".to_string()),
@@ -290,7 +322,7 @@ impl ClientState {
         .await
     }
 
-    pub fn update_schedule_with_this(&self) -> Result<(), StateManagerError> {
+    pub async fn update_schedule_with_this(&self) -> Result<(), StateManagerError> {
         with_connection!(STATES_BUFFER_POOL, |conn: rusqlite::Connection| async {
             // TODO >>> Add the correct parameters here
 
@@ -301,7 +333,17 @@ impl ClientState {
             let now = Utc::now();
             let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
             let result = conn.execute(
-                "UPDATE ClientStates SET Name = ?, Key = ?, NetMap = ?, ClientNodeConfigs = ?, IsInitialized = ?, IsReady = ?, IsConnected = ?, IsSync = ?, LastChange = ? WHERE ID = ?",
+                "UPDATE ClientStates SET 
+                    Name = ?, 
+                    Key = ?, 
+                    NetMap = ?, 
+                    ClientNodeConfigs = ?, 
+                    IsInitialized = ?, 
+                    IsReady = ?, 
+                    IsConnected = ?, 
+                    IsSync = ?, 
+                    LastChange = ? 
+                WHERE ID = ?",
                 params![
                     self.name.clone().unwrap_or("".to_string()),
                     self.key.clone().unwrap_or("".to_string()),
@@ -325,7 +367,8 @@ impl ClientState {
             };
 
             ((), conn)
-        });
+        })
+        .await;
         Ok(())
     }
 }

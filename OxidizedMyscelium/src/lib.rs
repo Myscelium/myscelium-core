@@ -92,7 +92,7 @@ lazy_static! {
     pub static ref CLIENT_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new(); // TODO >>> Verify if this doesn't need to switch to tokio mutex because of the async code that uses it!
     pub static ref CLIENT_IS_CONNECTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref MEDIAN_CON_RESP_TIME: Arc<Mutex<Vec<f64>>> = Arc::new(Mutex::new(vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
-    pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
+    pub static ref HOST_ALLOWED_COMMANDS: Arc<tokio::sync::Mutex<NetworkMap>> = Arc::new(tokio::sync::Mutex::new(NetworkMap::new(Vec::new())));
 
     // HOST:
     pub static ref HOST_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));

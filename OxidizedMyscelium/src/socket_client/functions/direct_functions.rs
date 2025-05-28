@@ -47,13 +47,11 @@ impl From<BufferError> for ProcessError {
 
 pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String, command_id: u32) -> Result<ProcessResult, ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
-
     logger.info(format!("Initializing Direct Function processing!")).await;
 
-    // TODO >>> Change this for a mathc
+    // TODO >>> Change this for a match
 
-    // -> SESSION SYNCHRONIZATION
-
+    // -> SESSION SYNCHRONIZATION:
     match c.actf.as_str() {
         "update_available_host_commands" => {
             logger.info(format!("Receive Host Allowed Commands")).await;
@@ -62,12 +60,15 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             let response_map: HashMap<String, Value> = c.kwargs.clone();
 
             // TODO >>> Maybe create a mechanism to validate the new_patterns received, maybe using regex, idk...
+
             println!("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS");
             let mut filtered_commands_map = HashMap::new();
+            println!("Try to update the schedule with the new client state");
 
             {
-                let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock();
+                let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock().await;
                 println!("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS");
+
                 match host_allowed_commands.update_from_value_map(response_map) {
                     Ok(_) => {},
                     Err(e) => {
@@ -103,7 +104,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 client_state.is_connected = Some(true);
                 client_state.is_sync = Some(true);
 
-                match &client_state.update_schedule_with_this() {
+                match &client_state.update_schedule_with_this().await {
                     Ok(_) => {},
                     Err(e) => match &client_state.save_in_storage().await {
                         Ok(_) => {},
@@ -139,13 +140,13 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 }
 
                 println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
-
                 logger.info(format!("Successfully actualize the host available commands!")).await;
 
                 // TODO >>> Change this to use NetworkMap instead of commands
                 filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
             }
 
+            println!("Successfully update the schedule with the new client state");
             // -> Only return this 'update_client_commands_ref' in case that is the first sync of the client
 
             // TODO >>> Maybe change this to return the command instead of schedule it manually to send to host
@@ -167,10 +168,11 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
             // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
+            println!("Finish building");
             let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from)?;
 
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
 
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);
@@ -186,19 +188,18 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             // Lock the CLIENT_NODE_CONFIGS and insert the new map
 
             let actual_patterns: Value;
-
             println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+
             {
                 let command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                 println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
                 actual_patterns = command_patterns.to_value();
             }
-            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
 
+            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
             logger.info(format!("Successfully actualize the host available commands!")).await;
 
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
-
             let mut filtered_commands_map: HashMap<String, Value> = HashMap::new();
             filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
 
@@ -222,18 +223,16 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
 
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
 
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
 
             return Ok(ProcessResult::Empty);
         },
 
         // -> VITAL NETWORK COMPONENTS
         "update_client_network_rechable" => {
-            // TODO >>> Implement the mechanism to allow update the Client Notion about the remote handlers
-
-            return Ok(ProcessResult::Empty);
+            return Ok(ProcessResult::Empty); // TODO >>> Implement the mechanism to allow update the Client Notion about the remote handlers
         },
 
         // -> GENERAL OUT OF SCOPE CASES:

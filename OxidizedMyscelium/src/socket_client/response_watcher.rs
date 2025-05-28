@@ -41,7 +41,6 @@ impl From<BufferError> for WatcherError {
 pub async fn watch_response(parity_id: String, max_time: chrono::Duration) -> Result<Command, WatcherError> {
     let mut finded = false;
     let mut response_command: Option<DownCommand> = None;
-
     let start_time = Utc::now();
 
     loop {

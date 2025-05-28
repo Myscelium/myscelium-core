@@ -13,6 +13,8 @@ use lazy_static::lazy_static;
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::Value;
 
+use std::any::Any;
+use std::boxed::Box;
 use std::collections::HashMap;
 use std::f64::consts::E;
 use std::sync::atomic::Ordering;
@@ -24,7 +26,6 @@ use crate::{CLIENT_IS_RUNNING, CLIENT_NODE_CONFIGS, HOST_ALLOWED_COMMANDS};
 
 use super::client_logger::log_handler::Logger;
 use crate::CLIENT_LOG_LEVEL;
-
 macro_rules! acquire_logger {
     ($section_name:expr) => {{
         let client_log_level;
@@ -37,9 +38,6 @@ macro_rules! acquire_logger {
 }
 
 use crate::CLIENT_NODE_KEY;
-
-use std::any::Any;
-use std::boxed::Box;
 
 type Callback = dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync;
 
@@ -161,7 +159,6 @@ pub enum ProcessError {
 async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
     logger.info(format!("Initializing processing!")).await;
-
     let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone()).await?;
 
     // Check if the command has already been registered in the up buffer
@@ -195,7 +192,6 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
 
     let client_key = translated_command.client_key.clone();
     logger.debug(format!("Client key is: {:?}", client_key)).await;
-
     let starter_command_origin = translated_command.command.origin.clone();
 
     // let direct_functions: Vec<String> = vec!["update_available_host_commands", "get_socket_client_available_handlers"].into_iter().map(|s| s.to_string()).collect();
@@ -381,9 +377,7 @@ pub async fn initialize_socket_client_transposer() {
 
     // -> Filter only auto collect == true or any that is diferent of a Response (Only responses have auto collect == false)
     schedule = schedule.into_iter().filter(|s| s.command_mode != "Response" || s.auto_collect).collect();
-
     logger.debug(format!("\nSchedule to process:\n{:?}\n", schedule)).await;
-
     let schedule_len = schedule.len();
 
     // If there are no commands to process, clear old data and sleep
@@ -404,13 +398,14 @@ pub async fn initialize_socket_client_transposer() {
 
     // Validate the command against known command patterns
     let client_key;
-
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_KEY")).await;
+
     {
         let client_n = CLIENT_NODE_KEY.lock().await;
         logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY"));
         client_key = client_n.clone();
     }
+
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_KEY")).await;
 
     // Process each scheduled command

@@ -42,9 +42,7 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
     let mut command_instructions: CommandInstructions = command_instructions;
 
     let logger: Logger = acquire_logger!("Core - Scheduler");
-
     logger.debug("Enter Scheduler".to_string()).await;
-
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID")).await;
 
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
@@ -212,7 +210,6 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
     }
 
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID")).await;
-
     let client_key = state_manager.key.clone().unwrap();
 
     if client_key == "".to_string() {
@@ -223,15 +220,11 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
 
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
     let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(SchedulingError::from) })?;
-
     let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
-
     logger.debug(format!("[CLIENT] - Scheduling: {:?}", command)).await;
 
     let command_to_schedule: UpCommand = UpCommand::from_command(command);
-
     enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
-
     logger.info(format!("Command: {:?} scheduled!", command_to_schedule)).await;
 
     Ok(parity_id)
