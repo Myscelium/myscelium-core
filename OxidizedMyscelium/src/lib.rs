@@ -40,6 +40,7 @@ use syn::buffer;
 use tokio::runtime::Runtime;
 use tokio::signal;
 use tokio::sync::Notify;
+use tokio::task::futures;
 
 use core::panic;
 #[deny(non_snake_case)]
@@ -173,63 +174,80 @@ pub async fn init_host_reactive_activator() {
 
 // -> CLIENT BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
 
-static CLIENT_BUFFER_ACTIVATION_CONTROLLER: Lazy<Arc<tokio::sync::Mutex<Option<ReactiveActivator>>>> = Lazy::new(|| Arc::new(tokio::sync::Mutex::new(None)));
+static CLIENT_BUFFER_ACTIVATION_CONTROLLER: Lazy<tokio::sync::Mutex<Option<Arc<ReactiveActivator>>>> = Lazy::new(|| tokio::sync::Mutex::new(None));
 
-/// This function ensures that the `ReactiveActivator` is initialized **only after** the Tokio runtime is started.
-/// -> CLIENT REACTIVE
+macro_rules! acquire_client_logger {
+    ($section_name:expr) => {{
+        let client_log_level;
+        {
+            let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
+            client_log_level = log_level.clone();
+        }
+        Logger::new(client_log_level, $section_name).await
+    }};
+}
+
 pub async fn init_client_reactive_activator() {
-    // ❶ Grab a handle while we *know* we're on the Tokio runtime.
-    let rt = Handle::current();
+    // 1) Grab a logger (held only briefly)
+    let mut guard = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await; // 🔒 LOCKED
 
-    // ----------------------------- ACTION -----------------------------
+    // 2) Avoid double‐init
+    if guard.is_some() {
+        return;
+    }
+
+    // 3) Grab the current Tokio handle once
+    let rt_handle = Handle::current();
+
+    // ─────────────────────── ACTION ────────────────────────────────────────────
+
+    // This closure moves `rt_handle.clone()` into a non‐Send blocking thread,
+    // then builds a brand‐new current_thread runtime inside that thread and runs
+    // `initialize_socket_client_transposer().await` there. This avoids deadlocks
+    // if `initialize_socket_client_transposer()` itself is not Send.
     let action: Arc<dyn Fn() + Send + Sync> = {
-        let rt = rt.clone(); // move‑in clone
+        let rt = rt_handle.clone();
         Arc::new(move || {
-            // off‑load to the blocking pool
-            let rt_inner = rt.clone();
-            rt.spawn_blocking(move || {
-                rt_inner.block_on(async {
-                    initialize_socket_client_transposer().await;
-                });
+            rt.spawn_blocking({
+                let rt_for_block = rt.clone();
+                move || {
+                    rt_for_block.block_on(async {
+                        initialize_socket_client_transposer().await;
+                    });
+                }
             });
         })
     };
 
-    // --------------------------- CONDITION ----------------------------
+    // ───────────────────── CONDITION ────────────────────────────────────────────
+
     let condition: Arc<dyn Fn() -> bool + Send + Sync> = {
-        Arc::new(move || -> bool {
-            // IMPORTANT: The condition should return true to STOP the loop
-            // So we need to return false when there's work to do (to keep looping)
-            // and true when there's no work (to stop)
-
-            // Create a single-use runtime for this check
-            let local_rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("Failed to create local runtime for condition check");
-
-            // Run the async check and get the result synchronously
-            local_rt.block_on(async {
-                match enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await {
-                    Ok(mut schedule) => {
-                        schedule.retain(|cmd| cmd.auto_collect);
-                        schedule.is_empty() // Return true when empty (to stop), false when there's work (to continue)
-                    },
-                    Err(e) => {
-                        eprintln!("buffer_down_list_schedule error: {e:?}");
-                        true // Error condition, so stop the loop
-                    },
+        let flag = Arc::new(AtomicBool::new(false));
+        {
+            let flag_clone = flag.clone();
+            rt_handle.spawn(async move {
+                loop {
+                    let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
+                    schedule.retain(|cmd| cmd.auto_collect);
+                    let empty = schedule.is_empty();
+                    flag_clone.store(empty, Ordering::SeqCst);
+                    if empty {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
-            })
-        })
+            });
+        }
+        Arc::new(move || flag.load(Ordering::SeqCst))
     };
 
-    // ------------------------- ACTIVATOR ------------------------------
-    let activator = ReactiveActivator::new(action, condition);
+    // ───────────────────── ACTIVATOR ─────────────────────────────────────────────
 
-    // Store it in the global controller
-    {
-        let mut guard = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
-        let raw = Arc::try_unwrap(activator).expect("other Arc clones still exist");
-        *guard = Some(raw);
-    }
+    // Create and start the ReactiveActivator as before—`start().await` will return
+    // immediately because `action()` itself (when invoked) only does `spawn_blocking`.
+    let activator = ReactiveActivator::new(action, condition);
+    activator.start().await; // ⬅️  awaits **while the mutex is held**
+    *guard = Some(activator); // still inside the lock
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;

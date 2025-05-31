@@ -804,32 +804,12 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
 pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option<String> {
     // Create a global Mutex for demonstration
 
+    let logger = acquire_logger!("Core");
+
     // Load the reactive activator only in the process that bind the host socket process and that should handle the transposition of commands.
     init_client_reactive_activator().await;
 
-    // Spawn a thread to periodically check for deadlocks
-    thread::spawn(|| async {
-        loop {
-            tokio::time::sleep(Duration::from_secs(5)); // Check every 5 seconds
-            let deadlocks = parking_lot::deadlock::check_deadlock();
-            if deadlocks.is_empty() {
-                continue;
-            }
-
-            let logger = acquire_logger!("Core");
-
-            logger.debug(format!("{} deadlocks detected", deadlocks.len()));
-            for (i, threads) in deadlocks.iter().enumerate() {
-                logger.debug(format!("Deadlock #{}", i));
-                for t in threads {
-                    logger.debug(format!("Thread Id {:?}", t.thread_id()));
-                    logger.debug(format!("{:?}", t.backtrace()));
-                }
-            }
-        }
-    });
-
-    let logger = acquire_logger!("Core");
+    logger.info("Reactive activator setup complete!".to_string());
 
     // Here need to send the new handlers to host
     // then receive the host handlers

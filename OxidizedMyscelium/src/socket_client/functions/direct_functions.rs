@@ -61,13 +61,13 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
 
             // TODO >>> Maybe create a mechanism to validate the new_patterns received, maybe using regex, idk...
 
-            println!("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS");
+            logger.debug("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS".to_string());
             let mut filtered_commands_map = HashMap::new();
-            println!("Try to update the schedule with the new client state");
+            logger.debug("Try to update the schedule with the new client state".to_string());
 
             {
                 let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock().await;
-                println!("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS");
+                logger.debug("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS".to_string());
 
                 match host_allowed_commands.update_from_value_map(response_map) {
                     Ok(_) => {},
@@ -126,20 +126,20 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 // > We should return an error back to the client or do something about the connection, it can't just continue to give the error, eveen that it will close the connect for not sync correctly after a while!
                 // > We should do something else toguether with the loggin, not only log the error, one example would be count the error attempts and then disconnect the client, better treat this to avoid unecessary use of ressources
 
-                println!("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS");
+                logger.debug("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS".to_string());
                 let actual_patterns: Value;
-                println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+                logger.debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string());
 
                 {
                     let mut command_patterns = CLIENT_NODE_CONFIGS.lock().await;
-                    println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
+                    logger.debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string());
                     logger.info(format!("Lock In Host Command Patterns!")).await;
                     command_patterns.change_node_status(NodeStatus::Online);
                     command_patterns.update_known_network(host_allowed_commands.get_all_nodes_except_node_with_key(&"".to_string()).clone());
                     actual_patterns = command_patterns.to_value();
                 }
 
-                println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+                logger.debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string());
                 logger.info(format!("Successfully actualize the host available commands!")).await;
 
                 // TODO >>> Change this to use NetworkMap instead of commands
@@ -168,7 +168,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
             // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
-            println!("Finish building");
+            logger.info("Finish building".to_string());
             let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from)?;
 
             let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
@@ -188,15 +188,15 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             // Lock the CLIENT_NODE_CONFIGS and insert the new map
 
             let actual_patterns: Value;
-            println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
+            logger.debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string());
 
             {
                 let command_patterns = CLIENT_NODE_CONFIGS.lock().await;
-                println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
+                logger.debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string());
                 actual_patterns = command_patterns.to_value();
             }
 
-            println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
+            logger.debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string());
             logger.info(format!("Successfully actualize the host available commands!")).await;
 
             enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;

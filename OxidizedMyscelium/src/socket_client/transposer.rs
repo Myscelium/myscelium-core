@@ -165,7 +165,8 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
     let command_id: u32 = down_command.command_id.unwrap().clone();
 
     {
-        if !command_is_not_registry {
+        if command_is_not_registry {
+            logger.info(format!("Command is already processed")).await;
             // If command is already registered, remove it from the down buffer schedule
             match enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await {
                 Ok(_) => {},
@@ -173,6 +174,8 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             };
             return Err(ProcessError::CommandAlreadyProcessed(down_command.parity_id.clone()));
         }
+
+        logger.info(format!("Command wasn't processed yet, starting processing!")).await;
     }
 
     // TODO >>> Use the command.command or create a require type field to redirect the command to another client
