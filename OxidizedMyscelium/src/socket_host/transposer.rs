@@ -358,7 +358,7 @@ async fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
             },
         }
     }
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
 }
 
 /// Processes a given `DownCommand`, executing the corresponding logic and handling redirection.
@@ -589,9 +589,9 @@ pub async fn process(down_command: DownCommand) -> Vec<UpCommand> {
     return responses;
 }
 
-fn clear_old_data() {
-    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands();
-    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands();
+async fn clear_old_data() {
+    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands().await;
+    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands().await;
 }
 
 #[derive(Debug, Clone)]
@@ -644,7 +644,7 @@ pub async fn initialize_socket_host_transposer() -> Result<(), TranspositionErro
             let command_id: u32 = down_command.command_id.clone().unwrap();
 
             if !command_is_not_registry {
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id);
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await;
                 logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone())).await;
                 continue;
             }

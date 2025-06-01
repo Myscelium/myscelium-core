@@ -343,14 +343,14 @@ async fn handle_common_function(command: &Command) -> Command {
         command.command.collect_response.clone(),
     );
 
-    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
 
     println!("Initializating transposer!");
 
     {
         let react_actv = HOST_BUFFER_ACTIVATION_CONTROLLER.lock().await;
         if let Some(ractv) = react_actv.as_ref() {
-            ractv.start();
+            ractv.start().await;
         } else {
             panic!("Host buffer reactive activation controller for trasnposition should have beein initialized already up to this point!")
         }
@@ -425,7 +425,7 @@ pub async fn host_commands_processing(command: &Command) -> Command {
 
     //> HANDLE COMMANDS WITH RESPONSE:
     if !command_is_not_registry {
-        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
+        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await; // TODO >>> Change this error it's incorrect!
         let response = match get_response(command.clone()).await {
             Ok(sc) => {
                 if let Some(c) = sc {

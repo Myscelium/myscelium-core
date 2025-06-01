@@ -45,7 +45,7 @@ use tokio::task::futures;
 use core::panic;
 #[deny(non_snake_case)]
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 
 pub use crate::common::structs::callbacks_structure::FunctionMetadata;
 use parking_lot::Mutex;
@@ -108,68 +108,82 @@ lazy_static! {
 
 // -> HOST BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
 
-static HOST_BUFFER_ACTIVATION_CONTROLLER: Lazy<Arc<tokio::sync::Mutex<Option<ReactiveActivator>>>> = Lazy::new(|| Arc::new(tokio::sync::Mutex::new(None)));
+// (1) Change HOST_BUFFER_ACTIVATION_CONTROLLER to mirror the client’s pattern:
+static HOST_BUFFER_ACTIVATION_CONTROLLER: Lazy<tokio::sync::Mutex<Option<Arc<ReactiveActivator>>>> = Lazy::new(|| tokio::sync::Mutex::new(None));
 
-/// This function ensures that the `ReactiveActivator` is initialized **only after** the Tokio runtime is started.
-/// -> CLIENT REACTIVE
+/// This function ensures that the `ReactiveActivator` is initialized **only once**,
+/// using the same “atomic‐flag + background task” technique as the client version.
 pub async fn init_host_reactive_activator() {
-    // ❶ Grab a handle while we *know* we're on the Tokio runtime.
-    let rt = Handle::current();
+    // ─────────────── LOCK & DOUBLE‐INIT CHECK ───────────────
+    let mut guard = HOST_BUFFER_ACTIVATION_CONTROLLER.lock().await;
+    if guard.is_some() {
+        // Already initialized – do nothing.
+        return;
+    }
 
-    // ----------------------------- ACTION -----------------------------
+    // ────────────── GRAB THE TOKIO HANDLE ONCE ──────────────
+    let rt_handle = Handle::current();
+
+    // ───────────────────── ACTION ───────────────────────────
+    // exactly like the client’s action, but calling `initialize_socket_host_transposer()`
     let action: Arc<dyn Fn() + Send + Sync> = {
-        let rt = rt.clone(); // move‑in clone
+        let rt_clone = rt_handle.clone();
         Arc::new(move || {
-            // off‑load to the blocking pool
-            let rt_inner = rt.clone();
-            rt.spawn_blocking(move || {
+            // Offload to a blocking thread, then run our async host‐transposer inside it:
+            let rt_inner = rt_clone.clone();
+            rt_clone.spawn_blocking(move || {
                 rt_inner.block_on(async {
-                    match initialize_socket_host_transposer().await {
-                        Ok(_) => {},
-                        Err(e) => {
-                            panic!("An error happened during transposition: {:?}", e);
-                        },
-                    };
+                    if let Err(e) = initialize_socket_host_transposer().await {
+                        panic!("Error during host transposition: {:?}", e);
+                    }
                 });
             });
         })
     };
 
-    // --------------------------- CONDITION ----------------------------
+    // Replace the old “mpsc + recv()” pattern with an AtomicBool + spawned task:
     let condition: Arc<dyn Fn() -> bool + Send + Sync> = {
-        Arc::new(move || -> bool {
-            // IMPORTANT: The condition should return true to STOP the loop
-            // So we need to return false when there's work to do (to keep looping)
-            // and true when there's no work (to stop)
+        // Create a shared AtomicBool that will be flipped to `true` once the schedule is empty
+        let flag = Arc::new(AtomicBool::new(false));
 
-            // Create a single-use runtime for this check
-            let local_rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("Failed to create local runtime for condition check");
-
-            // Run the async check and get the result synchronously
-            local_rt.block_on(async {
-                match enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await {
-                    Ok(mut schedule) => {
-                        schedule.retain(|cmd| cmd.auto_collect);
-                        schedule.is_empty() // Return true when empty (to stop), false when there's work (to continue)
-                    },
-                    Err(e) => {
-                        eprintln!("buffer_down_list_schedule error: {e:?}");
-                        true // Error condition, so stop the loop
-                    },
+        // Spawn a Tokio‐task that continuously checks `buffer_down_list_schedule()`,
+        // storing `true` into `flag` as soon as `.is_empty()` becomes true.
+        {
+            let flag_clone = flag.clone();
+            rt_handle.spawn(async move {
+                loop {
+                    let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
+                    // Keep only auto_collect entries:
+                    schedule.retain(|cmd| cmd.auto_collect);
+                    let empty = schedule.is_empty();
+                    flag_clone.store(empty, Ordering::SeqCst);
+                    if empty {
+                        // Stop the loop as soon as the schedule is empty:
+                        break;
+                    }
+                    // Otherwise, wait a bit and check again:
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-            })
-        })
+            });
+        }
+
+        // (c) Return a zero‐cost closure that simply does `flag.load(...)`
+        Arc::new(move || flag.load(Ordering::SeqCst))
     };
 
-    // ------------------------- ACTIVATOR ------------------------------
+    // ───────────────────── ACTIVATOR ─────────────────────────
+    // Construct an Arc<ReactiveActivator> just like the client did:
     let activator = ReactiveActivator::new(action, condition);
 
-    // Store it in the global controller
-    {
-        let mut guard = HOST_BUFFER_ACTIVATION_CONTROLLER.lock().await;
-        let raw = Arc::try_unwrap(activator).expect("other Arc clones still exist");
-        *guard = Some(raw);
-    }
+    // Start it immediately. Because `start().await` returns once the activator’s background
+    // loop is spinning, this prevents races. Note that we are still holding the mutex!
+    activator.start().await;
+
+    // Store the Arc<ReactiveActivator> inside our global controller:
+    *guard = Some(activator);
+
+    // Release the lock (happens when `guard` is dropped)
+    // Now the host activator is fully initialized, and its internal loop is running.
 }
 
 // -> CLIENT BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
@@ -234,7 +248,7 @@ pub async fn init_client_reactive_activator() {
                     if empty {
                         break;
                     }
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
             });
         }
@@ -246,8 +260,12 @@ pub async fn init_client_reactive_activator() {
     // Create and start the ReactiveActivator as before—`start().await` will return
     // immediately because `action()` itself (when invoked) only does `spawn_blocking`.
     let activator = ReactiveActivator::new(action, condition);
+
     activator.start().await; // ⬅️  awaits **while the mutex is held**
+
     *guard = Some(activator); // still inside the lock
+
+    println!("Exiting buffer reactive activator initializer")
 }
 
 use crate::socket_client::client_logger::log_handler::Logger;

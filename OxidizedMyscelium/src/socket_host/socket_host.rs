@@ -936,7 +936,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     // < WARNING: This locks command_patterns!
 
                     // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
-                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone()).await;
 
                     let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
                         Ok(b) => b,
@@ -965,7 +965,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                     return Ok(Some(res));
                                 },
                                 CommandVariant::UpCommand(up) => {
-                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up).await;
                                 },
                                 CommandVariant::DownCommand(_) => {
                                     panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
@@ -1004,7 +1004,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     }
 
                     // > EARLY REMOVE FROM DOWN BUFFER TO AVOID REPETITION ERRORS SINCE THE COMMAND IS ALREADY BEING PROCESSED
-                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone());
+                    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_parity_id(command.client_key.clone(), command.parity_id.clone()).await;
 
                     let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone()).await {
                         Ok(cinr) => cinr,
@@ -1059,7 +1059,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                     return Ok(Some(res));
                                 },
                                 CommandVariant::UpCommand(up) => {
-                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up);
+                                    enhanced_buffer::buffer_up_manager::buffer_up_schedule(up).await;
                                 },
                                 CommandVariant::DownCommand(_) => {
                                     panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")

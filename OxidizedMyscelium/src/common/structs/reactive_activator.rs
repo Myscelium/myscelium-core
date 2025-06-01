@@ -53,13 +53,10 @@ impl ReactiveActivator {
                         println!("Condition met, stopping loop.");
                         break;
                     }
-
-                    // avoid busy-spin
-                    sleep(Duration::from_millis(500)).await;
                 }
 
                 // Clear the handle when done
-                let mut guard = thread_handle.lock().await;
+                let mut guard = thread_handle.lock().await; // TODO We can move it into the outside of the thread.
                 *guard = None;
             });
 
@@ -67,6 +64,8 @@ impl ReactiveActivator {
         } else {
             println!("Task already started.");
         }
+
+        println!("Exiting executor!")
     }
 
     /// Stops the task if it’s running, waiting for it to finish.
