@@ -41,34 +41,26 @@ macro_rules! acquire_logger {
 pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
     let mut command_instructions: CommandInstructions = command_instructions;
 
+    // -- Logging Setup:
     let logger: Logger = acquire_logger!("Core - Scheduler");
     logger.debug("Enter Scheduler".to_string()).await;
     logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID")).await;
 
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
-    let state_manager: Option<ClientState>;
-
-    let result = rt.block_on(async {
-        match ClientState::load_from_storage().await {
-            Ok(s) => Ok(Some(s)),
-            Err(_) => Err(SchedulingError::CantReadStates),
-        }
-    });
-
-    let states_manager = result?; // ? will propagate the error if it's Err
-    let mut state_manager: ClientState;
-    if let Some(state) = states_manager {
-        state_manager = state;
+    // -- Load ClientState from storage using `.await` directly
+    let maybe_state: Option<ClientState> = ClientState::load_from_storage().await.map(Some).map_err(|_| SchedulingError::CantReadStates)?;
+    let mut state_manager: ClientState = if let Some(state) = maybe_state {
+        state
     } else {
+        // Shouldn’t happen—`load_from_storage` returned Ok(None)? But we treat as error.
         return Err(SchedulingError::CantReadStates);
-    }
+    };
 
     // if !state_manager.is_fully_initialized() {
     //    return Err(SchedulingError::ClientIsntFullyInitialized);
     //}
-
     // TODO >>> Make a universal function to verify this kind of conflict prevention
 
+    // -- Check initialization flags
     if let Some(ready) = state_manager.is_ready {
         if !ready {
             return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
@@ -85,17 +77,17 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
         return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
-    let this_client_key_ref: String;
+    // -- Extract client key
 
-    if let Some(this_client_key) = &state_manager.key {
-        this_client_key_ref = this_client_key.clone();
+    let this_client_key_ref: String = if let Some(key) = &state_manager.key {
+        key.clone()
     } else {
         return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
-    }
+    };
+
+    // --  Check target != self and resolve command_target string
 
     let mut command_target: String;
-
-    //> CHECK IF THE COMMAND TARGET ISN'T SELF
     match command_instructions.target.clone() {
         CommandTarget::Origin => {
             return Err(SchedulingError::CantScheduleCommandsToItself(command_instructions.origin.to_string()));
@@ -109,6 +101,7 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
         },
     }
 
+    // -- Validate network_map and handlers
     if let Some(network_map) = &mut state_manager.network_map {
         //> VERIFY IF THE COMMAND TARGET EXISTS
         match network_map.target_is_reachable(&command_target) {
@@ -127,6 +120,7 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
             return Err(SchedulingError::HandlerDoesntExist(command_instructions.actf.clone()));
         }
 
+        // -- Validate response_target (if any)
         if let Some(response_target) = command_instructions.response_target.clone() {
             match response_target {
                 ResponseTarget::Origin => {
@@ -210,16 +204,19 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
     }
 
     logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID")).await;
-    let client_key = state_manager.key.clone().unwrap();
 
+    let client_key = state_manager.key.clone().unwrap();
     if client_key == "".to_string() {
         return Err(SchedulingError::ClientIsntFullyInitialized(command_instructions.origin.to_string()));
     }
 
     logger.debug(format!("Client id is: {:?}", client_key)).await;
 
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
-    let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(SchedulingError::from) })?;
+    // -- Generate parity_id with direct `.await`
+
+    let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(this_client_key_ref.clone()).await.map_err(SchedulingError::from)?;
+
+    // -- Build and schedule the command
     let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
     logger.debug(format!("[CLIENT] - Scheduling: {:?}", command)).await;
 

@@ -277,7 +277,7 @@ async fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool 
     println!("Confirmation data received!");
 
     if data_size > MAX_DATA_SIZE {
-        logger.exception(format!("Data size too large: {}", data_size));
+        logger.exception(format!("Data size too large: {}", data_size)).await;
         return false; // TODO >>> Close connection or handle appropriately
     }
 
@@ -300,15 +300,15 @@ async fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool 
         Ok(c) => c,
         Err(e) => {
             // TODO >>> Create a form to do the error handling of this!!! # Very important!
-            logger.exception(format!("Error trying to downcast the command from str: {:?}", e));
+            logger.exception(format!("Error trying to downcast the command from str: {:?}", e)).await;
             panic!("Error trying to downcast the command from str: {:?}", e)
         },
     };
 
-    logger.debug(format!("Received: {:?}", command));
+    logger.debug(format!("Received: {:?}", command)).await;
 
     if command.command.actf == "C200" {
-        println!("Connected!\n");
+        println!("Connected!\n"); // TODO Change this to logger
         return true;
     } else {
         println!("Error in connection verification, not connected!\n");
@@ -336,12 +336,12 @@ pub enum StreamError {
 pub async fn set_client_uid(client_key: String) {
     let logger = acquire_logger!("Core");
     {
-        logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
+        logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID")).await;
         let mut c_uid = CLIENT_ID.lock().await;
-        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID"));
+        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID")).await;
         *c_uid = client_key
     }
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID")).await;
 }
 
 /// Sends a command to the server and waits for a response.
@@ -385,7 +385,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         let size = match reader.read_u32().await {
             Ok(n) => n as usize,
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                logger.info("Peer closed connection".to_string());
+                logger.info("Peer closed connection".to_string()).await;
                 break;
             },
             Err(e) => return Err(StreamError::ReadSizeError(e)),
@@ -396,7 +396,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
             continue;
         }
         if size > MAX_DATA_SIZE {
-            logger.exception(format!("Frame too large (max = {}, got = {})", MAX_DATA_SIZE, size));
+            logger.exception(format!("Frame too large (max = {}, got = {})", MAX_DATA_SIZE, size)).await;
             return Err(StreamError::ConnectionClosed);
         }
 
@@ -420,7 +420,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         // -> Match command status:
         match response.command.status {
             CommandStatus::Failure => {
-                logger.exception(format!("\nAn error occurred in host, the error was: {}\n", response.command.message));
+                logger.exception(format!("\nAn error occurred in host, the error was: {}\n", response.command.message)).await;
                 enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
@@ -434,12 +434,12 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         match response.command_type() {
             CommandType::ExternalFunction => {
                 let down_command = DownCommand::from_command(response);
-                logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command));
+                logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command)).await;
                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
                 {
                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
                     if let Some(ractv) = react_actv.as_ref() {
-                        ractv.start();
+                        ractv.start().await;
                     } else {
                         panic!("Reactive activativator controller isn't initialized and at this point it is an issue!")
                     }
@@ -449,13 +449,13 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
             CommandType::DirectFunction => {
                 // TODO >>> Need to actualize this to the new patter like Response handler to redirect works as intended!
                 // > Also we can use a similar system to sync multiple hosts
-                logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", response.command.actf));
+                logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", response.command.actf)).await;
                 let down_command = DownCommand::from_command(response);
                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
                 {
                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
                     if let Some(ractv) = react_actv.as_ref() {
-                        ractv.start();
+                        ractv.start().await;
                     } else {
                         panic!("Reactive activativator controller isn't initialized and at this point it is an issue!")
                     }
@@ -465,7 +465,7 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
             CommandType::SpecialFunction => {
                 if response.parity_id != "itisaspecialcase" {
                     if response.command.actf == "C210".to_string() {
-                        logger.info(format!("Received Confirmation! Removing command {} of client: {} from buffer up", response.parity_id, response.client_key));
+                        logger.info(format!("Received Confirmation! Removing command {} of client: {} from buffer up", response.parity_id, response.client_key)).await;
                         COMMANDS_SENT_WAITING_RESPONSE.remove(&response.parity_id);
                         enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
                         continue;
@@ -473,16 +473,16 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                 }
 
                 if response.command.actf == "C207".to_string() {
-                    logger.debug(format!("Receive ping confirmation"));
+                    logger.debug(format!("Receive ping confirmation")).await;
                     continue;
                 }
 
-                logger.debug(format!("Received a unknow special function"));
+                logger.debug(format!("Received a unknow special function")).await;
                 break; // TODO >>> maybe switch to panic to prevent hide an error.
             },
         }
 
-        logger.debug(format!("Invalid command!"));
+        logger.debug(format!("Invalid command!")).await;
         break;
     }
 
@@ -509,7 +509,7 @@ pub async fn heartbeat(mut sender_tx: Sender<String>, client_key: &String) -> Re
         let command_to_request: Command = create_special_command!(client_key, CommandMode::Function, "C206");
         let command_string: String = serde_json::to_string(&command_to_request).unwrap();
 
-        logger.debug("Sending ping C206".to_string());
+        logger.debug("Sending ping C206".to_string()).await;
 
         // Send command and measure time
         tokio::time::sleep(Duration::from_millis(120)).await;
@@ -525,16 +525,16 @@ pub async fn heartbeat(mut sender_tx: Sender<String>, client_key: &String) -> Re
 async fn handle_stream_error(e: StreamError, client_key: &String) {
     let logger = acquire_logger!("Core");
 
-    logger.exception(format!("A exception occurred! Error: {:?}", e));
+    logger.exception(format!("A exception occurred! Error: {:?}", e)).await;
     CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
     match e {
         StreamError::ConnectionClosed => {
-            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key)).await;
         },
         StreamError::WriteError(e) => {
-            logger.exception(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
-            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+            logger.exception(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e)).await;
+            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key)).await;
             match e.kind() {
                 io::ErrorKind::ConnectionReset => {
                     // TODO >>> Properly Handle this error
@@ -546,8 +546,8 @@ async fn handle_stream_error(e: StreamError, client_key: &String) {
             }
         },
         StreamError::WriteSizeError(e) => {
-            logger.exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
-            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+            logger.exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e)).await;
+            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key)).await;
             match e.kind() {
                 io::ErrorKind::ConnectionReset => {
                     // TODO >>> Properly Handle this error
@@ -559,8 +559,8 @@ async fn handle_stream_error(e: StreamError, client_key: &String) {
             }
         },
         StreamError::ReadSizeError(e) => {
-            logger.exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
-            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+            logger.exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e)).await;
+            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key)).await;
             match e.kind() {
                 io::ErrorKind::ConnectionReset => {
                     // TODO >>> Properly Handle this error
@@ -572,8 +572,8 @@ async fn handle_stream_error(e: StreamError, client_key: &String) {
             }
         },
         StreamError::ReadDataError(e) => {
-            logger.exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
-            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+            logger.exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e)).await;
+            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key)).await;
             match e.kind() {
                 io::ErrorKind::ConnectionReset => {
                     // TODO >>> Properly Handle this error
@@ -597,11 +597,11 @@ async fn connect(address: String) -> Option<TcpStream> {
         Ok(s) => s,
         Err(e) => match e.kind() {
             ErrorKind::ConnectionRefused => {
-                logger.debug(format!("Can't connect to host!"));
+                logger.debug(format!("Can't connect to host!")).await;
                 return None;
             },
             _ => {
-                logger.debug(format!("Unhandled error: {}", e));
+                logger.debug(format!("Unhandled error: {}", e)).await;
                 panic!("Unhandled error: {}", e)
             },
         },
@@ -695,7 +695,7 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
 
     if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
         CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-        logger.info(format!("running is set to false, shutdown socket client main process!"));
+        logger.info(format!("running is set to false, shutdown socket client main process!")).await;
         return Err(TaskError::ClientIsNotRunning);
     }
 
@@ -714,20 +714,20 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
     // TODO >>> Verify the latency of the command, if the command take too much time to generate a confiramtion something is wrong in the host.
 
     if up_schdule_len > 1 {
-        logger.debug(format!("Find: {:?} command in schedule", 1));
+        logger.debug(format!("Find: {:?} command in schedule", 1)).await;
     } else {
-        logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len));
+        logger.debug(format!("Find: {:?} commands in schedule", up_schdule_len)).await;
     }
 
-    logger.debug(format!("Start to process it!"));
+    logger.debug(format!("Start to process it!")).await;
 
     let mut index: u32 = 0u32;
     for up_command in up_schedule {
-        logger.debug(format!("processing command: {}", index));
+        logger.debug(format!("processing command: {}", index)).await;
 
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-            logger.info(format!("running is set to false, shutdown socket client main process!"));
+            logger.info(format!("running is set to false, shutdown socket client main process!")).await;
             return Err(TaskError::ClientIsNotRunning);
         }
 
@@ -736,19 +736,19 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
             Err(error) => {
                 match error {
                     CommandError::InvalidCommand(e) => {
-                        logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
+                        logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e)).await;
                     },
                     CommandError::DeserializationError(e) => {
-                        logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
+                        logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e)).await;
                     },
                     CommandError::InvalidResponse(e) => {
-                        logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
+                        logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e)).await;
                     },
                     CommandError::NotAJsonObject => {
-                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
+                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command)).await;
                     },
                     CommandError::UnexpectedError(e) => {
-                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object! Error: {:?}", up_command, e));
+                        logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object! Error: {:?}", up_command, e)).await;
                     },
                 }
 
@@ -770,7 +770,7 @@ async fn load_buffer_and_send(tx_outbound: Sender<String>) -> Result<(), TaskErr
         continue; // Do Not Break!
     }
 
-    logger.debug(format!("End schedule data, so skipping for the next iteration >>>"));
+    logger.debug(format!("End schedule data, so skipping for the next iteration >>>")).await;
     return Ok(()); // Do Not Break!
 }
 
@@ -808,24 +808,23 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
 
     // Load the reactive activator only in the process that bind the host socket process and that should handle the transposition of commands.
     init_client_reactive_activator().await;
-
-    logger.info("Reactive activator setup complete!".to_string());
+    logger.info("Reactive activator setup complete!".to_string()).await;
 
     // Here need to send the new handlers to host
     // then receive the host handlers
 
-    logger.info(format!("Connected to {:?}!", &address).to_string());
+    logger.info(format!("Connected to {:?}!", &address).to_string()).await;
     let client_key: String;
 
-    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - CLIENT_ID")).await;
 
     {
         let c_uid = CLIENT_ID.lock().await;
-        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID"));
+        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_ID")).await;
         client_key = c_uid.clone()
     }
 
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - CLIENT_ID")).await;
 
     // -> ------------------------------------------------------------------------------------------------------------------------------------------------------------
     // -> Connect and split the stream in reader and writer:
@@ -874,7 +873,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
             }
             _ = recv_shutdown.notified() => {
                 // Shutdown requested
-                logger.info("Receiver task shutting down".to_string());
+                logger.info("Receiver task shutting down".to_string()).await;
             }
         }
     });
@@ -893,7 +892,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
                 }
             }
             _ = send_shutdown.notified() => {
-                logger.info("Sender task shutting down".to_string());
+                logger.info("Sender task shutting down".to_string()).await;
             }
         }
     });
@@ -908,7 +907,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     tasks.spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(1));
         interval.tick().await; // Fire the first tick immediately
-        println!("Heartbeat task started");
+        println!("Heartbeat task started"); // TODO >>> Also add the logger to this ones
         loop {
             tokio::select! {
                 _ = interval.tick() => {
