@@ -1,4 +1,6 @@
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -9,7 +11,7 @@ use syn::token::Mut;
 pub struct ReactiveActivator {
     thread_handle: Arc<Mutex<Option<JoinHandle<()>>>>, // ← Tokio JoinHandle
     action: Arc<dyn Fn() + Send + Sync>,
-    condition: Arc<dyn Fn() -> bool + Send + Sync>,
+    condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
 }
 
 impl fmt::Debug for ReactiveActivator {
@@ -23,7 +25,7 @@ impl fmt::Debug for ReactiveActivator {
 }
 
 impl ReactiveActivator {
-    pub fn new(action: Arc<dyn Fn() + Send + Sync>, condition: Arc<dyn Fn() -> bool + Send + Sync>) -> Arc<Self> {
+    pub fn new(action: Arc<dyn Fn() + Send + Sync>, condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>) -> Arc<Self> {
         Arc::new(Self {
             thread_handle: Arc::new(Mutex::new(None)),
             action,
@@ -48,8 +50,9 @@ impl ReactiveActivator {
                     (action)();
 
                     let cond = (condition)();
-                    println!("Condition result: {:?}", cond);
-                    if cond {
+                    let cond_bool: bool = cond.await;
+                    println!("Condition result: {:?}", cond_bool);
+                    if cond_bool {
                         println!("Condition met, stopping loop.");
                         break;
                     }
@@ -130,26 +133,42 @@ mod tests {
     // ─── Test 1: Ensure the ReactiveActivator loop calls action exactly N times and then stops ───
     #[tokio_test]
     async fn reactive_activator_runs_exact_number_of_times_then_stops() {
-        // We want the loop to run exactly 3 times, then exit.
+        use std::pin::Pin;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        use tokio::time::{sleep, Duration};
 
-        // Shared counter for action calls:
+        // ───────────────────── ACTION (unchanged) ────────────────────────────────
         let action_count = Arc::new(AtomicUsize::new(0));
-        let action_count_clone = action_count.clone();
-        let action_closure: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            action_count_clone.fetch_add(1, Ordering::SeqCst);
-        });
+        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
+            let action_count_clone = Arc::clone(&action_count);
+            Arc::new(move || {
+                action_count_clone.fetch_add(1, Ordering::SeqCst);
+            })
+        };
 
-        // Shared counter for condition checks:
-        // We'll return `false` for the first 2 checks; on the 3rd, return `true`.
+        // ───────────────────── CONDITION (async) ─────────────────────────────────
+        //
+        // Old signature:     Arc<dyn Fn() -> bool + Send + Sync>
+        // New signature:     Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>
+        //
+        // We still want: “return `false` the first two times, then `true` the third.”
         let condition_count = Arc::new(AtomicUsize::new(0));
-        let condition_count_clone = condition_count.clone();
-        let condition_closure: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || {
-            // fetch_add returns the old value; so on the third call, old value == 2
-            let prev = condition_count_clone.fetch_add(1, Ordering::SeqCst);
-            prev >= 2
-        });
+        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
+            let condition_count_clone = Arc::clone(&condition_count);
+            Arc::new(move || {
+                // We capture `prev` synchronously, then wrap it into a ready future.
+                let prev = condition_count_clone.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async move {
+                    // Returning `true` only once `prev >= 2` (i.e. on the 3rd call)
+                    prev >= 2
+                })
+            })
+        };
 
-        // Build the activator:
+        // ───────────────────── BUILD + START THE ACTIVATOR ──────────────────────
         let activator = ReactiveActivator::new(action_closure, condition_closure);
 
         // Start the background loop:
@@ -190,16 +209,32 @@ mod tests {
         // We will measure how many times `action()` runs in a fixed time window after one start,
         // then call start() again, measure again, and ensure it does not double.
 
-        // Shared counter for action calls:
-        let action_count = Arc::new(AtomicUsize::new(0));
-        let action_count_clone = action_count.clone();
-        let action_closure: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            action_count_clone.fetch_add(1, Ordering::SeqCst);
-        });
+        use std::pin::Pin;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        use tokio::time::{sleep, Duration};
 
-        // Condition closure that never returns true (so the loop keeps running):
-        let condition_closure: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || false);
+        // ─────────────────── ACTION COUNTER ────────────────────────────────
+        let action_counter = Arc::new(AtomicUsize::new(0));
+        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
+            let counter_clone = Arc::clone(&action_counter);
+            Arc::new(move || {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            })
+        };
 
+        // ─────────────────── CONDITION (ALWAYS FALSE) ──────────────────────
+        //
+        // Signature required by `ReactiveActivator`:
+        //   Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>
+        //
+        // Here we use `Box::pin(async { false })`, which produces a ready future
+        // whose output is `false` every time.
+        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = Arc::new(|| Box::pin(async { false }));
+
+        // ─────────────────── BUILD & START ACTIVATOR ───────────────────────
         let activator = ReactiveActivator::new(action_closure, condition_closure);
 
         // 1) First start:
@@ -207,14 +242,14 @@ mod tests {
 
         // Let it run for 600ms (so it can do roughly 1 iteration—remember each loop has a 500ms sleep).
         sleep(Duration::from_millis(600)).await;
-        let count_after_first_window = action_count.load(Ordering::SeqCst);
+        let count_after_first_window = action_counter.load(Ordering::SeqCst);
 
         // 2) Call start() again while it’s still running.
         activator.start().await;
 
         // Let it run another 600ms:
         sleep(Duration::from_millis(600)).await;
-        let count_after_second_window = action_count.load(Ordering::SeqCst);
+        let count_after_second_window = action_counter.load(Ordering::SeqCst);
 
         // Now:
         // - If two independent loops were running in parallel, then in the second 600ms window
@@ -252,18 +287,48 @@ mod tests {
         // Meanwhile, we want to call stop() *before* the loop naturally clears itself,
         // and check that stop() awaits the loop’s end.
 
-        let action_count = Arc::new(AtomicUsize::new(0));
-        let action_count_clone = action_count.clone();
-        let action_closure: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            action_count_clone.fetch_add(1, Ordering::SeqCst);
-        });
+        use std::pin::Pin;
+        use std::sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc,
+        };
+        use tokio::time::{sleep, Duration};
 
-        // Condition that returns false for a little while, then true
-        // We’ll use a shared AtomicBool and set it to true from the test after 300ms.
+        // ─────────────────── ACTION COUNTER ────────────────────────────────
+        let action_counter = Arc::new(AtomicUsize::new(0));
+        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
+            let counter_clone = Arc::clone(&action_counter);
+            Arc::new(move || {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            })
+        };
+
+        // ─────────────────── CONDITION (FLAG-BASED) ────────────────────────
+        //
+        // • cond_flag starts false.
+        // • We flip it to true after 300 ms in a spawned task.
+        // • The condition closure returns an *async ready* future with that flag.
         let cond_flag = Arc::new(AtomicBool::new(false));
-        let cond_flag_clone = cond_flag.clone();
-        let condition_closure: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || cond_flag_clone.load(Ordering::SeqCst));
 
+        // spawn a task that sets the flag after 300 ms
+        {
+            let flag = Arc::clone(&cond_flag);
+            tokio::spawn(async move {
+                sleep(Duration::from_millis(300)).await;
+                flag.store(true, Ordering::SeqCst);
+            });
+        }
+
+        // async predicate: each call just reads the flag and returns a ready future
+        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
+            let flag_clone = Arc::clone(&cond_flag);
+            Arc::new(move || {
+                let current = flag_clone.load(Ordering::SeqCst);
+                Box::pin(async move { current }) // ready future
+            })
+        };
+
+        // ─────────────────── BUILD & START ACTIVATOR ───────────────────────
         let activator = ReactiveActivator::new(action_closure, condition_closure);
 
         // Start the background loop:

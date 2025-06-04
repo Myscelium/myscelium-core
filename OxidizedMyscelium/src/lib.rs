@@ -43,6 +43,7 @@ use tokio::sync::Notify;
 use tokio::task::futures;
 
 use core::panic;
+use std::pin::Pin;
 #[deny(non_snake_case)]
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
@@ -111,79 +112,87 @@ lazy_static! {
 // (1) Change HOST_BUFFER_ACTIVATION_CONTROLLER to mirror the client’s pattern:
 static HOST_BUFFER_ACTIVATION_CONTROLLER: Lazy<tokio::sync::Mutex<Option<Arc<ReactiveActivator>>>> = Lazy::new(|| tokio::sync::Mutex::new(None));
 
-/// This function ensures that the `ReactiveActivator` is initialized **only once**,
-/// using the same “atomic‐flag + background task” technique as the client version.
+///  * `action()`  — spawns `initialize_socket_host_transposer()` on
+///                  a blocking thread tied to the current runtime.
+///  * `condition()` — **async predicate**; it resolves to `true` once
+///                    the host’s auto-collect queue is empty.  
+///                    A background task polls the queue every 50 ms,
+///                    prints debug info, and flips an `AtomicBool`.
 pub async fn init_host_reactive_activator() {
-    // ─────────────── LOCK & DOUBLE‐INIT CHECK ───────────────
+    // ───── 1. Lock global controller & bail if already initialised ─────
     let mut guard = HOST_BUFFER_ACTIVATION_CONTROLLER.lock().await;
     if guard.is_some() {
-        // Already initialized – do nothing.
+        println!("[Host] ReactiveActivator already initialised.");
         return;
     }
+    println!("[Host] Initialising ReactiveActivator …");
 
-    // ────────────── GRAB THE TOKIO HANDLE ONCE ──────────────
+    // ───── 2. Grab the current Tokio handle (once) ─────────────────────
     let rt_handle = Handle::current();
 
-    // ───────────────────── ACTION ───────────────────────────
-    // exactly like the client’s action, but calling `initialize_socket_host_transposer()`
-    let action: Arc<dyn Fn() + Send + Sync> = {
-        let rt_clone = rt_handle.clone();
+    // ───── 3. ACTION: identical pattern to the client’s, but host fn ───
+    let action: Arc<dyn Fn() + Send + Sync + 'static> = {
+        let rt = rt_handle.clone();
         Arc::new(move || {
-            // Offload to a blocking thread, then run our async host‐transposer inside it:
-            let rt_inner = rt_clone.clone();
-            rt_clone.spawn_blocking(move || {
-                rt_inner.block_on(async {
-                    if let Err(e) = initialize_socket_host_transposer().await {
-                        panic!("Error during host transposition: {:?}", e);
-                    }
-                });
+            rt.spawn_blocking({
+                let rt_for_block = rt.clone();
+                move || {
+                    rt_for_block.block_on(async {
+                        if let Err(e) = initialize_socket_host_transposer().await {
+                            eprintln!("[Host] transposer error: {e:?}");
+                        }
+                    });
+                }
             });
         })
     };
 
-    // Replace the old “mpsc + recv()” pattern with an AtomicBool + spawned task:
-    let condition: Arc<dyn Fn() -> bool + Send + Sync> = {
-        // Create a shared AtomicBool that will be flipped to `true` once the schedule is empty
+    // ───── 4. CONDITION: async predicate w/ background poll + debug ────
+    use std::pin::Pin;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
+        // shared flag, flipped to true once queue is empty
         let flag = Arc::new(AtomicBool::new(false));
 
-        // Spawn a Tokio‐task that continuously checks `buffer_down_list_schedule()`,
-        // storing `true` into `flag` as soon as `.is_empty()` becomes true.
+        // spawn a polling task for debug + flag update
         {
-            let flag_clone = flag.clone();
+            let flag_clone = Arc::clone(&flag);
             rt_handle.spawn(async move {
                 loop {
                     let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
-                    // Keep only auto_collect entries:
                     schedule.retain(|cmd| cmd.auto_collect);
+
                     let empty = schedule.is_empty();
+                    println!("[Host][Condition-poll] auto_collect queue len = {}, empty = {}", schedule.len(), empty);
+
                     flag_clone.store(empty, Ordering::SeqCst);
                     if empty {
-                        // Stop the loop as soon as the schedule is empty:
+                        println!("[Host][Condition-poll] queue empty → flag = true");
                         break;
                     }
-                    // Otherwise, wait a bit and check again:
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
             });
         }
 
-        // (c) Return a zero‐cost closure that simply does `flag.load(...)`
-        Arc::new(move || flag.load(Ordering::SeqCst))
+        // each call returns an *async ready* future wrapping the current flag
+        Arc::new(move || {
+            let current = flag.load(Ordering::SeqCst);
+            Box::pin(async move { current })
+        })
     };
 
-    // ───────────────────── ACTIVATOR ─────────────────────────
-    // Construct an Arc<ReactiveActivator> just like the client did:
+    // ───── 5. Build & start the activator while still holding the lock ──
     let activator = ReactiveActivator::new(action, condition);
-
-    // Start it immediately. Because `start().await` returns once the activator’s background
-    // loop is spinning, this prevents races. Note that we are still holding the mutex!
     activator.start().await;
+    *guard = Some(activator); // store in the global controller
 
-    // Store the Arc<ReactiveActivator> inside our global controller:
-    *guard = Some(activator);
-
-    // Release the lock (happens when `guard` is dropped)
-    // Now the host activator is fully initialized, and its internal loop is running.
+    println!("[Host] ReactiveActivator initialised and running.");
+    // lock released when `guard` goes out of scope
 }
 
 // -> CLIENT BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
@@ -235,24 +244,19 @@ pub async fn init_client_reactive_activator() {
 
     // ───────────────────── CONDITION ────────────────────────────────────────────
 
-    let condition: Arc<dyn Fn() -> bool + Send + Sync> = {
-        let flag = Arc::new(AtomicBool::new(false));
-        {
-            let flag_clone = flag.clone();
-            rt_handle.spawn(async move {
-                loop {
-                    let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
-                    schedule.retain(|cmd| cmd.auto_collect);
-                    let empty = schedule.is_empty();
-                    flag_clone.store(empty, Ordering::SeqCst);
-                    if empty {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-            });
-        }
-        Arc::new(move || flag.load(Ordering::SeqCst))
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync> = {
+        let rt = rt_handle.clone();
+        Arc::new(move || {
+            // Each time ReactiveActivator calls (condition)().await, we:
+            //   • await the current schedule
+            //   • filter out auto_collect
+            //   • return true if the schedule is empty.
+            Box::pin(async move {
+                let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
+                schedule.retain(|cmd| cmd.auto_collect);
+                schedule.is_empty()
+            })
+        })
     };
 
     // ───────────────────── ACTIVATOR ─────────────────────────────────────────────

@@ -771,7 +771,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         // > if is not first sync and yes,change client status to not sync
         // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
-        let sync_cooldown: i64 = 5i64;
+        let sync_cooldown: i64 = 60i64;
 
         // -> Refactored SYNC CONTROLLER:
         if let Some(sync) = client_sync_status {
