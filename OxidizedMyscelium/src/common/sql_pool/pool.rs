@@ -102,62 +102,6 @@ impl UniqueParityIdGenerator {
     }
 }
 
-/// A utility for generating unique numeric IDs.
-// impl UniqueIdGenerator {
-//     /// Constructs a new generator.
-//     ///
-//     /// # Parameters
-//     /// - `registered_ids`: A list of already registered IDs to avoid collisions.
-//     ///
-//     /// # Returns
-//     /// An instance of `UniqueIdGenerator`.
-//     pub fn _new(registered_ids: Vec<u32>) -> Self {
-//         Self { registered_ids }
-//     }
-
-//     /// Updates the internal list of registered IDs.
-//     ///
-//     /// # Parameters
-//     /// - `registered_ids`: The new list of registered IDs.
-//     pub fn _update_registered_ids(&mut self, registered_ids: Vec<u32>) {
-//         self.registered_ids = registered_ids;
-//     }
-
-//     /// Generates a new unique ID.
-//     ///
-//     /// # Returns
-//     /// A `u32` representing the unique ID.
-//     pub fn gen(&mut self) -> u32 {
-//         loop {
-//             let buffer_id = self.gen_buffer_id();
-//             if self.validate(buffer_id) {
-//                 return buffer_id;
-//             }
-//         }
-//     }
-
-//     /// Generates a random numeric ID.
-//     ///
-//     /// # Returns
-//     /// A `u32` representing the randomly generated ID.
-//     fn gen_buffer_id(&self) -> u32 {
-//         let length = ID_LENGTH.lock();
-//         let mut rng = rand::thread_rng();
-//         rng.gen_range(0..*length) as u32
-//     }
-
-//     /// Validates that a given numeric ID is unique.
-//     ///
-//     /// # Parameters
-//     /// - `buffer_id`: The ID to validate.
-//     ///
-//     /// # Returns
-//     /// `true` if the ID is unique, otherwise `false`.
-//     fn validate(&self, buffer_id: u32) -> bool {
-//         !self.registered_ids.contains(&buffer_id)
-//     }
-// }
-
 // -> Sql custom pool:
 use std::fmt;
 

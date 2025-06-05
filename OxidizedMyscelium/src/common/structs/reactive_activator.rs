@@ -2,9 +2,11 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
+use tokio::{
+    sync::{Mutex, Semaphore},
+    task::JoinHandle,
+};
 
 use syn::token::Mut;
 
@@ -12,6 +14,7 @@ pub struct ReactiveActivator {
     thread_handle: Arc<Mutex<Option<JoinHandle<()>>>>, // ← Tokio JoinHandle
     action: Arc<dyn Fn() + Send + Sync>,
     condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
+    sem: Arc<Semaphore>, // pass in the semaphore you want to use
 }
 
 impl fmt::Debug for ReactiveActivator {
@@ -25,11 +28,16 @@ impl fmt::Debug for ReactiveActivator {
 }
 
 impl ReactiveActivator {
-    pub fn new(action: Arc<dyn Fn() + Send + Sync>, condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>) -> Arc<Self> {
+    pub fn new(
+        action: Arc<dyn Fn() + Send + Sync>,
+        condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>,
+        sem: Arc<Semaphore>, // pass in the semaphore you want to use
+    ) -> Arc<Self> {
         Arc::new(Self {
             thread_handle: Arc::new(Mutex::new(None)),
             action,
             condition,
+            sem,
         })
     }
 
@@ -40,11 +48,16 @@ impl ReactiveActivator {
             let action = Arc::clone(&self.action);
             let condition = Arc::clone(&self.condition);
             let thread_handle = Arc::clone(&self.thread_handle);
+            let sem = Arc::clone(&self.sem);
 
             println!("Starting the ReactiveActivator task...");
 
             // Spawn the async loop
             let join_handle = tokio::spawn(async move {
+                // Acquire one permit (awaits if limit reached)
+                let _permit = sem.acquire().await.expect("semaphore closed");
+
+                // ––––––––– MAIN LOOP –––––––––
                 loop {
                     println!("Executing action...");
                     (action)();
@@ -57,6 +70,8 @@ impl ReactiveActivator {
                         break;
                     }
                 }
+
+                // When loop ends, `_permit` is dropped → releases the seat.
 
                 // Clear the handle when done
                 let mut guard = thread_handle.lock().await; // TODO We can move it into the outside of the thread.
@@ -125,6 +140,7 @@ mod tests {
 
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use tokio::sync::Barrier;
     use tokio::time::{sleep, Duration};
 
     // For clarity, alias the macro:
@@ -168,8 +184,11 @@ mod tests {
             })
         };
 
+        // Initialize a semaphore to control the transpositon execution flow
+        let transposer_sem = Arc::new(Semaphore::new(1));
+
         // ───────────────────── BUILD + START THE ACTIVATOR ──────────────────────
-        let activator = ReactiveActivator::new(action_closure, condition_closure);
+        let activator = ReactiveActivator::new(action_closure, condition_closure, transposer_sem);
 
         // Start the background loop:
         activator.start().await;
@@ -234,8 +253,11 @@ mod tests {
         // whose output is `false` every time.
         let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = Arc::new(|| Box::pin(async { false }));
 
+        // Initialize a semaphore to control the transpositon execution flow
+        let transposer_sem = Arc::new(Semaphore::new(1));
+
         // ─────────────────── BUILD & START ACTIVATOR ───────────────────────
-        let activator = ReactiveActivator::new(action_closure, condition_closure);
+        let activator = ReactiveActivator::new(action_closure, condition_closure, transposer_sem);
 
         // 1) First start:
         activator.start().await;
@@ -328,8 +350,11 @@ mod tests {
             })
         };
 
+        // Initialize a semaphore to control the transpositon execution flow
+        let transposer_sem = Arc::new(Semaphore::new(1));
+
         // ─────────────────── BUILD & START ACTIVATOR ───────────────────────
-        let activator = ReactiveActivator::new(action_closure, condition_closure);
+        let activator = ReactiveActivator::new(action_closure, condition_closure, transposer_sem);
 
         // Start the background loop:
         activator.start().await;
@@ -374,5 +399,69 @@ mod tests {
 
         // 5) Assert the counter was bumped twice
         assert_eq!(counter.load(Ordering::SeqCst), 2, "Expected the shared closure to be called twice");
+    }
+
+    #[tokio::test]
+    async fn test_semaphore_limits_to_one_concurrent_execution() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let execution_log = Arc::new(Mutex::new(Vec::new()));
+        let barrier = Arc::new(Barrier::new(2)); // for synchronization
+
+        // Shared semaphore with only 1 permit
+        let semaphore = Arc::new(Semaphore::new(1));
+
+        let make_action = |id: usize| {
+            let counter = Arc::clone(&counter);
+            let log = Arc::clone(&execution_log);
+            let barrier = Arc::clone(&barrier);
+
+            Arc::new(move || {
+                let count = counter.fetch_add(1, Ordering::SeqCst);
+                println!("Action {} executed, count = {}", id, count);
+
+                let mut log = log.blocking_lock();
+                log.push(format!("Action {} ran at {}", id, count));
+
+                // Wait until both actions are started
+                let _ = barrier.wait();
+            }) as Arc<dyn Fn() + Send + Sync>
+        };
+
+        fn make_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> {
+            Arc::new(|| {
+                Box::pin(async move {
+                    sleep(Duration::from_millis(100)).await;
+                    true
+                })
+            })
+        }
+
+        let condition = make_condition();
+
+        let activator1 = ReactiveActivator::new(make_action(1), Arc::clone(&condition), Arc::clone(&semaphore));
+        let activator2 = ReactiveActivator::new(make_action(2), Arc::clone(&condition), Arc::clone(&semaphore));
+
+        // Start both at (nearly) the same time
+        let t1 = tokio::spawn(async move { activator1.start().await });
+        let t2 = tokio::spawn(async move { activator2.start().await });
+
+        t1.await.unwrap();
+        t2.await.unwrap();
+
+        // Let them finish
+        sleep(Duration::from_millis(150)).await;
+
+        let log = execution_log.lock().await;
+
+        println!("Execution log: {:?}", *log);
+
+        // One should be blocked until the other ends
+        assert_eq!(log.len(), 2); // both got executed eventually
+        assert_ne!(log[0], log[1], "Both actions ran concurrently!");
+
+        // Optional: enforce that they didn’t run *at the same time*
+        let a1 = log.iter().any(|s| s.contains("Action 1"));
+        let a2 = log.iter().any(|s| s.contains("Action 2"));
+        assert!(a1 && a2, "Both actions should have been invoked sequentially");
     }
 }

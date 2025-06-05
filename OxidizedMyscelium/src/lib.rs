@@ -39,7 +39,7 @@ use socket_client::response_watcher::watch_response;
 use syn::buffer;
 use tokio::runtime::Runtime;
 use tokio::signal;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, Semaphore};
 use tokio::task::futures;
 
 use core::panic;
@@ -186,8 +186,11 @@ pub async fn init_host_reactive_activator() {
         })
     };
 
-    // ───── 5. Build & start the activator while still holding the lock ──
-    let activator = ReactiveActivator::new(action, condition);
+    // ───── 5. Initialize a semaphore to control the transpositon execution flow
+    let transposer_sem = Arc::new(Semaphore::new(1));
+
+    // ───── 6. Build & start the activator while still holding the lock ──
+    let activator = ReactiveActivator::new(action, condition, transposer_sem);
     activator.start().await;
     *guard = Some(activator); // store in the global controller
 
@@ -261,9 +264,12 @@ pub async fn init_client_reactive_activator() {
 
     // ───────────────────── ACTIVATOR ─────────────────────────────────────────────
 
+    // ───── Initialize a semaphore to control the transpositon execution flow
+    let transposer_sem = Arc::new(Semaphore::new(1));
+
     // Create and start the ReactiveActivator as before—`start().await` will return
     // immediately because `action()` itself (when invoked) only does `spawn_blocking`.
-    let activator = ReactiveActivator::new(action, condition);
+    let activator = ReactiveActivator::new(action, condition, transposer_sem);
 
     activator.start().await; // ⬅️  awaits **while the mutex is held**
 
