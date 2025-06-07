@@ -3,6 +3,7 @@ use super::socket_host::get_response;
 use super::transposer_functions::handle_redirect::RedirectError;
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, CommandVariant};
+use crate::common::types::BufferError;
 use crate::socket_host::command_handler::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::socket_host::command_handler::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::socket_host::command_handler::enhanced_buffer::utilities::ResponseTarget;
@@ -329,7 +330,7 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
 ///
 /// # Returns
 /// - A `Command` object representing the response for the common command.
-async fn handle_common_function(command: &Command) -> Command {
+async fn handle_common_function(command: &Command) -> Result<Command, BufferError> {
     // >--------------------------------------------------------------------------------------------------------------
     // > Schedule to process
 
@@ -343,7 +344,7 @@ async fn handle_common_function(command: &Command) -> Command {
         command.command.collect_response.clone(),
     );
 
-    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
+    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await?;
 
     println!("Initializating transposer!");
 
@@ -383,7 +384,7 @@ async fn handle_common_function(command: &Command) -> Command {
         command: command_instructions,
     };
 
-    return conf_command;
+    return Ok(conf_command);
 }
 
 pub async fn host_commands_processing(command: &Command) -> Command {
@@ -477,7 +478,13 @@ pub async fn host_commands_processing(command: &Command) -> Command {
 
         //> If resp target isn't origin, nor host then:
         if vec!["origin", "host"].contains(&resp_target.as_str()) {
-            response = handle_common_function(&command).await;
+            response = match handle_common_function(&command).await {
+                Ok(r) => r,
+                Err(e) => {
+                    logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
+                    create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying handle a common function command: {:?}, the error was: {:?}", &command, e))
+                },
+            };
             return response;
         }
 
@@ -516,6 +523,13 @@ pub async fn host_commands_processing(command: &Command) -> Command {
         }
     };
 
-    response = handle_common_function(&command).await;
+    response = match handle_common_function(&command).await {
+        Ok(r) => r,
+        Err(e) => {
+            logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
+            create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying handle a common function command: {:?}, the error was: {:?}", &command, e))
+        },
+    };
+
     return response;
 }

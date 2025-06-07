@@ -1,3 +1,4 @@
+#![deny(unused_must_use)]
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]

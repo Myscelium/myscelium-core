@@ -149,6 +149,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                 },
             };
 
+            logger.debug(format!("Prepared, the client thought retrieving for the sync status update")).await;
+
             let client_handlers; // Client Handlers contain a Value wrapped Node
 
             // Check if 'client_handlers' exists within 'kwargs'
@@ -158,6 +160,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                 return ProcessResult::Error(format!("update_client_commands_ref give the followign error: The 'client_handlers' key does not exist within 'kwargs'."));
             }
 
+            logger.debug(format!("Extracted the client handlers")).await;
+
             // } else {
             //     return ResultType::Error(format!("update_client_commands_ref command doesn't have kwargs in it!"));
             // }
@@ -166,7 +170,6 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
 
             {
                 let mut actual_patterns = HOST_COMMAND_PATTERNS.lock().await;
-
                 let mut client_node = match Node::from_value(client_handlers.clone()) {
                     Ok(n) => n,
                     Err(e) => {
@@ -174,12 +177,18 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                     },
                 };
 
+                logger.debug(format!("Obtained the client node")).await;
+
                 client_node.change_node_status(NodeStatus::Online);
                 actual_patterns.add_or_update_if_exists(client_node);
 
+                logger.debug(format!("Updated the client node status")).await;
+
                 // client.update_handlers(client_node.get_node_handlers().unwrap()); // TODO >> Update the type of the hanlders to client
-                client.change_sync_to(true);
-                client.save_into_db();
+                client.change_sync_to(true).await;
+                client.save_into_db().await;
+
+                logger.debug(format!("Updated the client in the database with the new status")).await;
             }
 
             {
@@ -214,7 +223,7 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
             );
 
             // > Verify the nodes that needs to be notified of this update in this client node (restrictivety without cause waves of unecessary updates)
-            sync_verifier();
+            sync_verifier().await;
 
             return ProcessResult::CommandInstructions(new_command_instructions);
         },

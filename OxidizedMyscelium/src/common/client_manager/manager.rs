@@ -670,7 +670,7 @@ impl Client {
         self.syncronized
     }
 
-    pub fn change_sync_to(&self, sync: bool) -> Result<Self, ClientError> {
+    pub async fn change_sync_to(&self, sync: bool) -> Result<Self, ClientError> {
         let new_client = Self {
             client_id: self.client_id.clone(),
             client_name: self.client_name.clone(),
@@ -686,7 +686,7 @@ impl Client {
             syncronized: sync,
         };
 
-        edit_client(new_client.clone());
+        edit_client(new_client.clone()).await;
 
         Ok(new_client)
     }

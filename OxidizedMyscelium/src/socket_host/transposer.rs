@@ -84,11 +84,11 @@ pub async fn set_socket_host_transposer_workers_num(n_workers: u32) {
 
 pub async fn set_socket_host_transposer_callbacks(key: String, callback: CallbackClosure) {
     let logger = acquire_logger!("Transposer");
-    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Try Lock] - HOST_CALLBACK_PATTERNS")).await;
     let patterns = &HOST_CALLBACK_PATTERNS;
-    logger.debug(format!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Lock] - HOST_CALLBACK_PATTERNS")).await;
     patterns.insert(key, callback);
-    logger.debug(format!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS"));
+    logger.debug(format!("[CLIENT][GLOBAL][Release] - HOST_CALLBACK_PATTERNS")).await;
 }
 
 // > Transposer:
@@ -196,19 +196,19 @@ pub async fn process_map_result(m: &CommandInstructions, client_key: &String, pa
                     ProcessResult::CommandInstructions(c) => c.to_value_map(),
                     ProcessResult::List(l) => {
                         // TODO >>> Handle this case maybe create a generalized function for all places that uses this
-                        logger.debug(format!("Receive a unimplemented case in process_map_result!"));
+                        logger.debug(format!("Receive a unimplemented case in process_map_result!")).await;
                         create_special_command_instruction_response!("C210".to_string())
                     },
                     ProcessResult::Empty => {
                         create_special_command_instruction_response!("C210".to_string())
                     },
                     ProcessResult::Error(e) => {
-                        logger.warn(format!("An error occurred in process_map_result. The error was: {:?}", e));
+                        logger.warn(format!("An error occurred in process_map_result. The error was: {:?}", e)).await;
                         error_response!(format!("An error occurred in process_map_result. The error was: {:?}", e))
                     },
                 }
             } else {
-                logger.warn(format!("An error occurred in process_map_result. The error was: this cases require command_id to be some and not none"));
+                logger.warn(format!("An error occurred in process_map_result. The error was: this cases require command_id to be some and not none")).await;
                 error_response!(format!("An error occurred in process_map_result. The error was: this cases require command_id to be some and not none"))
             }
         },
@@ -224,7 +224,7 @@ pub async fn process_map_result(m: &CommandInstructions, client_key: &String, pa
         },
     };
 
-    logger.debug(format!("Converted to Value: {:?}", &response));
+    logger.debug(format!("Converted to Value: {:?}", &response)).await;
 
     return (response, client_to_send);
 }
@@ -296,7 +296,7 @@ async fn process_response(resulttype_command: ProcessResult, mut client_key: Str
                                 Ok(spid) => spid,
                                 Err(e) => {
                                     // TODO >>> Handle this erro pattern
-                                    logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                                    logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e)).await;
                                     let response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
                                     let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
                                     responses.push(up_command);
@@ -316,7 +316,7 @@ async fn process_response(resulttype_command: ProcessResult, mut client_key: Str
                     },
                     ProcessResult::Error(e) => {
                         // TODO >>> Review how this will work for cross client delivery
-                        logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+                        logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e)).await;
                         let response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
                         let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
                         responses.push(up_command);
@@ -334,13 +334,13 @@ async fn process_response(resulttype_command: ProcessResult, mut client_key: Str
         },
         ProcessResult::Empty => response = create_special_command_instruction_response!("C210".to_string()),
         ProcessResult::Error(e) => {
-            logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e));
+            logger.warn(format!("An error occurred while converting the callback response. The error was: {:?}", e)).await;
             response = error_response!(format!("An error occurred while converting the callback response. The error was: {:?}", e));
         },
     }
 
-    logger.debug(format!("Function returned: {:?}", response));
-    logger.info(format!("Command: {:?}, processed!", parity_id.clone()));
+    logger.debug(format!("Function returned: {:?}", response)).await;
+    logger.info(format!("Command: {:?}, processed!", parity_id.clone())).await;
 
     let up_command = UpCommand::new(&client_key, &parity_id, priority.clone(), &to_string(&response).unwrap());
     responses.push(up_command);
@@ -358,7 +358,13 @@ async fn schedule_up_commands(responses: Vec<UpCommand>, command_id: u32) {
             },
         }
     }
-    enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+    match enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await {
+        Ok(_) => {},
+        Err(e) => {
+            // TODO >>> Handle this error correctly!
+            eprintln!("An error happened while trying to schedule commands, the error is: {:?}", e)
+        },
+    };
 }
 
 /// Processes a given `DownCommand`, executing the corresponding logic and handling redirection.
@@ -589,9 +595,10 @@ pub async fn process(down_command: DownCommand) -> Vec<UpCommand> {
     return responses;
 }
 
-async fn clear_old_data() {
-    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands().await;
-    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands().await;
+async fn clear_old_data() -> Result<(), BufferError> {
+    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands().await?;
+    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands().await?;
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -616,7 +623,7 @@ pub async fn initialize_socket_host_transposer() -> Result<(), TranspositionErro
 
     if !(schedule.len() > 0) {
         // logger.debug(format!("Nothing in the schedule, skipping >>>"));
-        clear_old_data();
+        clear_old_data().await.map_err(|e| TranspositionError::from(e))?;
         thread::sleep(Duration::from_millis(100));
         return Ok(());
     }
@@ -644,13 +651,13 @@ pub async fn initialize_socket_host_transposer() -> Result<(), TranspositionErro
             let command_id: u32 = down_command.command_id.clone().unwrap();
 
             if !command_is_not_registry {
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await;
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await.map_err(|e| TranspositionError::from(e))?;
                 logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone())).await;
                 continue;
             }
 
             let responses = process(down_command.clone()).await;
-            schedule_up_commands(responses, down_command.command_id.unwrap());
+            schedule_up_commands(responses, down_command.command_id.unwrap()).await;
             logger.debug(format!("Finalize a process task!")).await;
         }
     }
