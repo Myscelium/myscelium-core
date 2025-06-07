@@ -1,7 +1,9 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use tokio::task::{spawn_blocking, yield_now};
 use tokio::time::{sleep, Duration};
 use tokio::{
     sync::{Mutex, Semaphore},
@@ -11,6 +13,7 @@ use tokio::{
 use syn::token::Mut;
 
 pub struct ReactiveActivator {
+    shutdown: Arc<std::sync::atomic::AtomicBool>,
     thread_handle: Arc<Mutex<Option<JoinHandle<()>>>>, // ← Tokio JoinHandle
     action: Arc<dyn Fn() + Send + Sync>,
     condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
@@ -38,61 +41,70 @@ impl ReactiveActivator {
             action,
             condition,
             sem,
+            shutdown: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
     /// Starts the background task if not already running.
     pub async fn start(&self) {
-        let mut handle_guard = self.thread_handle.lock().await;
-        if handle_guard.is_none() {
-            let action = Arc::clone(&self.action);
-            let condition = Arc::clone(&self.condition);
-            let thread_handle = Arc::clone(&self.thread_handle);
-            let sem = Arc::clone(&self.sem);
-
-            println!("Starting the ReactiveActivator task...");
-
-            // Spawn the async loop
-            let join_handle = tokio::spawn(async move {
-                // Acquire one permit (awaits if limit reached)
-                let _permit = sem.acquire().await.expect("semaphore closed");
-
-                // ––––––––– MAIN LOOP –––––––––
-                loop {
-                    println!("Executing action...");
-                    (action)();
-
-                    let cond = (condition)();
-                    let cond_bool: bool = cond.await;
-                    println!("Condition result: {:?}", cond_bool);
-                    if cond_bool {
-                        println!("Condition met, stopping loop.");
-                        break;
-                    }
-                }
-
-                // When loop ends, `_permit` is dropped → releases the seat.
-
-                // Clear the handle when done
-                let mut guard = thread_handle.lock().await; // TODO We can move it into the outside of the thread.
-                *guard = None;
-            });
-
-            *handle_guard = Some(join_handle);
-        } else {
-            println!("Task already started.");
+        let mut guard = self.thread_handle.lock().await;
+        if guard.is_some() {
+            return;
         }
 
-        println!("Exiting executor!")
+        let action = Arc::clone(&self.action);
+        let condition = Arc::clone(&self.condition);
+        let sem = Arc::clone(&self.sem);
+        let shutdown_flag = Arc::clone(&self.shutdown);
+        let handle_ref = Arc::clone(&self.thread_handle);
+
+        let handle: JoinHandle<()> = tokio::spawn(async move {
+            loop {
+                // Acquire permit per iteration
+                let permit = sem.acquire().await.expect("semaphore closed");
+
+                // Run action in blocking pool
+                let action_clone = Arc::clone(&action);
+                let _ = spawn_blocking(move || {
+                    (action_clone)();
+                })
+                .await;
+
+                // Release permit
+                drop(permit);
+
+                // Check stop condition
+                if shutdown_flag.load(std::sync::atomic::Ordering::SeqCst) || (condition)().await {
+                    break;
+                }
+
+                // Back-off to allow other tasks/time
+                sleep(Duration::from_millis(500)).await;
+            }
+
+            // On natural exit, clear the handle
+            let mut guard = handle_ref.lock().await;
+            *guard = None;
+        });
+
+        *guard = Some(handle);
     }
 
     /// Stops the task if it’s running, waiting for it to finish.
     pub async fn stop(&self) {
-        let mut handle_guard = self.thread_handle.lock().await;
-        if let Some(join_handle) = handle_guard.take() {
-            println!("Stopping ReactiveActivator task...");
-            // await your spawned task to finish
-            let _ = join_handle.await;
+        // 1. Signal the loop exit:
+        self.shutdown.store(true, Ordering::SeqCst);
+        self.sem.add_permits(1);
+
+        // 2. extract the JoinHandle, then **drop the mutex guard**
+        let join_handle_opt = {
+            let mut guard = self.thread_handle.lock().await;
+            guard.take() // move it out
+        }; // guard dropped here
+
+        // 3. now we can safely await the task
+        if let Some(handle) = join_handle_opt {
+            let _ = handle.await;
         }
     }
 }
@@ -141,6 +153,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Barrier;
+    use tokio::task::block_in_place;
     use tokio::time::{sleep, Duration};
 
     // For clarity, alias the macro:
@@ -223,87 +236,130 @@ mod tests {
     }
 
     // ─── Test 2: Ensure multiple calls to start() don't spawn duplicate tasks ───
-    #[tokio_test]
-    async fn reactive_activator_does_not_spawn_multiple_loops() {
-        // We will measure how many times `action()` runs in a fixed time window after one start,
-        // then call start() again, measure again, and ensure it does not double.
 
-        use std::pin::Pin;
-        use std::sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        };
-        use tokio::time::{sleep, Duration};
+    // Helper to create a condition that always returns false (for continuous looping)
+    fn always_false_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static> {
+        Arc::new(|| {
+            Box::pin(async {
+                sleep(Duration::from_millis(10)).await; // Small delay to allow scheduler to switch
+                false
+            })
+        })
+    }
 
-        // ─────────────────── ACTION COUNTER ────────────────────────────────
-        let action_counter = Arc::new(AtomicUsize::new(0));
-        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
-            let counter_clone = Arc::clone(&action_counter);
+    // Helper to create a condition that returns true immediately (for quick stopping)
+    fn always_true_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static> {
+        Arc::new(|| Box::pin(async { true }))
+    }
+
+    // 2: “Semaphore actually limits concurrent action() calls”
+    #[tokio::test]
+    async fn test_semaphore_concurrency_limit() {
+        println!("--- test_semaphore_concurrency_limit ---");
+
+        // Shared counters to measure “running”, “max concurrent”, and “finished”:
+        let running_count = Arc::new(AtomicUsize::new(0));
+        let max_concurrent = Arc::new(AtomicUsize::new(0));
+        let finished_count = Arc::new(AtomicUsize::new(0));
+
+        // Limit to 2 simultaneous permits:
+        let num_permits = 2;
+        let shared_sem = Arc::new(Semaphore::new(num_permits));
+        println!("  Semaphore initialized with {} permits.", num_permits);
+
+        // Define a blocking‐work action. Wrap the sleep in block_in_place()
+        // so we do NOT stall Tokio’s core thread.
+        let action: Arc<dyn Fn() + Send + Sync + 'static> = {
+            // Explicit type annotation is good practice
+            // Use shorter, more descriptive names for the cloned Arcs if they're only used here
+            let running_actions = Arc::clone(&running_count);
+            let max_active_actions = Arc::clone(&max_concurrent);
+            let completed_actions = Arc::clone(&finished_count);
+
             Arc::new(move || {
-                counter_clone.fetch_add(1, Ordering::SeqCst);
+                // Increment count *before* potentially entering the critical section or work
+                let current_active = running_actions.fetch_add(1, Ordering::SeqCst);
+                // Update max observed concurrently
+                max_active_actions.fetch_max(current_active + 1, Ordering::SeqCst);
+
+                println!("    [Action] started; active = {}", current_active + 1);
+
+                // Use block_in_place for synchronous, CPU-bound or blocking I/O work.
+                // It offloads the work to a dedicated blocking thread pool, preventing
+                // the Tokio reactor from being stalled.
+                block_in_place(|| {
+                    // Simulate work that takes time (e.g., CPU computation, synchronous I/O)
+                    std::thread::sleep(Duration::from_millis(50));
+                });
+
+                // Decrement count *after* work is conceptually finished
+                running_actions.fetch_sub(1, Ordering::SeqCst);
+                completed_actions.fetch_add(1, Ordering::SeqCst);
+
+                let remaining_active = running_actions.load(Ordering::SeqCst);
+                println!("    [Action] finished; remaining active = {}", remaining_active);
             })
         };
 
-        // ─────────────────── CONDITION (ALWAYS FALSE) ──────────────────────
-        //
-        // Signature required by `ReactiveActivator`:
-        //   Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>
-        //
-        // Here we use `Box::pin(async { false })`, which produces a ready future
-        // whose output is `false` every time.
-        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = Arc::new(|| Box::pin(async { false }));
-
-        // Initialize a semaphore to control the transpositon execution flow
-        let transposer_sem = Arc::new(Semaphore::new(1));
-
-        // ─────────────────── BUILD & START ACTIVATOR ───────────────────────
-        let activator = ReactiveActivator::new(action_closure, condition_closure, transposer_sem);
-
-        // 1) First start:
-        activator.start().await;
-
-        // Let it run for 600ms (so it can do roughly 1 iteration—remember each loop has a 500ms sleep).
-        sleep(Duration::from_millis(600)).await;
-        let count_after_first_window = action_counter.load(Ordering::SeqCst);
-
-        // 2) Call start() again while it’s still running.
-        activator.start().await;
-
-        // Let it run another 600ms:
-        sleep(Duration::from_millis(600)).await;
-        let count_after_second_window = action_counter.load(Ordering::SeqCst);
-
-        // Now:
-        // - If two independent loops were running in parallel, then in the second 600ms window
-        //   we’d expect roughly 2 iterations instead of 1 (because two loops each do 1 iteration in 500ms).
-        //
-        // Let:
-        //    delta1 = count_after_first_window  (≈ 1)
-        //    delta2 = count_after_second_window - count_after_first_window  (should also be ≈ 1, not ≈ 2)
-        //
-        // We allow small jitter (±1), but if the second window shows ≥ 2× the first window, something is wrong.
-
-        let delta1 = count_after_first_window;
-        let delta2 = count_after_second_window.saturating_sub(count_after_first_window);
-
-        // Check that delta1 is roughly 1 (can sometimes be 0 or 2 if scheduling is weird):
-        assert!((delta1 == 1) || (delta1 == 0) || (delta1 == 2), "Expected roughly 1 iteration in first 600ms, got {}", delta1);
-
-        // The key check: delta2 should be in the same ballpark as delta1, NOT roughly double.
-        // i.e. we fail if delta2 >= 2 * delta1 + 1 (allow 1 count of jitter).
-        // If delta1==0, we just check that delta2 is small (e.g. <= 1).
-        if delta1 == 0 {
-            assert!(delta2 <= 1, "Second window progressed by {}, but expected ≤1 (delta1==0)", delta2);
-        } else {
-            assert!(delta2 < delta1 * 2, "Second window progressed by {}, but expected < {} (not spawning second loop)", delta2, delta1 * 2);
+        // Spawn 5 activators, all sharing the same 2‐permit semaphore:
+        let mut activators = Vec::new();
+        let total_instances = 5;
+        println!("  Creating {} ReactiveActivator instances.", total_instances);
+        for _ in 0..total_instances {
+            let act = ReactiveActivator::new(Arc::clone(&action), always_false_condition(), Arc::clone(&shared_sem));
+            activators.push(act);
         }
 
-        // Finally, shut it down:
-        activator.stop().await;
+        // Start all activators in parallel (each in its own Tokio task):
+        println!("  Starting all {} activators concurrently.", total_instances);
+        let mut join_handles = Vec::new();
+        for a in &activators {
+            let a_clone = Arc::clone(a);
+            join_handles.push(tokio::spawn(async move {
+                a_clone.start().await;
+            }));
+        }
+
+        // Wait 500 ms so each activator can cycle through acquire→action()→release:
+        sleep(Duration::from_millis(500)).await;
+
+        // Check that we never saw more than 2 simultaneous actions:
+        let observed_max = max_concurrent.load(Ordering::SeqCst);
+        println!("  Observed max concurrent = {}", observed_max);
+        assert!(observed_max <= num_permits, "Expected ≤ {} concurrent actions, but saw {}", num_permits, observed_max);
+
+        // Check that at least one action ran (i.e. finished_count > 0)
+        let total_finished = finished_count.load(Ordering::SeqCst);
+        println!("  Total finished actions = {}", total_finished);
+        assert!(total_finished > 0, "Expected at least one action to finish, but none did.");
+
+        // Now stop all activators:
+        println!("  Stopping all activators...");
+        for a in activators {
+            a.stop().await;
+        }
+
+        // Ensure each spawned “start” task has returned:
+        for handle in join_handles {
+            handle.await.expect("join error");
+        }
+        println!("  All activators stopped.");
+
+        // After stopping, there should be no “running” actions left:
+        let running_now = running_count.load(Ordering::SeqCst);
+        assert_eq!(running_now, 0, "Expected 0 running actions after stop(), but found {}", running_now);
+
+        // Finally, verify the semaphore still works by acquiring + releasing one permit:
+        println!("  Verifying semaphore is still usable post‐test...");
+        let permit = shared_sem.acquire().await.expect("couldn't acquire permit");
+        drop(permit);
+        println!("  Semaphore permit acquired & released. ✅");
+
+        println!("--- test_semaphore_concurrency_limit complete ---");
     }
 
     // ─── Test 3: Ensure stop() actually awaits the background loop if it hasn’t finished yet ───
-    #[tokio_test]
+    #[tokio::test]
     async fn reactive_activator_stop_waits_for_loop_to_finish() {
         // Let’s create a condition that only becomes true after a small delay.
         // Meanwhile, we want to call stop() *before* the loop naturally clears itself,
