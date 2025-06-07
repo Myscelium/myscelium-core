@@ -185,8 +185,19 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                 logger.debug(format!("Updated the client node status")).await;
 
                 // client.update_handlers(client_node.get_node_handlers().unwrap()); // TODO >> Update the type of the hanlders to client
-                client.change_sync_to(true).await;
-                client.save_into_db().await;
+                match client.change_sync_to(true).await.map_err(|e| ProcessResult::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return e;
+                    },
+                };
+
+                match client.save_into_db().await.map_err(|e| ProcessResult::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return e;
+                    },
+                };
 
                 logger.debug(format!("Updated the client in the database with the new status")).await;
             }
@@ -291,7 +302,10 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                 Err(e) => return e, // TODO >>> Fix this error case
             };
 
-            new_client.save_into_db(); //> It Already create the new client
+            match new_client.save_into_db().await.map_err(|e| ProcessResult::from(e)) {
+                Ok(_) => {},
+                Err(e) => return e,
+            }; //> It Already create the new client
 
             logger.debug("New client saved into the database!".to_string()).await;
 
