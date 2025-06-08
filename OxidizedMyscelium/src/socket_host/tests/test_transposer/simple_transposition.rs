@@ -93,10 +93,10 @@ fn validate_command_instruction(instruction: &CommandInstructions, rules: &Rules
     false
 }
 
-#[test]
-fn test_down_command_transposition() {
+#[tokio::test]
+async fn test_down_command_transposition() {
     // -> Here is were we setup our callbacks that we will use in the tests
-    setup_once();
+    setup_once().await;
 
     // -> INITIALIZE RULES:
 

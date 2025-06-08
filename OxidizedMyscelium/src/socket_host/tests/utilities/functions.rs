@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use crate::{CallbackClosure, FunctionMetadata};
 
-pub fn registry_handlers(handlers: Vec<FunctionMetadata>) {
+pub async fn registry_handlers(handlers: Vec<FunctionMetadata>) {
     let mut node_handlers: Vec<NodeHandler> = Vec::new();
     let mut callbacks_patterns: HashMap<String, Box<CallbackClosure>> = HashMap::new();
 
@@ -28,7 +28,7 @@ pub fn registry_handlers(handlers: Vec<FunctionMetadata>) {
         callbacks_patterns.insert(handler.name.to_string(), Box::new(handler.func));
     }
 
-    set_host_callbacks(callbacks_patterns);
+    set_host_callbacks(callbacks_patterns).await;
 
     //> Add Client
     {

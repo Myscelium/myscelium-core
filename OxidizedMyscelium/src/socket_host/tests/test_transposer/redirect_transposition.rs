@@ -30,28 +30,28 @@ mod tests {
 
     // -> SHOULD PASS:
 
-    #[test]
-    fn test_redirect_command_with_inplace_response_pointing_to_origin() {
+    #[tokio::test]
+    async fn test_redirect_command_with_inplace_response_pointing_to_origin() {
         // -> Here is were we setup our callbacks that we will use in the tests
-        setup_once();
+        setup_once().await;
         assert_eq!(2 + 2, 4);
     }
 
-    #[test]
-    fn test_redirect_command_with_response_pointing_to_remote() {
+    #[tokio::test]
+    async fn test_redirect_command_with_response_pointing_to_remote() {
         // -> Here is were we setup our callbacks that we will use in the tests
-        setup_once();
+        setup_once().await;
         assert_eq!(3 * 3, 9);
     }
 
     // -> SHOULD NOT PASS:
 
-    #[test]
-    fn test_redirect_command_with_inplace_response_pointing_to_remote() {
+    #[tokio::test]
+    async fn test_redirect_command_with_inplace_response_pointing_to_remote() {
         // < THIS SHOULD NOT PASS BECAUSE WE CANT SEND INPLACE RESPONSE TO TARGET != ORIGIN
 
         // -> Here is were we setup our callbacks that we will use in the tests
-        setup_once();
+        setup_once().await;
         assert_eq!(3 * 3, 9);
     }
 }

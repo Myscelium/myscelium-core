@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
 use rusqlite::types::Value;
+use tokio::sync::OnceCell;
 
 use crate::{
     common::enhanced_buffer::{
@@ -19,7 +20,7 @@ use crate::socket_host::tests::utilities::functions::registry_handlers;
 use crate::{CallbackClosure, FunctionMetadata};
 
 use std::sync::Once;
-static INIT: Once = Once::new();
+static INIT: OnceCell<()> = OnceCell::const_new();
 
 // -> Basic transposition test callbacks:
 
@@ -69,18 +70,24 @@ fn redirect_actf(info: &HashMap<String, Value>) -> CommandInstructions {
 
 // -> Setup:
 
-pub fn setup_once() {
-    INIT.call_once(|| {
+pub async fn setup_once() {
+    // This function is used to setup tests for:
+    // - simple_transposition test
+    // - redirect_transposition test
+
+    // get_or_init guarantees the block runs only once, even if many tasks call
+    // `setup_once()` concurrently.
+    INIT.get_or_init(|| async {
         let mut handlers: Vec<FunctionMetadata> = Vec::new();
 
-        // -> Integrate Basic transposition Test Callbacks:
-        let basic_test_callbacks = vec![some_actf()];
-        handlers.extend(basic_test_callbacks);
+        // → Integrate Basic transposition test callbacks
+        handlers.extend([some_actf()]);
 
-        // -> Integrate Redirect Transposition Test Callbacks:
-        let redirect_test_callbacks = vec![redirect_actf()];
-        handlers.extend(redirect_test_callbacks);
+        // → Integrate Redirect transposition test callbacks
+        handlers.extend([redirect_actf()]);
 
-        registry_handlers(handlers);
-    });
+        // `registry_handlers` is now async, so we can await it here.
+        registry_handlers(handlers).await;
+    })
+    .await;
 }

@@ -20,10 +20,10 @@ use crate::socket_host::tests::test_transposer::uni_setup::setup_once;
 use crate::socket_host::tests::utilities::functions::registry_handlers;
 use crate::{CallbackClosure, FunctionMetadata};
 
-#[test]
-fn test_redirect_command_response_pointing_to_origin() {
+#[tokio::test]
+async fn test_redirect_command_response_pointing_to_origin() {
     // -> Here is were we setup our callbacks that we will use in the tests
-    setup_once();
+    setup_once().await;
 
     // < This command that should send the command to target: `otherclientid` is activating a function in Host
 
