@@ -3,10 +3,37 @@ use std::collections::HashMap;
 
 use crate::NodeStatus;
 use rusqlite::types::Value;
+use serde::{Deserialize, Serialize};
 
 use crate::{common::client_manager::manager::get_all_clients, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
 
-pub async fn sync_verifier() {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SyncVerifierError {
+    Error(String),
+}
+
+impl From<ClientError> for SyncVerifierError {
+    fn from(value: ClientError) -> SyncVerifierError {
+        match value {
+            ClientError::ClientDoesNotExist(client) => SyncVerifierError::Error(format!("Client: {:?} does not exist!", client)),
+            ClientError::ClientAlreadyExist(client) => SyncVerifierError::Error(format!("Client: {:?} already exist!", client)),
+            ClientError::UnexpectedError(e) => SyncVerifierError::Error(format!("Unexpected error: {:?}", e)),
+            ClientError::NotAbleToReadClientStates => SyncVerifierError::Error(format!("Error, not able to read client states")),
+            ClientError::ClientIsNotRunning(_) => unreachable!("ClientError::ClientIsNotRunning should never be converted into ClientLoaderError!"),
+            ClientError::InvalidCommand(e) => unreachable!("ClientError::InvalidCommand ({:?}) should never be converted into ClientLoaderError!", e),
+            ClientError::ClientIsNotFullyInitialized(_) => unreachable!("ClientError::ClientNotFullyInitialized should never be converted into ClientLoaderError!"),
+            ClientError::TargetDoesntExists(_) => unreachable!("ClientError::TargetDoesntExists should never be converted into ClientLoaderError!"),
+            ClientError::HandlerDoesntExist(_) => unreachable!("ClientError::HandlerDoesntExist should never be converted into ClientLoaderError!"),
+            ClientError::ResponseHandlerDoesntExist(_) => unreachable!("ClientError::ResponseHandlerDoesntExist should never be converted into ClientLoaderError!"),
+            ClientError::CantScheduleCommandsToItself => unreachable!("ClientError::CantScheduleCommandsToItself should never be converted into ClientLoaderError!"),
+            ClientError::HostCantSendResponseToItself => unreachable!("ClientError::HostCantSendResponseToItself should never be converted into ClientLoaderError!"),
+            ClientError::TargetCantSendResponseToItself => unreachable!("ClientError::TargetCantSendResponseToItself should never be converted into ClientLoaderError!"),
+            ClientError::BufferError(e) => unreachable!("ClientError::BufferError {:?} should never be converted into ClientLoaderError!", e),
+        }
+    }
+}
+
+pub async fn sync_verifier() -> Result<(), SyncVerifierError> {
     // -> Try to get the clients registred in the database
     let mut clients = match get_all_clients().await {
         Ok(c) => c,
@@ -63,18 +90,42 @@ pub async fn sync_verifier() {
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
                 controller.get_client(&client.client_key).unwrap().update_sync_status(false);
-                client.change_sync_to(false);
-                client.save_into_db();
+                match client.change_sync_to(false).await.map_err(|e| SyncVerifierError::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(e);
+                    },
+                };
+
+                match client.save_into_db().await.map_err(|e| SyncVerifierError::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(e);
+                    },
+                };
                 // This should trigger sync to the client
             }
         } else {
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
                 controller.get_client(&client.client_key).unwrap().update_sync_status(true);
-                client.change_sync_to(true);
-                client.save_into_db();
+                match client.change_sync_to(true).await.map_err(|e| SyncVerifierError::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(e);
+                    },
+                };
+
+                match client.save_into_db().await.map_err(|e| SyncVerifierError::from(e)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(e);
+                    },
+                };
                 // This should trigger sync to the client
             }
         };
     }
+
+    Ok(())
 }

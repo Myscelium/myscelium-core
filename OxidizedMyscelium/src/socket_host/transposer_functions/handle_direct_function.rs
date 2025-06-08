@@ -8,7 +8,7 @@ use crate::common::structs::available_commands::NodeStatus;
 use crate::common::structs::available_commands::{CommandPatterns, Node};
 use crate::common::structs::results_structs::ResultType;
 use crate::socket_client::transposer::ProcessError;
-use crate::socket_host::functions::sync_analiser::sync_verifier;
+use crate::socket_host::functions::sync_analiser::{sync_verifier, SyncVerifierError};
 use crate::socket_host::host_logger::log_handler::Logger;
 use crate::socket_host::sync_controller::controller::Clients;
 use crate::socket_host::transposer_functions::helpers::cast_new_client;
@@ -58,6 +58,14 @@ impl From<ClientError> for ProcessResult {
             ClientError::HostCantSendResponseToItself => unreachable!("ClientError::HostCantSendResponseToItself should never be converted into ClientLoaderError!"),
             ClientError::TargetCantSendResponseToItself => unreachable!("ClientError::TargetCantSendResponseToItself should never be converted into ClientLoaderError!"),
             ClientError::BufferError(e) => unreachable!("ClientError::BufferError {:?} should never be converted into ClientLoaderError!", e),
+        }
+    }
+}
+
+impl From<SyncVerifierError> for ProcessResult {
+    fn from(value: SyncVerifierError) -> ProcessResult {
+        match value {
+            SyncVerifierError::Error(e) => ProcessResult::Error(e),
         }
     }
 }
@@ -234,7 +242,10 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
             );
 
             // > Verify the nodes that needs to be notified of this update in this client node (restrictivety without cause waves of unecessary updates)
-            sync_verifier().await;
+            match sync_verifier().await.map_err(|e| ProcessResult::from(e)) {
+                Ok(_) => {},
+                Err(e) => return e,
+            };
 
             return ProcessResult::CommandInstructions(new_command_instructions);
         },

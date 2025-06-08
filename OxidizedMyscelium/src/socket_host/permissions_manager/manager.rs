@@ -31,7 +31,7 @@ pub async fn set_workers_num(n_workers: u32) {
     *default_num_of_workers = n_workers;
 }
 
-pub fn groups_mananger_initialize_table(buffer_path: String) {
+pub async fn groups_mananger_initialize_table(buffer_path: String) {
     // Create a global Mutex for demonstration
     let mutex1 = Mutex::new(0);
     let mutex2 = Mutex::new(0);
@@ -56,7 +56,7 @@ pub fn groups_mananger_initialize_table(buffer_path: String) {
         }
     });
 
-    set_new_path_to_buffer_db!(SQL_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME);
+    set_new_path_to_buffer_db!(SQL_POOL, NUM_WORKERS, buffer_path, BUFFER_NAME).await;
 
     with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute("CREATE TABLE IF NOT EXISTS PermissionGroups (ID INT PRIMARY KEY AUTOINCREMENT, GroupName TEXT, AllowedCallbacks TEXT, AllowCreateNewClients BOOL, AllowCreateSubChannels BOOL, MaxSubChannelsAllowed BOOL, AllowRedirect BOOL, AllowedToRedirectAreBlacklist BOOL, AllowToRedirect TEXT, AllowFileTransfer BOOL, AllowFileTransferAreBlackList BOOL, AllowTransferTo TEXT)", params![]);
@@ -71,7 +71,7 @@ pub fn groups_mananger_initialize_table(buffer_path: String) {
         };
 
         ((), conn)
-    });
+    }).await;
 }
 
 #[derive(Debug, Clone)]
@@ -210,7 +210,8 @@ impl PermissionGroup {
             };
 
             ((), conn)
-        });
+        })
+        .await;
 
         let group = Self {
             group_id: None,

@@ -518,7 +518,13 @@ pub async fn handle_client_disconnect(client_key: &String) {
     };
 
     // > Verify the nodes that needs to be notified of this update (restrictivety without cause waves of unecessary updates)
-    sync_verifier().await;
+    match sync_verifier().await {
+        Ok(_) => {},
+        Err(e) => {
+            logger.exception(format!("An error happened while trying to handle the client disconnect, the error was: {:?}", e)).await;
+            panic!("An error happened while trying to handle the client disconnect, the error was: {:?}", e)
+        },
+    };
 }
 
 // > Socket main structure:
