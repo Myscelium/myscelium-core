@@ -221,7 +221,7 @@ pub async fn schedule(command_instructions: CommandInstructions, priority: u8) -
     logger.debug(format!("[CLIENT] - Scheduling: {:?}", command)).await;
 
     let command_to_schedule: UpCommand = UpCommand::from_command(command);
-    enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
+    enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone()).await.map_err(|e| SchedulingError::from(e))?;
     logger.info(format!("Command: {:?} scheduled!", command_to_schedule)).await;
 
     Ok(parity_id)

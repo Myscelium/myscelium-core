@@ -120,7 +120,12 @@ use crate::common::enhanced_buffer::history::register::register::initialize_buff
 pub async fn initialize_client_buffer(buffer_location: String) {
     println!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location);
 
-    initialize_buffer_history(&buffer_location).await;
+    match initialize_buffer_history(&buffer_location).await {
+        Ok(_) => {},
+        Err(e) => {
+            panic!("Error while initilizing the buffer history, the error was: {:?}", e)
+        },
+    };
 
     // -> INITIALIZE TABLES
     enhanced_buffer::buffer_down_manager::buffer_down_initialize_table(buffer_location.clone()).await;
@@ -421,7 +426,12 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
         match response.command.status {
             CommandStatus::Failure => {
                 logger.exception(format!("\nAn error occurred in host, the error was: {}\n", response.command.message)).await;
-                enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
+                match enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        panic!("Error removing an up command from the buffer up schedule! The error was: {:?}", e)
+                    },
+                };
                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                 CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
@@ -435,7 +445,12 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
             CommandType::ExternalFunction => {
                 let down_command = DownCommand::from_command(response);
                 logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command)).await;
-                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
+                match enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        panic!("Error scheduling a down command in the buffer down schedule! The error was: {:?}", e)
+                    },
+                };
                 {
                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
                     if let Some(ractv) = react_actv.as_ref() {
@@ -451,7 +466,12 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                 // > Also we can use a similar system to sync multiple hosts
                 logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", response.command.actf)).await;
                 let down_command = DownCommand::from_command(response);
-                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await;
+                match enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        panic!("Error scheduling a down command in the buffer down schedule! The error was: {:?}", e)
+                    },
+                };
                 {
                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock().await;
                     if let Some(ractv) = react_actv.as_ref() {
@@ -467,7 +487,12 @@ async fn receiver(mut reader: OwnedReadHalf, mut tx: Sender<String>) -> Result<(
                     if response.command.actf == "C210".to_string() {
                         logger.info(format!("Received Confirmation! Removing command {} of client: {} from buffer up", response.parity_id, response.client_key)).await;
                         COMMANDS_SENT_WAITING_RESPONSE.remove(&response.parity_id);
-                        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await;
+                        match enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&response.client_key, &response.parity_id).await {
+                            Ok(_) => {},
+                            Err(e) => {
+                                panic!("Error removing an up command from the buffer up schedule! The error was: {:?}", e)
+                            },
+                        };
                         continue;
                     }
                 }
@@ -868,7 +893,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
         select! {
             res = receiver(read_half, tx_inbound) => {
                 if let Err(e) = res {
-                    handle_stream_error(e, &client_key_clone);
+                    handle_stream_error(e, &client_key_clone).await;
                 }
             }
             _ = recv_shutdown.notified() => {
@@ -888,7 +913,7 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
         select! {
             res = sender(write_half, rx_outbound) => {
                 if let Err(e) = res {
-                    handle_stream_error(e, &client_key_clone);
+                    handle_stream_error(e, &client_key_clone).await;
                 }
             }
             _ = send_shutdown.notified() => {
