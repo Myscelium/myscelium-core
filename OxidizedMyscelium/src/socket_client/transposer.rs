@@ -159,13 +159,13 @@ pub enum ProcessError {
 async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
     logger.info(format!("Initializing processing!")).await;
-    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone()).await?;
+    let command_alread_processed: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone()).await?;
 
     // Check if the command has already been registered in the up buffer
     let command_id: u32 = down_command.command_id.unwrap().clone();
 
     {
-        if command_is_not_registry {
+        if command_alread_processed {
             logger.info(format!("Command is already processed")).await;
             // If command is already registered, remove it from the down buffer schedule
             match enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await {

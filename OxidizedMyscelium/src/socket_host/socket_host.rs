@@ -930,7 +930,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     CommandMode::Response => {
                         if !incoming {
                             // -> Here theoretically the client_key of the command is the target of the command that cause this response
-                            if command.client_key == command.command.target.to_string() || command.command.command_type != CommandType::SpecialFunction {
+                            if command.client_key == command.command.target.to_string() && command.command.command_type != CommandType::SpecialFunction {
                                 {
                                     let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     println!("Attempt to remove task: {} from node: {}", &command.parity_id, &command.client_key);
@@ -985,7 +985,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         },
                     };
 
-                    let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
+                    let command_alread_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
                         Ok(b) => b,
                         Err(e) => {
                             logger.warn(format!("Error trying to check if the parity id is registered, command: {:?}, Error: {:?}", command, e)).await;
@@ -995,7 +995,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
-                    if !command_is_not_registry {
+                    if command_alread_processed {
                         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
                         return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
@@ -1063,7 +1063,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         },
                     };
 
-                    let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone()).await {
+                    let command_alread_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), real_origin.clone()).await {
                         Ok(cinr) => cinr,
                         Err(e) => {
                             logger.exception(format!("Error trying to check if the parity id is registered for the command: {:?}", command)).await;
@@ -1073,7 +1073,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
-                    if !command_is_not_registry {
+                    if command_alread_processed {
                         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
                         return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:

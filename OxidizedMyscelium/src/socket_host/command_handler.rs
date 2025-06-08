@@ -414,7 +414,7 @@ pub async fn host_commands_processing(command: &Command) -> Command {
 
     // > VERIFY IF ALREADY PROCESSED:
     logger.debug("Command is in command patterns!".to_string()).await;
-    let command_is_not_registry: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), command.client_key.clone()).await {
+    let command_alread_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), command.client_key.clone()).await {
         Ok(cminr) => cminr, // TODO >>> Verify if there is a better way to do this error handling!
         Err(e) => {
             let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying to check if parity id is registered: {:?}", &command));
@@ -425,7 +425,7 @@ pub async fn host_commands_processing(command: &Command) -> Command {
     let response: Command;
 
     //> HANDLE COMMANDS WITH RESPONSE:
-    if !command_is_not_registry {
+    if command_alread_processed {
         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await; // TODO >>> Change this error it's incorrect!
         let response = match get_response(command.clone()).await {
             Ok(sc) => {
