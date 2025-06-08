@@ -455,7 +455,7 @@ pub async fn buffer_up_clear_old_commands() -> Result<(), BufferError> {
             BufferHistory::new("UP")
                 .log_remove_operation(&up_command.client_key, &up_command.parity_id, up_command.command_id.as_ref(), &up_command.command)
                 .await;
-            buffer_up_remove_schedule_by_id(up_command.command_id.unwrap());
+            buffer_up_remove_schedule_by_id(up_command.command_id.unwrap()).await?;
             println!("\nCommand received from host: {} from client: {}, too old, clearing from the buffer up schedule!\n", up_command.parity_id, up_command.client_key);
         }
     }

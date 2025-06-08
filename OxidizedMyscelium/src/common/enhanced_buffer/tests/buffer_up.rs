@@ -21,7 +21,7 @@ fn test_buffer_up() {
 
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
     rt.block_on(async {
-        enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string());
+        unsafe { enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string()).await };
 
         let client_key: String = "randomsclientids".to_string();
         let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.unwrap();
@@ -47,7 +47,7 @@ fn test_buffer_up() {
 
         // Schedule command:
 
-        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
+        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.unwrap();
 
         let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await {
             Ok(bup) => bup,
@@ -67,7 +67,7 @@ fn test_buffer_up() {
         };
 
         let command_extracted = buffer_list.first().unwrap();
-        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(command_extracted.command_id.unwrap());
+        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(command_extracted.command_id.unwrap()).await.unwrap();
 
         let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await {
             Ok(bup) => bup,

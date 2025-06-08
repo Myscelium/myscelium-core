@@ -4,8 +4,8 @@ use crate::common::enhanced_buffer::{self, buffer_down_manager::DownCommand};
 use serde_json::to_string;
 use std::collections::HashMap;
 
-#[test]
-fn test_buffer_down() {
+#[tokio::test]
+async fn test_buffer_down() {
     //> The idea:
 
     // Write in the buffer
@@ -18,7 +18,7 @@ fn test_buffer_down() {
 
     // -> TEST ADD AND RETRIEVE
 
-    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table("./Temp/".to_string());
+    enhanced_buffer::buffer_down_manager::buffer_down_initialize_table("./Temp/".to_string()).await;
 
     let client_key: String = "randomsclientids".to_string();
 
@@ -45,11 +45,10 @@ fn test_buffer_down() {
     let command = Command::new(client_key.clone(), parity_id.clone(), priority, command_instruction);
     let down_command = DownCommand::from_command(command.clone());
 
-    // Schedule command:
-
-    enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
-
     rt.block_on(async {
+        // Schedule command:
+        enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command).await.unwrap();
+
         let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
         let command_extracted = buffer_list.first().unwrap();
         let cm = Command::from_down_command(command_extracted).unwrap();
@@ -60,7 +59,7 @@ fn test_buffer_down() {
 
         let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
         let command_extracted = buffer_list.first().unwrap();
-        enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_extracted.command_id.unwrap());
+        enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_extracted.command_id.unwrap()).await.unwrap();
 
         let buffer_list = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap();
         assert_eq!(0, buffer_list.len());

@@ -499,7 +499,7 @@ pub async fn buffer_down_clear_old_commands() -> Result<(), BufferError> {
             BufferHistory::new("DOWN")
                 .log_remove_operation(&down_command.client_key, &down_command.parity_id, down_command.command_id.as_ref(), &format!("Remove old command: {} ", &down_command.command))
                 .await;
-            buffer_down_remove_schedule_by_id(down_command.command_id.unwrap()); // ID is guarenteed here!
+            buffer_down_remove_schedule_by_id(down_command.command_id.unwrap()).await?; // ID is guarenteed here!
             println!(
                 "\nCommand received from host: {} from client: {}, too old, clearing from the buffer down schedule!\n",
                 down_command.parity_id, down_command.client_key

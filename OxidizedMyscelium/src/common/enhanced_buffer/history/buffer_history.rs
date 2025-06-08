@@ -43,7 +43,7 @@ impl BufferHistory {
             to_write = format!("[{}][{}][{}][{}][{}][ADD] - {}", ts_stamp, self.buffer_type, client_key, unique_key, "", operation);
         }
 
-        write_to_file(to_write).await;
+        write_to_file(to_write).await.unwrap();
     }
 
     pub async fn log_remove_operation(&self, client_key: &String, unique_key: &String, id: Option<&u32>, operation: &String) {
@@ -58,6 +58,6 @@ impl BufferHistory {
             to_write = format!("[{}][{}][{}][{}][{}][REMOVE] - {}", ts_stamp, self.buffer_type, client_key, unique_key, "", operation);
         }
 
-        write_to_file(to_write).await;
+        write_to_file(to_write).await.unwrap();
     }
 }
