@@ -281,7 +281,7 @@ impl ClientState {
 
             (result, conn)
         })
-        .await;
+        .await?;
 
         Ok(())
     }
