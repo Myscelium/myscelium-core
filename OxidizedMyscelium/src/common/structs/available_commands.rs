@@ -420,7 +420,7 @@ impl NetworkMap {
 
     pub fn update_from_value(&mut self, value_object: Value) -> Result<(), NetworkMapError> {
         let new_network_map: NetworkMap = NetworkMap::decode_value(value_object)?;
-        self.mass_update_all_nodes(&new_network_map.nodes);
+        self.mass_update_all_nodes(&new_network_map.nodes)?;
         Ok(())
     }
 
@@ -823,7 +823,7 @@ impl CommandPatterns {
                             status: CommandStatus::Active, // Default status, can be adjusted as needed
                         };
 
-                        &self.add_command(client_name.clone(), command_name, command);
+                        self.add_command(client_name.clone(), command_name, command);
                     }
                 }
             }

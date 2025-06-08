@@ -196,9 +196,10 @@ impl SQLiteConnectionPool {
     ///
     /// # Parameters
     /// - `connection`: The `Connection` object to be returned to the pool.
-    pub async fn release_connection(&self, connection: Connection) {
+    pub async fn release_connection(&self, connection: Connection) -> Result<(), PoolError> {
         let lock = &self.sender;
-        lock.send(connection).await;
+        lock.send(connection).await.map_err(|e| PoolError::SendError(e.to_string()))?;
+        Ok(())
     }
 }
 
