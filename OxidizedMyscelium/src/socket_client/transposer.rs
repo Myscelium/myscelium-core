@@ -304,8 +304,8 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             logger.debug(format!("Received response: {:?}", c)).await;
             let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
             let up_command: UpCommand = UpCommand::from_command(command);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.map_err(|e| ProcessError::from(e))?;
         },
         ProcessResult::List(l) => {
             for c in l {
@@ -322,19 +322,19 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
                     ProcessResult::CommandInstructions(c) => {
                         let command: Command = Command::new(client_key.clone(), down_command.parity_id.clone(), down_command.priority.clone(), c);
                         let up_command: UpCommand = UpCommand::from_command(command);
-                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await;
+                        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.map_err(|e| ProcessError::from(e))?;
                     },
                 }
-                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+                enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
             }
         },
         ProcessResult::Error(e) => {
             logger.debug(format!("Receive a error: {:?}", e)).await;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
         },
         ProcessResult::Empty => {
             logger.debug(format!("Response is empty, continuing!")).await;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
         },
     }
 
@@ -345,9 +345,10 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
 ///
 /// This function invokes methods from `buffer_down_manager` and `buffer_up_manager`
 /// to clear old commands from both up and down buffers.
-fn clear_old_data() {
-    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands();
-    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands();
+async fn clear_old_data() -> Result<(), BufferError> {
+    enhanced_buffer::buffer_down_manager::buffer_down_clear_old_commands().await?;
+    enhanced_buffer::buffer_up_manager::buffer_up_clear_old_commands().await?;
+    Ok(())
 }
 
 /// Initializes the socket client transposer.
@@ -386,7 +387,12 @@ pub async fn initialize_socket_client_transposer() {
     // If there are no commands to process, clear old data and sleep
     if !(schedule_len > 0) {
         logger.debug(format!("Nothing in the schedule, skipping >>>")).await;
-        clear_old_data();
+        match clear_old_data().await {
+            Ok(_) => {},
+            Err(e) => {
+                panic!("Error trying to clear old data from the buffers schedules, the error was: {:?}", e)
+            },
+        };
         thread::sleep(Duration::from_millis(100));
         return;
     } else {
@@ -405,7 +411,7 @@ pub async fn initialize_socket_client_transposer() {
 
     {
         let client_n = CLIENT_NODE_KEY.lock().await;
-        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY"));
+        logger.debug(format!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_KEY")).await;
         client_key = client_n.clone();
     }
 
