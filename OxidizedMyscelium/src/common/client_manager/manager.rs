@@ -612,7 +612,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn update_last_contact(&self) -> Result<Self, ClientError> {
+    pub async fn update_last_contact(&self) -> Result<Self, ClientError> {
         let now = SystemTime::now();
         let duration_since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
 
@@ -638,14 +638,14 @@ impl Client {
             syncronized: self.syncronized.clone(),
         };
 
-        edit_client(new_client.clone());
+        edit_client(new_client.clone()).await;
 
         // println!("Update client contact for client: {}!", self.client_id);
 
         Ok(new_client)
     }
 
-    pub fn update_handlers(&self, new_handlers: Vec<HashMap<String, Value>>) -> Result<Self, ClientError> {
+    pub async fn update_handlers(&self, new_handlers: Vec<HashMap<String, Value>>) -> Result<Self, ClientError> {
         let new_client = Self {
             client_id: self.client_id.clone(),
             client_name: self.client_name.clone(),
@@ -661,7 +661,7 @@ impl Client {
             syncronized: self.syncronized.clone(),
         };
 
-        edit_client(new_client.clone());
+        edit_client(new_client.clone()).await;
 
         Ok(new_client)
     }
@@ -711,7 +711,7 @@ impl Client {
             syncronized: self.syncronized.clone(),
         };
 
-        edit_client(new_client.clone());
+        edit_client(new_client.clone()).await;
 
         Ok(new_client)
     }
@@ -784,7 +784,7 @@ pub async fn registry_new_client(
         client_handlers,
     )?;
 
-    client.save_into_db().await;
+    client.save_into_db().await?;
     Ok(())
 }
 

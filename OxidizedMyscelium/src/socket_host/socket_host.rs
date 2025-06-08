@@ -312,7 +312,7 @@ pub async fn update_last_contact(client_key: String) -> Result<(), ClientError> 
     match client {
         Ok(c) => {
             logger.debug(format!("Receive client contact!")).await;
-            c.update_last_contact()?;
+            c.update_last_contact().await?;
         },
         Err(e) => return Err(e),
         // ClientError::ClientAlreadyExist(e) => {
