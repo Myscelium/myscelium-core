@@ -2,7 +2,8 @@ use lazy_static::lazy_static;
 
 use serde_json::{from_str, Value};
 use std::collections::HashMap;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
+use tokio::sync::Mutex;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

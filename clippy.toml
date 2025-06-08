@@ -1,0 +1,11 @@
+# clippy.toml
+disallowed-types = [
+  { path = "std::sync::Mutex",  reason = "Blocks the async reactor; use tokio::sync::Mutex" },
+  { path = "std::sync::RwLock", reason = "Use tokio::sync::RwLock or parking_lot::RwLock" }
+]
+
+# (Optional) – catch any other “bad across await” types
+await-holding-invalid-types = [
+  { path = "std::sync::Mutex", reason = "Not async-aware" },
+  { path = "std::sync::RwLock", reason = "Not async-aware" }
+]

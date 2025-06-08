@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use chrono::Utc;

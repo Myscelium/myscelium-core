@@ -644,13 +644,13 @@ pub async fn initialize_socket_host_transposer() -> Result<(), TranspositionErro
         {
             logger.debug(format!("Start to process task!")).await;
 
-            let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone())
+            let command_alread_processed: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(down_command.parity_id.clone(), down_command.client_key.clone())
                 .await
                 .map_err(|e| TranspositionError::from(e))?;
 
             let command_id: u32 = down_command.command_id.clone().unwrap();
 
-            if !command_is_not_registry {
+            if command_alread_processed {
                 enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id).await.map_err(|e| TranspositionError::from(e))?;
                 logger.debug(format!("Command {}, already have a response!", down_command.parity_id.clone())).await;
                 continue;

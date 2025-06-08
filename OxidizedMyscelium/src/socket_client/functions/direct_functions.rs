@@ -94,7 +94,7 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                                     logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e)).await;
                                 },
                             };
-                            CLIENT_STATE_MANAGER.lock().clone()
+                            CLIENT_STATE_MANAGER.lock().await.clone()
                         },
                     }
                 };

@@ -327,8 +327,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
             //> Define the default acft
             let mut acft: String = "add_client_handler".to_string();
 
-            if let Some(actf) = command.response_target.clone() {
-                acft = acft
+            if let Some(command_actf) = command.response_target.clone() {
+                acft = command_actf.to_string();
             }
 
             let new_command_instructions: CommandInstructions = CommandInstructions::new(
@@ -430,8 +430,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                     //> Define the default acft
                     let mut acft: String = "update_client_handler".to_string();
 
-                    if let Some(actf) = command.response_target.clone() {
-                        acft = acft
+                    if let Some(command_actf) = command.response_target.clone() {
+                        acft = command_actf.to_string()
                     }
 
                     let new_command_instructions: CommandInstructions = CommandInstructions::new(
@@ -510,8 +510,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                     //> Define the default acft
                     let mut acft: String = "remove_client_handler".to_string();
 
-                    if let Some(actf) = command.response_target.clone() {
-                        acft = acft
+                    if let Some(command_actf) = command.response_target.clone() {
+                        acft = command_actf.to_string()
                     }
 
                     let new_command_instructions: CommandInstructions = CommandInstructions::new(

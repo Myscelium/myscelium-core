@@ -28,8 +28,6 @@ use chrono::Utc;
 
 use crate::common::enhanced_buffer::utilities::Command;
 
-use std::sync::RwLock;
-
 use crate::common::client_manager::manager::ClientError;
 use rusqlite::{Connection, Result};
 

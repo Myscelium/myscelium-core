@@ -3,6 +3,7 @@ use crate::common::functions::converters::*;
 use crate::common::structs::results_structs::ResultType;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
+use std::f32::consts::PI;
 use std::sync::MutexGuard;
 
 #[test]
@@ -27,7 +28,7 @@ fn test_convert_to_resulttype_map() {
 fn test_value_to_resulttype() {
     assert_eq!(value_to_resulttype(&json!("string")), Ok(ResultType::Str("string".to_string())));
     assert_eq!(value_to_resulttype(&json!(42)), Ok(ResultType::Int(42)));
-    assert_eq!(value_to_resulttype(&json!(3.14)), Ok(ResultType::Float(3.14)));
+    assert_eq!(value_to_resulttype(&json!(PI)), Ok(ResultType::Float(PI.into())));
     assert_eq!(value_to_resulttype(&json!(true)), Ok(ResultType::Bool(true)));
     assert_eq!(value_to_resulttype(&json!(null)), Ok(ResultType::Empty));
 
@@ -48,7 +49,7 @@ fn test_value_to_resulttype() {
 fn test_resulttype_to_value() {
     assert_eq!(resulttype_to_value(&ResultType::Str("string".to_string())), json!("string"));
     assert_eq!(resulttype_to_value(&ResultType::Int(42)), json!(42));
-    assert_eq!(resulttype_to_value(&ResultType::Float(3.14)), json!(3.14));
+    assert_eq!(resulttype_to_value(&ResultType::Float(PI.into())), json!(PI));
     assert_eq!(resulttype_to_value(&ResultType::Bool(true)), json!(true));
     assert_eq!(resulttype_to_value(&ResultType::Empty), json!(null));
 

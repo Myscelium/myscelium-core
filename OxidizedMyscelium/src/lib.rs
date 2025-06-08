@@ -1,4 +1,9 @@
 #![deny(unused_must_use)]
+#![deny(clippy::disallowed_types)]
+#![deny(clippy::await_holding_invalid_type)]
+#![deny(clippy::await_holding_lock)] // catches .await while holding a std::sync::MutexGuard
+#![allow(unused_imports)]
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]
@@ -21,36 +26,34 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+#[allow(unused_imports)]
+#[allow(unused_extern_crates)]
+#[deny(warnings)]
+#[allow(dead_code, unused_variables)]
+#[allow(unused_results)]
 use common::enhanced_buffer;
-use common::enhanced_buffer::buffer_down_manager::DownCommand;
 use common::structs::reactive_activator::{CloneableBox, ReactiveActivator};
 use common::types::SchedulingError;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use oxidized_myscelium_macros::callback;
 
-#[allow(unused_imports)]
-#[allow(unused_extern_crates)]
-#[deny(warnings)]
-#[allow(dead_code, unused_variables)]
-#[allow(unused_results)]
-#[allow(unused_variables)]
 use lazy_static::lazy_static;
 use socket_client::response_watcher::watch_response;
 use syn::buffer;
 use tokio::runtime::Runtime;
 use tokio::signal;
+use tokio::sync::Mutex;
 use tokio::sync::{Notify, Semaphore};
 use tokio::task::futures;
 
 use core::panic;
 use std::pin::Pin;
-#[deny(non_snake_case)]
+
 use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 
 pub use crate::common::structs::callbacks_structure::FunctionMetadata;
-use parking_lot::Mutex;
 
 extern crate chrono;
 
@@ -86,25 +89,25 @@ lazy_static! {
     // CLIENT
     pub static ref CLIENT_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref CLIENT_IS_SYNC: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    pub static ref CLIENT_NODE_KEY: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new("".to_string()));
-    pub static ref CLIENT_NODE_NAME: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new("".to_string()));
-    pub static ref CLIENT_LOG_LEVEL: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new("".to_string()));
+    pub static ref CLIENT_NODE_KEY: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
+    pub static ref CLIENT_NODE_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
+    pub static ref CLIENT_LOG_LEVEL: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
     pub static ref CLIENT_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
-    pub static ref CLIENT_NODE_CONFIGS: Arc<tokio::sync::Mutex<Node>> = Arc::new(tokio::sync::Mutex::new(Node::empty_node()));
+    pub static ref CLIENT_NODE_CONFIGS: Arc<Mutex<Node>> = Arc::new(Mutex::new(Node::empty_node()));
     pub static ref CLIENT_STATE_MANAGER: Arc<Mutex<ClientState>> = Arc::new(Mutex::new(ClientState::empty()));
     pub static ref CLIENT_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new(); // TODO >>> Verify if this doesn't need to switch to tokio mutex because of the async code that uses it!
     pub static ref CLIENT_IS_CONNECTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref MEDIAN_CON_RESP_TIME: Arc<Mutex<Vec<f64>>> = Arc::new(Mutex::new(vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
-    pub static ref HOST_ALLOWED_COMMANDS: Arc<tokio::sync::Mutex<NetworkMap>> = Arc::new(tokio::sync::Mutex::new(NetworkMap::new(Vec::new())));
+    pub static ref HOST_ALLOWED_COMMANDS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
 
     // HOST:
     pub static ref HOST_IS_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
-    pub static ref HOST_NODE_NAME: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new("".to_string()));
-    pub static ref HOST_LOG_LEVEL: Arc<tokio::sync::Mutex<String>> = Arc::new(tokio::sync::Mutex::new("".to_string()));
+    pub static ref HOST_NODE_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
+    pub static ref HOST_LOG_LEVEL: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_string()));
     pub static ref HOST_IS_READY: Arc<AtomicBool> = Arc::new(AtomicBool::new(false)); // TODO >>> Finish the impl of this
-    pub static ref HOST_COMMAND_PATTERNS: Arc<tokio::sync::Mutex<NetworkMap>> = Arc::new(tokio::sync::Mutex::new(NetworkMap::new(Vec::new())));
+    pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
-    pub static ref TASKS_MANAGER: Arc<tokio::sync::Mutex<NodesTaskManager>> = Arc::new(tokio::sync::Mutex::new(NodesTaskManager::new_empty()));
+    pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
 
 }
 
@@ -203,16 +206,16 @@ pub async fn init_host_reactive_activator() {
 
 static CLIENT_BUFFER_ACTIVATION_CONTROLLER: Lazy<tokio::sync::Mutex<Option<Arc<ReactiveActivator>>>> = Lazy::new(|| tokio::sync::Mutex::new(None));
 
-macro_rules! acquire_client_logger {
-    ($section_name:expr) => {{
-        let client_log_level;
-        {
-            let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
-            client_log_level = log_level.clone();
-        }
-        Logger::new(client_log_level, $section_name).await
-    }};
-}
+// macro_rules! acquire_client_logger {
+//     ($section_name:expr) => {{
+//         let client_log_level;
+//         {
+//             let log_level = CLIENT_LOG_LEVEL.lock().await.clone();
+//             client_log_level = log_level.clone();
+//         }
+//         Logger::new(client_log_level, $section_name).await
+//     }};
+// }
 
 pub async fn init_client_reactive_activator() {
     // 1) Grab a logger (held only briefly)
@@ -249,7 +252,6 @@ pub async fn init_client_reactive_activator() {
     // ───────────────────── CONDITION ────────────────────────────────────────────
 
     let condition: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync> = {
-        let rt = rt_handle.clone();
         Arc::new(move || {
             // Each time ReactiveActivator calls (condition)().await, we:
             //   • await the current schedule
@@ -312,7 +314,6 @@ use crate::socket_client::transposer::{initialize_socket_client_transposer, set_
 
 pub async fn set_socket_client_transposer_num_of_workers(n_workers: u32) {
     set_socket_client_transposer_workers_num(n_workers).await;
-    return;
 }
 
 /// Stops the socket client.
@@ -325,11 +326,9 @@ pub fn stop_socket_client() {
     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
 }
 
-pub async fn initialize_client_buffer_tables(path: &String) {
-    inialize_client_status_table_table(path.clone()).await;
-    initialize_client_buffer(path.clone()).await;
-
-    return;
+pub async fn initialize_client_buffer_tables(path: &str) {
+    inialize_client_status_table_table(path.to_owned()).await;
+    initialize_client_buffer(path.to_owned()).await;
 }
 
 // #[derive(Debug, Clone)]
@@ -376,7 +375,8 @@ pub async fn is_target_ready(node_key: String) -> bool {
     } else {
         return false;
     }
-    return true;
+
+    true
 }
 
 pub async fn is_client_ready() -> bool {
@@ -409,7 +409,7 @@ pub async fn is_client_ready() -> bool {
         return false;
     }
 
-    return true;
+    true
 }
 
 // pub enum ClientError {
@@ -490,9 +490,8 @@ pub async fn client_wait_response(parity_id: String, wait_for: u64) -> Result<Co
 /// # Behavior
 ///
 /// Updates the logging level of the client.
-pub async fn set_socket_client_log_level(log_level: &String) {
-    set_client_log_level(log_level.clone()).await;
-    return;
+pub async fn set_socket_client_log_level(log_level: &str) {
+    set_client_log_level(log_level.to_owned()).await;
 }
 
 /// This method can't be toguether with the setup because in the rust based crate
@@ -532,13 +531,13 @@ pub async fn set_client_callbacks(callbacks: Vec<Callback>) {
         }
 
         //> Save client handlers
-        let mut client_state = CLIENT_STATE_MANAGER.lock();
         let mut new_client_state = ClientState::load_from_storage().await.unwrap();
         match new_client_state.update_client_handlers(client_handlers.clone()) {
             Ok(_) => {},
             Err(e) => panic!("Error saving handlers in state manager, error was: {:?}", e),
         };
         new_client_state.update_storage_with_self().await.unwrap();
+        let mut client_state = CLIENT_STATE_MANAGER.lock().await;
         *client_state = new_client_state.clone();
     }
 }
@@ -549,11 +548,7 @@ pub async fn get_socket_client_available_handlers() -> HashMap<String, IndexMap<
 
 pub fn get_client_state() -> bool {
     thread::sleep(Duration::from_secs(1));
-    if CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-        true
-    } else {
-        false
-    }
+    CLIENT_IS_RUNNING.load(Ordering::SeqCst)
 }
 
 pub async fn set_client_key(client_key: String) {
@@ -653,9 +648,9 @@ pub fn initialize_socket_client(ip: String, port: i32) {
 }
 
 pub async fn change_client_to_initialized() {
-    let mut client_state = CLIENT_STATE_MANAGER.lock();
+    let mut client_state = CLIENT_STATE_MANAGER.lock().await; // <-- .await here
     client_state.change_initialization_state(true);
-    client_state.save_in_storage().await.unwrap();
+    client_state.save_in_storage().await.unwrap(); // guard is async-aware
 }
 
 pub async fn setup_socket_client(client_name: String, client_uid: String, buffer_path: String, log_level: String, is_main_process: bool) -> Result<(), String> {
@@ -690,12 +685,10 @@ pub async fn setup_socket_client(client_name: String, client_uid: String, buffer
             println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
         }
         {
-            let mut client_state = CLIENT_STATE_MANAGER.lock();
+            let mut client_state = CLIENT_STATE_MANAGER.lock().await;
             client_state.clean_storage().await; // remove any old state
             let new_client_state = ClientState::new(client_name.clone(), client_uid.clone(), NetworkMap::new(Vec::new()), client_node.clone(), false, false, false, false);
-
             new_client_state.save_in_storage().await.map_err(|e| format!("Error trying to save client status in storage: {:?}", e))?;
-
             *client_state = new_client_state.clone();
         }
     } else {
@@ -706,19 +699,15 @@ pub async fn setup_socket_client(client_name: String, client_uid: String, buffer
             let new_client_state = ClientState::load_from_storage().await.map_err(|e| format!("Error trying to load client status in storage, error: {:?}", e))?;
 
             {
-                let mut client_state = CLIENT_STATE_MANAGER.lock();
+                let mut client_state = CLIENT_STATE_MANAGER.lock().await;
                 *client_state = new_client_state.clone();
-            }
-
-            {
-                let client_state = CLIENT_STATE_MANAGER.lock();
                 if client_state.is_fully_initialized() {
                     break;
                 }
             }
 
             if loading_attempts > 10u64 {
-                return Err(format!("Client STATE_MANAGER ins't fully initialized!"));
+                return Err("Client STATE_MANAGER ins't fully initialized!".to_string());
             }
 
             println!("Client STATE_MANAGER isn't fully initialized, trying again in 1 sec!");
@@ -727,7 +716,7 @@ pub async fn setup_socket_client(client_name: String, client_uid: String, buffer
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -751,13 +740,11 @@ lazy_static! {
 
 async fn set_socket_host_transposer_num_of_workers(n_workers: u32) {
     set_socket_host_transposer_workers_num(n_workers).await;
-    return;
 }
 
 async fn set_socket_host_max_connections(n_max_conns: u32) {
-    set_host_clients_manager__pool_workers_num(n_max_conns.clone()).await;
+    set_host_clients_manager__pool_workers_num(n_max_conns).await;
     set_max_conns(n_max_conns).await;
-    return;
 }
 
 async fn initialize_host_buffer_tables(path: String) -> Result<(), std::io::Error> {
@@ -765,12 +752,11 @@ async fn initialize_host_buffer_tables(path: String) -> Result<(), std::io::Erro
     initialize_buffer_history(&path.clone()).await?;
     common::logs_register::register::initialize_logs_file(path.as_str()).await?;
     clients_manager_initialize_table(path.clone()).await;
-    return Ok(());
+    Ok(())
 }
 
 async fn set_socket_host_log_level(log_level: String) {
     set_host_log_level(log_level).await;
-    return;
 }
 
 /// This method can't be toguether with the setup because in the rust based crate
@@ -850,24 +836,8 @@ pub async fn load_allowed_clients() -> Result<(), ClientLoaderError> {
 
     println!("All nodes loaded!");
 
-    return Ok(());
+    Ok(())
 }
-
-/// Removes all clients from the list of clients allowed to connect to the socket host.
-///
-/// This function clears the global list of clients that are permitted to connect to the socket host. After calling this function,
-/// no client will be able to connect until new clients are added using either `set_socket_host_allowed_clients` or `registry_new_allowed_clients`.
-///
-/// # Parameters
-///
-/// - `allowed_client_list`: A Python list of dictionaries, same structure as `set_socket_host_allowed_clients`.
-///
-/// # Python Binding
-/// This function is exposed to Python and can be called from a Python script.
-
-// fn remove_all_allowed_clients() {
-//     let _ = Client::delete_all();
-// }
 
 // ->-------------------------------------------------------------------------------------------------------------------------------
 // -> HOST CONTROLLERS
@@ -881,11 +851,11 @@ fn stop_socket_host() {
 
 // TODO >>> DEVELOP A MECHANISM TO BE ABLE TO SET RUST FUNCTIONS AS CALLBACKS, THIS ALSO NEEDS TO BE PROCEDURALLY CREATABLE
 
-pub async fn setup_socket_host(buffer_path: &String, log_level: &String, n_workers: &u32, n_max_conns: &u32) -> Result<(), std::io::Error> {
-    initialize_host_buffer_tables(buffer_path.clone()).await?;
-    set_socket_host_log_level(log_level.clone()).await;
-    set_socket_host_transposer_num_of_workers(n_workers.clone()).await;
-    set_socket_host_max_connections(n_max_conns.clone()).await;
+pub async fn setup_socket_host(buffer_path: &str, log_level: &str, n_workers: &u32, n_max_conns: &u32) -> Result<(), std::io::Error> {
+    initialize_host_buffer_tables(buffer_path.to_owned()).await?;
+    set_socket_host_log_level(log_level.to_owned()).await;
+    set_socket_host_transposer_num_of_workers(*n_workers).await;
+    set_socket_host_max_connections(*n_max_conns).await;
 
     // -> Partially initialize the host node without the handlers
     let mut global_command_patterns = HOST_COMMAND_PATTERNS.lock().await;

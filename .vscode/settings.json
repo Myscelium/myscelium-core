@@ -1,5 +1,13 @@
 {
     "rust-analyzer.linkedProjects": [
         ".\\Cargo.toml"
+    ],
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.check.extraArgs": [
+        "--",
+        // escalate the lints we care about
+        "-Dclippy::disallowed_types",
+        "-Dclippy::await_holding_lock"
     ]
 }

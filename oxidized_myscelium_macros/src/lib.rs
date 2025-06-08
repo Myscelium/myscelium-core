@@ -1,7 +1,12 @@
+#![allow(unused_imports)]
+
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Attribute, Error, FnArg, ItemFn, Lit, Meta, Pat, PatType};
+use syn::{parse_macro_input, ItemFn};
+
+#[allow(unused_imports)]
+use syn::{Attribute, Error};
 
 // use oxidized_myscelium_core::host_entry_point::registry_socket_host_callbacks;
 // use host_entry_point::set_socket_client_transposer_callbacks;
@@ -240,13 +245,12 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let fn_name = &input.sig.ident;
 
     // Check the return type
-    let return_type = if let syn::ReturnType::Type(_, ty) = &input.sig.output {
-        quote! {#ty}.to_string().replace(' ', "")
-    } else {
-        "()".to_string()
+    let return_type = match &input.sig.output {
+        syn::ReturnType::Type(_, ty) => quote! {#ty}.to_string().replace(' ', ""),
+        syn::ReturnType::Default => "()".to_string(),
     };
 
-    let expected_types = vec![quote! {CommandInstructions}.to_string().replace(' ', ""), "()".to_string()];
+    let expected_types = [quote! {CommandInstructions}.to_string().replace(' ', ""), "()".to_string()];
 
     if !expected_types.contains(&return_type) {
         panic!("The return type must be `CommandInstructions` or `()`, found `{}`", return_type);

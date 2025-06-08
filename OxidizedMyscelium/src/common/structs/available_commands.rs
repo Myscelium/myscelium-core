@@ -6,7 +6,8 @@ use chrono::{DateTime, Duration, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use serde_json::{from_value, Map, Value};
 

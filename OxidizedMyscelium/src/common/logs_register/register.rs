@@ -1,9 +1,7 @@
 use lazy_static::lazy_static;
 use std::fs::OpenOptions;
-use std::{
-    fs::File,
-    sync::{Arc, Mutex},
-};
+use std::{fs::File, sync::Arc};
+use tokio::sync::Mutex;
 
 use std::io::Write;
 use std::io::{self, Error};
@@ -11,10 +9,10 @@ use std::io::{self, Error};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::common::functions::advanced_lockers::smart_lock;
+// use crate::common::functions::advanced_lockers::smart_lock;
 
 lazy_static! {
-    static ref FILE: Arc<tokio::sync::Mutex<Option<File>>> = Arc::new(tokio::sync::Mutex::new(None));
+    static ref FILE: Arc<Mutex<Option<File>>> = Arc::new(Mutex::new(None));
 }
 
 pub async fn initialize_logs_file(path: &str) -> io::Result<()> {

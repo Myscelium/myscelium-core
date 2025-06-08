@@ -13,7 +13,7 @@ use crate::NodeStatus;
 use crate::CLIENTS_SYNC_CONTROLLER;
 use crate::HOST_ALLOWED_COMMANDS;
 use std::sync::Arc;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use chrono::Duration;
 

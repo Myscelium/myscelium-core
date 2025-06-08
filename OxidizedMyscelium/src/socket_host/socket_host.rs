@@ -44,9 +44,7 @@ use serde_json::to_string;
 use crate::socket_host::scheduler::{request_client_available_commands, send_network_available_commands};
 
 #[macro_use]
-use crate::{init_thread_pool, terminate_pool, run_in_thread_pool, wait_all_threads};
 use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
-use crate::common::custom_thread_pool::thread_pool::UnifiedThreadPool;
 
 extern crate chrono;
 use chrono::prelude::Utc;
@@ -87,7 +85,7 @@ lazy_static! {
         let m = std::collections::HashMap::new();
         Arc::new(Mutex::new(m))
     };
-    pub static ref CONNECTION_HANDLER_POOL: OnceCell<Arc<std::sync::Mutex<UnifiedThreadPool>>> = OnceCell::const_new();
+    // pub static ref CONNECTION_HANDLER_POOL: OnceCell<Arc<std::sync::Mutex<UnifiedThreadPool>>> = OnceCell::const_new();
 }
 
 macro_rules! create_error_command_response {
@@ -378,20 +376,20 @@ pub async fn initialize_host_buffer(buffer_location: String) {
 use std::panic;
 
 // Call this during app startup
-pub async fn initialize_connection_pool() {
-    // Lock the MAX_CONS mutex and extract the value
-    let max_conns = MAX_CONS.lock().await;
-    let max_connections = *max_conns;
+// pub async fn initialize_connection_pool() {
+//     // Lock the MAX_CONS mutex and extract the value
+//     let max_conns = MAX_CONS.lock().await;
+//     let max_connections = *max_conns;
 
-    // Initialize your thread pool
-    let pool = init_thread_pool!(max_connections as usize);
+//     // Initialize your thread pool
+//     let pool = init_thread_pool!(max_connections as usize);
 
-    // Wrap it in Arc<Mutex<...>> and store it globally
-    CONNECTION_HANDLER_POOL.set(pool).expect("CONNECTION_HANDLER_POOL already set");
-}
+//     // Wrap it in Arc<Mutex<...>> and store it globally
+//     CONNECTION_HANDLER_POOL.set(pool).expect("CONNECTION_HANDLER_POOL already set");
+// }
 
 pub async fn initialize_host(address: String, client_key: String) -> std::io::Result<()> {
-    initialize_connection_pool().await;
+    // initialize_connection_pool().await;
     let logger = acquire_logger!("Core");
 
     {

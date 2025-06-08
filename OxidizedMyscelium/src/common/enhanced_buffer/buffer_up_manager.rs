@@ -21,7 +21,6 @@ use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::types::BufferError;
 use chrono::Utc;
 use rusqlite::{Connection, Result};
-use std::sync::RwLock;
 
 use crate::common::enhanced_buffer::history::buffer_history::BufferHistory;
 
@@ -402,7 +401,7 @@ pub async fn check_if_parity_id_is_registered(parity_id: String, client_key: Str
                 match id {
                     Ok(id) => {
                         if parity_id == id {
-                            break 'loading Ok(false);
+                            break 'loading Ok(true);
                         }
                     },
                     Err(e) => {

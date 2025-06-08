@@ -1,16 +1,14 @@
 use lazy_static::lazy_static;
 use std::fs::OpenOptions;
-use std::{
-    fs::File,
-    sync::{Arc, Mutex},
-};
+use std::{fs::File, sync::Arc};
+use tokio::sync::Mutex;
 
 use std::io::Error;
 use std::io::Write;
 use tokio::io;
 use tokio::task;
 
-use crate::common::functions::advanced_lockers::smart_lock;
+// use crate::common::functions::advanced_lockers::smart_lock;
 
 lazy_static! {
     static ref FILE: Arc<tokio::sync::Mutex<Option<File>>> = Arc::new(tokio::sync::Mutex::new(None));
