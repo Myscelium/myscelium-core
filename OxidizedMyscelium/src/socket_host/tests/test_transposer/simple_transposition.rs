@@ -96,7 +96,9 @@ fn validate_command_instruction(instruction: &CommandInstructions, rules: &Rules
 #[tokio::test]
 async fn test_down_command_transposition() {
     // -> Here is were we setup our callbacks that we will use in the tests
-    setup_once().await;
+    {
+        setup_once().await;
+    }
 
     // -> INITIALIZE RULES:
 
@@ -195,8 +197,8 @@ async fn test_down_command_transposition() {
 
     // -> TEST ALL VALID COMMANDS:
 
-    generate_combinations_recursive(&mut initial_command, 0, &fields_function, &rules_function, &mut valid_combinations);
-    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations);
+    generate_combinations_recursive(&mut initial_command, 0, &fields_function, &rules_function, &mut valid_combinations); // Generate the commands possible combinations
+    generate_combinations_recursive(&mut initial_command, 0, &fields_response, &rules_response, &mut valid_combinations); // Generate the commands possible combinations
 
     let mut total_responses: u64 = 0u64;
     let mut total_failures: u64 = 0u64;
@@ -205,11 +207,10 @@ async fn test_down_command_transposition() {
     for (i, instruction) in valid_combinations.iter().enumerate() {
         println!("C{:?}: \n{:?}\n", i, instruction);
 
-        let command = Command::new("someclientid".to_string(), "xNmlMpN34x14s".to_string(), 1u8, instruction.clone());
+        let parity = format!("test-parity-{}", i);
+        let command = Command::new("someclientid".into(), parity.clone(), 1u8, instruction.clone());
         let down_command = DownCommand::from_command(command);
-
-        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
-        let responses = rt.block_on(async { process(down_command).await });
+        let responses = process(down_command).await;
 
         println!("Response:\n{:?}\n", responses);
 
@@ -222,6 +223,7 @@ async fn test_down_command_transposition() {
         }
 
         println!("\n{} responses and {} failed", total_responses, total_failures);
+
         if total_failures > 1 {
             panic!("{} command functions/responses failed", total_failures);
         }
