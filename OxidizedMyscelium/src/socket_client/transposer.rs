@@ -245,7 +245,19 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             {
                 let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                 let host_handlers = global_command_patterns.get_node_handlers().unwrap();
-                let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
+
+                let target_handler_params = match host_handlers.get(&command_instructions.actf) {
+                    Some(handler) => handler.clone(),
+                    None => {
+                        logger
+                            .exception(format!("Handler not found for actf: {:?}, available keys: {:?}", command_instructions.actf, host_handlers.keys().collect::<Vec<_>>()))
+                            .await;
+                        return Err(ProcessError::Error(format!("Handler for '{}' not found.", command_instructions.actf)));
+                    },
+                };
+
+                // < thread 'tokio-runtime-worker' panicked at D:\PrivateGit\repos\Myscelium\Myscelium\OxidizedMysceliumCore\OxidizedMyscelium\src\socket_client\transposer.rs:248:99:
+                // < called `Option::unwrap()` on a `None` value
 
                 //Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
