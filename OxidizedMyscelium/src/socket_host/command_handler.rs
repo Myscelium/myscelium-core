@@ -177,7 +177,7 @@ pub async fn handle_redirect_error(e: RedirectError, client_key: String, parity_
 }
 
 // ->--------------------------------------------------------------------------------------------------------------
-// -> INCOMMING REDIRECT COMMANDS PROCESSING
+// -> INCOMING REDIRECT COMMANDS PROCESSING
 
 pub async fn redirect_commands_processing(command: &Command, target: &String, command_patterns: &mut NetworkMap) -> Vec<CommandVariant> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
@@ -232,8 +232,8 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
     //* When a Client Sends a command the scheduler verify if the handler exists in itself
     //* Same happens for host
 
-    // TODO >>> Add verification to cases where client is sendind a resp to host, verify if the resp_actf exists in target
-    // TODO >>> ADD THIS TO THE OTHER CASES< NOT ONLY TO THE CommandTarget::ClientKey
+    // TODO >>> Add verification to cases where client is sending a resp to host, verify if the resp_actf exists in target
+    // TODO >>> ADD THIS TO THE OTHER CASES AND NOT ONLY TO THE CommandTarget::ClientKey
     // TODO >>> See if is possible to reduce the nesting of this block, using assumptions where the Option is guaranteed to be some.
     // > Maybe early returns can help reduce nesting here.
 
