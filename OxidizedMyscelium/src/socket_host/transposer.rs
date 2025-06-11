@@ -181,7 +181,7 @@ pub async fn process_map_result(m: &CommandInstructions, client_key: &String, pa
         CommandTarget::Host => {
             // -> THIS IS DESIGNED TO ALLOW HOST SEND COMMANDS TO ITSELF
 
-            // TODO >>> IMPLEMENT SECURITY EMASURES HERE OR GIVE IT AS A USER RESPONSIBILITY
+            // TODO >>> IMPLEMENT SECURITY MEASURES HERE OR GIVE IT AS A USER RESPONSIBILITY
 
             // let resp: CommandInstructions = handle_internal_management(&m, &mut client_to_send);
 
@@ -472,8 +472,8 @@ pub async fn process(down_command: DownCommand) -> Vec<UpCommand> {
 
             // -> Remove command from schedule if it isn't on the patterns
             if !global_command_patterns.handler_exists_in("host", &translated_command.command.actf) {
-                // TODO >>> Add a mecanism to check if the command exist for the target client
-                // TODO >>> Also adda mecanism to commands have a target by default, and if target is host then target is host
+                // TODO >>> Add a mechanism to check if the command exist for the target client
+                // TODO >>> Also add a mechanism to commands have a target by default, and if target is host then target is host
 
                 logger.warn(format!("Command: {:?} isn't registered in the patterns so it was skipped!", &translated_command.command.actf)).await;
                 let response = error_response!(format!(

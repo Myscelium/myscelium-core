@@ -398,7 +398,6 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
     }
 
     let listener = TcpListener::bind(&address).await?;
-
     logger.info(format!("Listening: {}", address)).await;
 
     // Shared map from client_id -> Sender, so we can reply to each client.
@@ -728,15 +727,15 @@ async fn get_response_or_error(command: Command) -> Command {
 /// - Special care is given to the handling of special functions, which are identified by specific codes (e.g., "C202" and "C206").
 /// - There is a mechanism in place to check if a command's parity ID is already registered and to retrieve existing responses if necessary.
 async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
-    // Aquire logger to section Handle Conn
+    // Acquire logger to section Handle Conn
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
     // -> Before join in the loop, schedule a request of the client commands
     // let mut client: Option<Client> = None;
 
-    // TODO >>> Remove the loop, make it reactive
-    // TODO >>> Remove conver the strams senders into tx for the dispatcher thread
+    // TODO >>> Remove the loop, make it reactive.
+    // TODO >>> Remove convert the streams senders into tx for the dispatcher thread.
 
     loop {
         logger.debug(format!("Command received:\n{:?}\n", command)).await;
@@ -797,7 +796,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         };
 
         // > Check if the max sync was reached
-        // > if is first sync and yes, diconnect client
+        // > if is first sync and yes, disconnect client
         // > if is not first sync and yes,change client status to not sync
         // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
@@ -849,18 +848,17 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             break;
         }
 
-        // ! WE CAN'T USE THIS PY AQUIRE UNTIL THE PYTHON POOL IS FINISHED !
+        // ! WE CAN'T USE THIS PY ACQUIRE UNTIL THE PYTHON POOL IS FINISHED !
 
         // -> ---------------------------------------------------------------------------------------------------------------------
         // -> HOST FUNCTION VERIFICATION
         {
-            let mut command_patterns;
-
+            let mut command_patterns: NetworkMap;
             {
                 command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
             }
 
-            // println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
+            // println!("[HOST][REGISTERED PATTERNS]:\n{:?}", command_patterns);
 
             logger.debug(format!("\nCommand.Command: {:?}", command.command)).await;
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf)).await;
@@ -879,7 +877,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             }
 
             /// Updates the tasks in the task table based in the
-            /// incomming commands and the outcome tasks.
+            /// incoming commands and the outcome tasks.
             async fn update_task_table(command: &Command, incoming: bool) {
                 let logger = acquire_logger!("Core[update_task_table]");
 
@@ -897,7 +895,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             return;
                         },
                         _ => {
-                            // TODO >>> We can see about add the remove task here when the confirmation is confirmating the receive of the Response
+                            // TODO >>> We can see about add the remove task here when the confirmation is confirming the receive of the Response
                             return;
                         },
                     }
@@ -918,7 +916,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             }
                             //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
                             if command.client_key == command.command.target.to_string() {
-                                //> Handle the cases were we are sending some comand to a target
+                                //> Handle the cases were we are sending some command to a target
                                 {
                                     let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
@@ -945,7 +943,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             // < C210 commands are always with (itisaspecialcase) parity_id by filtering the special case we can filter them
                             // TODO >>> Verify isn't just a confirmation
                             // TODO >>> Verify if the response matches some command
-                            // TODO >>> Remove the command of the taskss
+                            // TODO >>> Remove the command of the tasks
                         }
                     },
                 }
@@ -985,7 +983,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         },
                     };
 
-                    let command_alread_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
+                    let command_already_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
                         Ok(b) => b,
                         Err(e) => {
                             logger.warn(format!("Error trying to check if the parity id is registered, command: {:?}, Error: {:?}", command, e)).await;
@@ -995,7 +993,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
-                    if command_alread_processed {
+                    if command_already_processed {
                         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
                         return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
@@ -1020,7 +1018,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                     };
                                 },
                                 CommandVariant::DownCommand(_) => {
-                                    panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
+                                    panic!("Doesn't is expected to receive DownCommand here, something is wrong!")
                                 },
                             }
                         }
@@ -1243,7 +1241,7 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                                 }
                             } else {
                                 // TODO >>> Handle the cases were the some is none!
-                                panic!("Handle incomming response should not be None something is wrong!")
+                                panic!("Handle incoming response should not be None something is wrong!")
                             }
                         },
                         Err(e) => {
