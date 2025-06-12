@@ -897,7 +897,7 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         .expect("Error setting Ctrl-C handler");
 
         // Build exactly one Tokio runtime here
-        let rt: Runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().expect("Failed to create Tokio runtime");
+        let rt: Runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(10).enable_all().build().expect("Failed to create Tokio runtime");
 
         // use that same `rt` to first load clients, then initialize the host
         rt.block_on(async {

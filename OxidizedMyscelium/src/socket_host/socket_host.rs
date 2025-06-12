@@ -405,13 +405,6 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
 
     // Create a channel for the Transposer unit, spawn its async task
     let (tx_transposer, rx_transposer) = mpsc::channel::<(String, String)>(32);
-    {
-        // Clone for the transposer background task
-        // let client_txs_clone = Arc::clone(&client_txs);
-        // tokio::spawn(async move {
-        //     transposer(rx_transposer, client_txs_clone).await;
-        // });
-    }
 
     // Put the transposer channel sender into a global map, in case we have more units later.
     let mut senders = HashMap::new();
@@ -1160,7 +1153,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
 }
 
 async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, client_txs: ClientMap) -> std::io::Result<()> {
-    // Aquire logger to section Handle Conn
+    // Acquire logger to section Handle Connection
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
@@ -1227,8 +1220,13 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                         Ok(response) => {
                             if let Some(res) = response {
                                 let command_response_json: String = json!(res).to_string();
-                                let guard = cloned_ref_client_txs.lock().await;
-                                if let Some(tx) = guard.get(&client_id_clone) {
+
+                                let tx_opt = {
+                                    let guard = cloned_ref_client_txs.lock().await;
+                                    guard.get(&client_id_clone).cloned()
+                                }; // guard dropped here
+
+                                if let Some(tx) = tx_opt {
                                     // TODO >>> Verify if the tx will correctly send the response for the writer.
                                     // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
                                     // > from multiple sources without cause some kind of racing condition between the senders, this way
