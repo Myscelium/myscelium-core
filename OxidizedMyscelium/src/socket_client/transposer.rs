@@ -373,7 +373,7 @@ async fn clear_old_data() -> Result<(), BufferError> {
 /// - If the client is not running, the transposer shuts down.
 /// - If there are no scheduled commands, the function clears old data and goes to sleep for 500ms.
 /// - The function uses a logger named "Transposer" for logging various stages of the process.
-pub async fn initialize_socket_client_transposer() {
+pub async fn initialize_socket_client_transposer() -> Result<(), BufferError> {
     let logger = acquire_logger!("Transposer");
 
     // Retrieve scheduled commands
@@ -383,7 +383,7 @@ pub async fn initialize_socket_client_transposer() {
             Ok(scr) => scr,
             Err(e) => {
                 logger.exception(format!("Error retrieving down commands list, the error is: {:?}", e)).await;
-                return;
+                return Err(e);
             },
         }
     };
@@ -406,7 +406,7 @@ pub async fn initialize_socket_client_transposer() {
             },
         };
         thread::sleep(Duration::from_millis(100));
-        return;
+        return Ok(());
     } else {
         if schedule_len > 1 {
             logger.debug(format!("Find {} commands to process", schedule_len)).await
@@ -482,4 +482,6 @@ pub async fn initialize_socket_client_transposer() {
             }
         }
     }
+
+    Ok(())
 }

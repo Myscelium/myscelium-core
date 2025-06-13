@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::task::{spawn_blocking, yield_now};
+use tokio::task::{spawn_blocking, spawn_local, yield_now};
 use tokio::time::{sleep, Duration};
 use tokio::{
     sync::{Mutex, Semaphore},
@@ -12,11 +12,16 @@ use tokio::{
 
 use syn::token::Mut;
 
+// Allow non-Send futures by dropping the `Send` bound here.  We still
+// keep the `'a` lifetime so the caller can return `'static` futures
+// boxed locally (e.g. via `FutureExt::boxed_local()`).
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+
 pub struct ReactiveActivator {
     shutdown: Arc<std::sync::atomic::AtomicBool>,
     thread_handle: Arc<Mutex<Option<JoinHandle<()>>>>, // ← Tokio JoinHandle
-    action: Arc<dyn Fn() + Send + Sync>,
-    condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
+    action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>,
+    condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync>,
     sem: Arc<Semaphore>, // pass in the semaphore you want to use
 }
 
@@ -32,8 +37,8 @@ impl fmt::Debug for ReactiveActivator {
 
 impl ReactiveActivator {
     pub fn new(
-        action: Arc<dyn Fn() + Send + Sync>,
-        condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>,
+        action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>,
+        condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync + 'static>,
         sem: Arc<Semaphore>, // pass in the semaphore you want to use
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -58,31 +63,18 @@ impl ReactiveActivator {
         let shutdown_flag = Arc::clone(&self.shutdown);
         let handle_ref = Arc::clone(&self.thread_handle);
 
-        let handle: JoinHandle<()> = tokio::spawn(async move {
+        let handle: JoinHandle<()> = spawn_local(async move {
             loop {
-                // Acquire permit per iteration
                 let permit = sem.acquire().await.expect("semaphore closed");
-
-                // Run action in blocking pool
-                let action_clone = Arc::clone(&action);
-                let _ = spawn_blocking(move || {
-                    (action_clone)();
-                })
-                .await;
-
-                // Release permit
+                (action)().await; // non-Send future – ok
                 drop(permit);
 
-                // Check stop condition
-                if shutdown_flag.load(std::sync::atomic::Ordering::SeqCst) || (condition)().await {
+                if shutdown_flag.load(Ordering::SeqCst) || (condition)().await {
                     break;
                 }
-
-                // Back-off to allow other tasks/time
                 sleep(Duration::from_millis(500)).await;
             }
 
-            // On natural exit, clear the handle
             let mut guard = handle_ref.lock().await;
             *guard = None;
         });
@@ -90,7 +82,7 @@ impl ReactiveActivator {
         *guard = Some(handle);
     }
 
-    /// Stops the task if it’s running, waiting for it to finish.
+    /// Stops the task if it's running, waiting for it to finish.
     pub async fn stop(&self) {
         // 1. Signal the loop exit:
         self.shutdown.store(true, Ordering::SeqCst);
@@ -142,7 +134,7 @@ where
 
 // ─── The module under test: ReactiveActivator & CloneableBox ───
 // (Insert the code you already have here, e.g. `pub struct ReactiveActivator { … }`
-//  and its impls, plus `pub struct CloneableBox<F>` etc.; we assume that’s already written.)
+//  and its impls, plus `pub struct CloneableBox<F>` etc.; we assume that's already written.)
 
 // ─── Tests ─────────────────────────────────────────────────────────────
 #[cfg(test)]
@@ -171,10 +163,18 @@ mod tests {
 
         // ───────────────────── ACTION (unchanged) ────────────────────────────────
         let action_count = Arc::new(AtomicUsize::new(0));
-        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
-            let action_count_clone = Arc::clone(&action_count);
+        let action_closure: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync + 'static> = {
+            // keep a master Arc around
+            let action_count_master = Arc::clone(&action_count);
+
             Arc::new(move || {
-                action_count_clone.fetch_add(1, Ordering::SeqCst);
+                // clone *per call*, so the outer Fn can be called repeatedly
+                let counter = Arc::clone(&action_count_master);
+
+                Box::pin(async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    // () is implied, you can omit it
+                })
             })
         };
 
@@ -183,9 +183,9 @@ mod tests {
         // Old signature:     Arc<dyn Fn() -> bool + Send + Sync>
         // New signature:     Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>
         //
-        // We still want: “return `false` the first two times, then `true` the third.”
+        // We still want: "return `false` the first two times, then `true` the third."
         let condition_count = Arc::new(AtomicUsize::new(0));
-        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
+        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync + 'static> = {
             let condition_count_clone = Arc::clone(&condition_count);
             Arc::new(move || {
                 // We capture `prev` synchronously, then wrap it into a ready future.
@@ -216,11 +216,11 @@ mod tests {
 
         // We expect exactly 3 calls to action(); on the third iteration, condition returned true.
         // Depending on timing, it's possible the loop does exactly 3, or maybe 4 if scheduling jitter occurs
-        // (e.g. if condition() checks twice quickly). So we assert “>= 3 but not too many.”
+        // (e.g. if condition() checks twice quickly). So we assert ">= 3 but not too many."
         assert!(actions >= 3 && actions <= 4, "Expected action to be called ~3 times; saw {} times", actions);
 
         // The condition closure must have been called exactly the same number of times as action,
-        // because each loop iteration does “action(); let cond = condition(); if cond { break; }”.
+        // because each loop iteration does "action(); let cond = condition(); if cond { break; }".
         assert!(cond_checks >= 3 && cond_checks <= 4, "Expected condition to be checked ~3 times; saw {} times", cond_checks);
 
         // Now that the loop has broken out, it should have cleared its internal JoinHandle.
@@ -238,7 +238,7 @@ mod tests {
     // ─── Test 2: Ensure multiple calls to start() don't spawn duplicate tasks ───
 
     // Helper to create a condition that always returns false (for continuous looping)
-    fn always_false_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static> {
+    fn always_false_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync + 'static> {
         Arc::new(|| {
             Box::pin(async {
                 sleep(Duration::from_millis(10)).await; // Small delay to allow scheduler to switch
@@ -248,16 +248,16 @@ mod tests {
     }
 
     // Helper to create a condition that returns true immediately (for quick stopping)
-    fn always_true_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static> {
+    fn always_true_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync + 'static> {
         Arc::new(|| Box::pin(async { true }))
     }
 
-    // 2: “Semaphore actually limits concurrent action() calls”
+    // 2: "Semaphore actually limits concurrent action() calls"
     #[tokio::test]
     async fn test_semaphore_concurrency_limit() {
         println!("--- test_semaphore_concurrency_limit ---");
 
-        // Shared counters to measure “running”, “max concurrent”, and “finished”:
+        // Shared counters to measure "running", "max concurrent", and "finished":
         let running_count = Arc::new(AtomicUsize::new(0));
         let max_concurrent = Arc::new(AtomicUsize::new(0));
         let finished_count = Arc::new(AtomicUsize::new(0));
@@ -268,36 +268,39 @@ mod tests {
         println!("  Semaphore initialized with {} permits.", num_permits);
 
         // Define a blocking‐work action. Wrap the sleep in block_in_place()
-        // so we do NOT stall Tokio’s core thread.
-        let action: Arc<dyn Fn() + Send + Sync + 'static> = {
-            // Explicit type annotation is good practice
-            // Use shorter, more descriptive names for the cloned Arcs if they're only used here
-            let running_actions = Arc::clone(&running_count);
-            let max_active_actions = Arc::clone(&max_concurrent);
-            let completed_actions = Arc::clone(&finished_count);
+        // so we do NOT stall Tokio's core thread.
+        let action: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync + 'static> = {
+            // keep one "master" Arc for each counter
+            let running_master = Arc::clone(&running_count);
+            let max_master = Arc::clone(&max_concurrent);
+            let finished_master = Arc::clone(&finished_count);
 
             Arc::new(move || {
-                // Increment count *before* potentially entering the critical section or work
-                let current_active = running_actions.fetch_add(1, Ordering::SeqCst);
-                // Update max observed concurrently
-                max_active_actions.fetch_max(current_active + 1, Ordering::SeqCst);
+                // clone fresh handles *on each call* so we never
+                // move out of the outer Fn
+                let running = Arc::clone(&running_master);
+                let max_conc = Arc::clone(&max_master);
+                let finished = Arc::clone(&finished_master);
 
-                println!("    [Action] started; active = {}", current_active + 1);
+                // box & pin our async block
+                Box::pin(async move {
+                    // 1) increment the "running" counter
+                    let prev = running.fetch_add(1, Ordering::SeqCst);
+                    max_conc.fetch_max(prev + 1, Ordering::SeqCst);
+                    println!("    [Action] started; active = {}", prev + 1);
 
-                // Use block_in_place for synchronous, CPU-bound or blocking I/O work.
-                // It offloads the work to a dedicated blocking thread pool, preventing
-                // the Tokio reactor from being stalled.
-                block_in_place(|| {
-                    // Simulate work that takes time (e.g., CPU computation, synchronous I/O)
-                    std::thread::sleep(Duration::from_millis(50));
-                });
+                    // 2) perform the blocking work on the blocking-pool
+                    // Use block_in_place for synchronous, CPU-bound or blocking I/O work.
+                    block_in_place(|| {
+                        std::thread::sleep(Duration::from_millis(50));
+                    });
 
-                // Decrement count *after* work is conceptually finished
-                running_actions.fetch_sub(1, Ordering::SeqCst);
-                completed_actions.fetch_add(1, Ordering::SeqCst);
-
-                let remaining_active = running_actions.load(Ordering::SeqCst);
-                println!("    [Action] finished; remaining active = {}", remaining_active);
+                    // 3) update counters after work
+                    running.fetch_sub(1, Ordering::SeqCst);
+                    finished.fetch_add(1, Ordering::SeqCst);
+                    let remaining = running.load(Ordering::SeqCst);
+                    println!("    [Action] finished; remaining = {}", remaining);
+                })
             })
         };
 
@@ -339,13 +342,13 @@ mod tests {
             a.stop().await;
         }
 
-        // Ensure each spawned “start” task has returned:
+        // Ensure each spawned "start" task has returned:
         for handle in join_handles {
             handle.await.expect("join error");
         }
         println!("  All activators stopped.");
 
-        // After stopping, there should be no “running” actions left:
+        // After stopping, there should be no "running" actions left:
         let running_now = running_count.load(Ordering::SeqCst);
         assert_eq!(running_now, 0, "Expected 0 running actions after stop(), but found {}", running_now);
 
@@ -358,12 +361,12 @@ mod tests {
         println!("--- test_semaphore_concurrency_limit complete ---");
     }
 
-    // ─── Test 3: Ensure stop() actually awaits the background loop if it hasn’t finished yet ───
+    // ─── Test 3: Ensure stop() actually awaits the background loop if it hasn't finished yet ───
     #[tokio::test]
     async fn reactive_activator_stop_waits_for_loop_to_finish() {
-        // Let’s create a condition that only becomes true after a small delay.
+        // Let's create a condition that only becomes true after a small delay.
         // Meanwhile, we want to call stop() *before* the loop naturally clears itself,
-        // and check that stop() awaits the loop’s end.
+        // and check that stop() awaits the loop's end.
 
         use std::pin::Pin;
         use std::sync::{
@@ -374,10 +377,18 @@ mod tests {
 
         // ─────────────────── ACTION COUNTER ────────────────────────────────
         let action_counter = Arc::new(AtomicUsize::new(0));
-        let action_closure: Arc<dyn Fn() + Send + Sync + 'static> = {
-            let counter_clone = Arc::clone(&action_counter);
+        let action_closure: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync + 'static> = {
+            // keep a master Arc around
+            let action_count_master = Arc::clone(&action_counter);
+
             Arc::new(move || {
-                counter_clone.fetch_add(1, Ordering::SeqCst);
+                // clone *per call*, so the outer Fn can be called repeatedly
+                let counter = Arc::clone(&action_count_master);
+
+                Box::pin(async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    // () is implied, you can omit it
+                })
             })
         };
 
@@ -398,7 +409,7 @@ mod tests {
         }
 
         // async predicate: each call just reads the flag and returns a ready future
-        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
+        let condition_closure: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync + 'static> = {
             let flag_clone = Arc::clone(&cond_flag);
             Arc::new(move || {
                 let current = flag_clone.load(Ordering::SeqCst);
@@ -467,23 +478,33 @@ mod tests {
         let semaphore = Arc::new(Semaphore::new(1));
 
         let make_action = |id: usize| {
-            let counter = Arc::clone(&counter);
-            let log = Arc::clone(&execution_log);
-            let barrier = Arc::clone(&barrier);
+            // keep master Arcs out here
+            let counter_master = Arc::clone(&counter);
+            let log_master = Arc::clone(&execution_log);
+            let barrier_master = Arc::clone(&barrier);
 
-            Arc::new(move || {
-                let count = counter.fetch_add(1, Ordering::SeqCst);
-                println!("Action {} executed, count = {}", id, count);
+            // annotate the closure's return type so the async block can coerce
+            let action: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync + 'static> = Arc::new(move || -> Pin<Box<dyn Future<Output = ()>>> {
+                // clone-per-call
+                let counter = Arc::clone(&counter_master);
+                let log = Arc::clone(&log_master);
+                let barrier = Arc::clone(&barrier_master);
 
-                let mut log = log.blocking_lock();
-                log.push(format!("Action {} ran at {}", id, count));
+                Box::pin(async move {
+                    let count = counter.fetch_add(1, Ordering::SeqCst);
+                    println!("Action {} executed, count = {}", id, count);
 
-                // Wait until both actions are started
-                let _ = barrier.wait();
-            }) as Arc<dyn Fn() + Send + Sync>
+                    let mut log = log.lock().await;
+                    log.push(format!("Action {} ran at {}", id, count));
+
+                    barrier.wait().await;
+                })
+            });
+
+            action
         };
 
-        fn make_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> {
+        fn make_condition() -> Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool>>> + Send + Sync> {
             Arc::new(|| {
                 Box::pin(async move {
                     sleep(Duration::from_millis(100)).await;
@@ -515,7 +536,7 @@ mod tests {
         assert_eq!(log.len(), 2); // both got executed eventually
         assert_ne!(log[0], log[1], "Both actions ran concurrently!");
 
-        // Optional: enforce that they didn’t run *at the same time*
+        // Optional: enforce that they didn't run *at the same time*
         let a1 = log.iter().any(|s| s.contains("Action 1"));
         let a2 = log.iter().any(|s| s.contains("Action 2"));
         assert!(a1 && a2, "Both actions should have been invoked sequentially");
