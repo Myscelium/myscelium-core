@@ -10,6 +10,7 @@ use tokio::{
     task::JoinHandle,
 };
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use syn::token::Mut;
 
 // Allow non-Send futures by dropping the `Send` bound here.  We still
@@ -63,21 +64,69 @@ impl ReactiveActivator {
         let shutdown_flag = Arc::clone(&self.shutdown);
         let handle_ref = Arc::clone(&self.thread_handle);
 
-        let handle: JoinHandle<()> = spawn_local(async move {
-            loop {
-                let permit = sem.acquire().await.expect("semaphore closed");
-                (action)().await; // non-Send future – ok
-                drop(permit);
+        // Clone the shared state for the optimistic `spawn_local` path so that the originals remain
+        // available for the (potential) fallback.
+        let action_local = Arc::clone(&action);
+        let condition_local = Arc::clone(&condition);
+        let sem_local = Arc::clone(&sem);
+        let shutdown_local = Arc::clone(&shutdown_flag);
+        let handle_ref_local = Arc::clone(&handle_ref);
 
-                if shutdown_flag.load(Ordering::SeqCst) || (condition)().await {
-                    break;
+        let attempt_local = catch_unwind(AssertUnwindSafe(|| {
+            tokio::task::spawn_local(async move {
+                loop {
+                    let permit = sem_local.acquire().await.expect("semaphore closed");
+                    (action_local)().await;
+                    drop(permit);
+
+                    if shutdown_local.load(Ordering::SeqCst) || (condition_local)().await {
+                        {
+                            let mut g = handle_ref_local.lock().await;
+                            *g = None;
+                        }
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
-                sleep(Duration::from_millis(500)).await;
-            }
+            })
+        }));
 
-            let mut guard = handle_ref.lock().await;
-            *guard = None;
-        });
+        let handle: JoinHandle<()> = match attempt_local {
+            Ok(h) => h,
+            Err(_) => {
+                // 2) Fallback: spawn a *blocking* task owning its own multi-thread runtime + LocalSet
+                //    (see the earlier implementation).  This works in any context but is a bit heavier.
+
+                tokio::task::spawn_blocking(move || {
+                    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("failed to build local runtime");
+
+                    rt.block_on(async move {
+                        let local = tokio::task::LocalSet::new();
+
+                        local
+                            .run_until(async move {
+                                loop {
+                                    let permit = sem.acquire().await.expect("semaphore closed");
+                                    (action)().await;
+                                    drop(permit);
+
+                                    if shutdown_flag.load(Ordering::SeqCst) || (condition)().await {
+                                        {
+                                            let mut g = handle_ref.lock().await;
+                                            *g = None;
+                                        }
+                                        break;
+                                    }
+
+                                    tokio::time::sleep(Duration::from_millis(500)).await;
+                                }
+                            })
+                            .await;
+                    });
+                })
+            },
+        };
 
         *guard = Some(handle);
     }
@@ -152,7 +201,7 @@ mod tests {
     use tokio::test as tokio_test;
 
     // ─── Test 1: Ensure the ReactiveActivator loop calls action exactly N times and then stops ───
-    #[tokio_test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reactive_activator_runs_exact_number_of_times_then_stops() {
         use std::pin::Pin;
         use std::sync::{
@@ -172,6 +221,7 @@ mod tests {
                 let counter = Arc::clone(&action_count_master);
 
                 Box::pin(async move {
+                    let _ns = std::rc::Rc::new(());
                     counter.fetch_add(1, Ordering::SeqCst);
                     // () is implied, you can omit it
                 })
@@ -253,7 +303,7 @@ mod tests {
     }
 
     // 2: "Semaphore actually limits concurrent action() calls"
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_semaphore_concurrency_limit() {
         println!("--- test_semaphore_concurrency_limit ---");
 
@@ -362,7 +412,7 @@ mod tests {
     }
 
     // ─── Test 3: Ensure stop() actually awaits the background loop if it hasn't finished yet ───
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reactive_activator_stop_waits_for_loop_to_finish() {
         // Let's create a condition that only becomes true after a small delay.
         // Meanwhile, we want to call stop() *before* the loop naturally clears itself,
@@ -413,7 +463,10 @@ mod tests {
             let flag_clone = Arc::clone(&cond_flag);
             Arc::new(move || {
                 let current = flag_clone.load(Ordering::SeqCst);
-                Box::pin(async move { current }) // ready future
+                Box::pin(async move {
+                    let _ns = std::rc::Rc::new(());
+                    current
+                }) // ready future
             })
         };
 
@@ -445,7 +498,7 @@ mod tests {
     }
 
     // ─── Test 4: Simple test for CloneableBox ───
-    #[tokio_test]
+    #[tokio::test(flavor = "current_thread")]
     async fn cloneable_box_indeed_shares_underlying_closure() {
         // 1) A shared counter
         let counter = Arc::new(AtomicUsize::new(0));
@@ -468,7 +521,7 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 2, "Expected the shared closure to be called twice");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_semaphore_limits_to_one_concurrent_execution() {
         let counter = Arc::new(AtomicUsize::new(0));
         let execution_log = Arc::new(Mutex::new(Vec::new()));
