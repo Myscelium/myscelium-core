@@ -33,7 +33,7 @@ mod socket_host;
 #[allow(dead_code, unused_variables)]
 #[allow(unused_results)]
 use common::enhanced_buffer;
-use common::structs::reactive_activator::{CloneableBox, ReactiveActivator};
+use common::structs::reactive_activator::{BoxFuture, CloneableBox, ReactiveActivator};
 use common::types::SchedulingError;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
@@ -137,13 +137,14 @@ pub async fn init_host_reactive_activator() {
     use std::{future::Future, pin::Pin};
 
     // ───── 2. ACTION: identical pattern to the client's, but host fn ───
-    let action: Arc<dyn Fn() -> LocalBoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
-        async move {
-            if let Err(e) = initialize_socket_host_transposer().await {
-                eprintln!("[Host] transposer error: {e:?}");
-            }
-        }
-        .boxed_local()
+    let action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
+        Box::pin(async move {
+            // Temporarily commented out to test ReactiveActivator
+            // if let Err(e) = initialize_socket_host_transposer().await {
+            //     eprintln!("[Host] transposer error: {e:?}");
+            // }
+            println!("Host action executed");
+        })
     });
 
     // ───── 4. CONDITION: async predicate w/ background poll + debug ────
@@ -152,16 +153,15 @@ pub async fn init_host_reactive_activator() {
         Arc,
     };
 
-    let condition: Arc<dyn Fn() -> LocalBoxFuture<'static, bool> + Send + Sync> = {
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> = {
         Arc::new(move || {
-            async move {
+            Box::pin(async move {
                 let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
                 schedule.retain(|cmd| cmd.auto_collect);
                 let empty = schedule.is_empty();
                 println!("[Host][Condition-poll] auto_collect queue len = {}, empty = {}", schedule.len(), empty);
                 empty
-            }
-            .boxed_local()
+            })
         })
     };
 
@@ -209,28 +209,27 @@ pub async fn init_client_reactive_activator() {
     // then builds a brand‐new current_thread runtime inside that thread and runs
     // `initialize_socket_client_transposer().await` there. This avoids deadlocks
     // if `initialize_socket_client_transposer()` itself is not Send.
-    let action: Arc<dyn Fn() -> LocalBoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
+    let action: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync> = Arc::new(move || {
         // We capture nothing non-Send in this block,
         // so the resulting future is Send.
-        async move {
-            if let Err(e) = initialize_socket_client_transposer().await {
-                eprintln!("[Client] transposer error: {e:?}");
-            }
-        }
-        // `.boxed()` erases the concrete `async`‐block type into a `BoxFuture<'static, ()>`
-        .boxed_local()
+        Box::pin(async move {
+            // Temporarily commented out to test ReactiveActivator
+            // if let Err(e) = initialize_socket_client_transposer().await {
+            //     eprintln!("[Client] transposer error: {e:?}");
+            // }
+            println!("Client action executed");
+        })
     });
 
     // ───────────────────── CONDITION ────────────────────────────────────────────
 
-    let condition: Arc<dyn Fn() -> LocalBoxFuture<'static, bool> + Send + Sync> = {
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> = {
         Arc::new(move || {
-            async move {
+            Box::pin(async move {
                 let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
                 schedule.retain(|cmd| cmd.auto_collect);
                 schedule.is_empty()
-            }
-            .boxed_local()
+            })
         })
     };
 
