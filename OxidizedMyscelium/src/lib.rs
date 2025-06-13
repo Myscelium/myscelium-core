@@ -114,6 +114,12 @@ lazy_static! {
 
 }
 
+// Shared runtime for non-Send transposer functions
+static TRANSPOSER_RUNTIME: Lazy<tokio::sync::Mutex<Runtime>> = Lazy::new(|| {
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("Failed to create transposer runtime");
+    tokio::sync::Mutex::new(rt)
+});
+
 // -> HOST BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
 
 // (1) Change HOST_BUFFER_ACTIVATION_CONTROLLER to mirror the client's pattern:
@@ -139,11 +145,19 @@ pub async fn init_host_reactive_activator() {
     // ───── 2. ACTION: identical pattern to the client's, but host fn ───
     let action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
         Box::pin(async move {
-            // Temporarily commented out to test ReactiveActivator
-            // if let Err(e) = initialize_socket_host_transposer().await {
-            //     eprintln!("[Host] transposer error: {e:?}");
-            // }
-            println!("Host action executed");
+            let result = tokio::task::spawn_blocking(|| {
+                let rt_guard = TRANSPOSER_RUNTIME.blocking_lock();
+                rt_guard.block_on(async {
+                    if let Err(e) = initialize_socket_host_transposer().await {
+                        eprintln!("[Host] transposer error: {e:?}");
+                    }
+                })
+            })
+            .await;
+
+            if let Err(e) = result {
+                eprintln!("[Host] spawn_blocking error: {e:?}");
+            }
         })
     });
 
@@ -209,15 +223,24 @@ pub async fn init_client_reactive_activator() {
     // then builds a brand‐new current_thread runtime inside that thread and runs
     // `initialize_socket_client_transposer().await` there. This avoids deadlocks
     // if `initialize_socket_client_transposer()` itself is not Send.
-    let action: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync> = Arc::new(move || {
+    let action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
         // We capture nothing non-Send in this block,
         // so the resulting future is Send.
         Box::pin(async move {
-            // Temporarily commented out to test ReactiveActivator
-            // if let Err(e) = initialize_socket_client_transposer().await {
-            //     eprintln!("[Client] transposer error: {e:?}");
-            // }
-            println!("Client action executed");
+            // Use shared runtime to avoid creation overhead
+            let result = tokio::task::spawn_blocking(|| {
+                let rt_guard = TRANSPOSER_RUNTIME.blocking_lock();
+                rt_guard.block_on(async {
+                    if let Err(e) = initialize_socket_client_transposer().await {
+                        eprintln!("[Client] transposer error: {e:?}");
+                    }
+                })
+            })
+            .await;
+
+            if let Err(e) = result {
+                eprintln!("[Client] spawn_blocking error: {e:?}");
+            }
         })
     });
 
