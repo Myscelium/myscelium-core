@@ -861,16 +861,6 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
     //> HeartBeat -> Sender
     //> UpCommand -> Sender
 
-    // let (tx_to_dispatcher, mut rx_from_receiver) = mpsc::channel::<String>(32);
-    // let (tx_to_sender, mut rx_from_dispatcher) = mpsc::channel::<String>(32);
-
-    // TODO >>> Implement the shutdown logic usig shutdown rx -> based on the following:
-    // if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-    //     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-    //     logger.info("running is set to false, shutting down sender".into());
-    //     break;
-    // }
-
     // -> Make two channels:
     // >  - inbound:  host → client:
     let (tx_inbound, mut rx_inbound) = mpsc::channel::<String>(100);
@@ -954,23 +944,6 @@ pub async fn initialize_client(address: String, shutdown: Arc<Notify>) -> Option
             }
         }
     });
-
-    // -> Auto Reconnection Logic
-    // if !CLIENT_IS_CONNECTED.load(Ordering::SeqCst) {
-    //     let stream = reconnect(address, &client_key).await;
-    //     (read_half, write_half) = stream.into_split();
-    // }
-
-    //
-
-    // Client Buffer Retriever
-    // loop {
-    // TODO >>> activelly receive from receiver (rx_inbound), and retrieve from buffer up to send to host up commands retrieved, throught (tx_outbound)
-    // let command: Command = serde_json::from_str(&buffer_string).unwrap();
-    // println!("Data received: {:?}\n", command);
-    // logger.debug(format!("Received: {:?}", command));
-    // return Ok(Response::Command(command));
-    // }
 
     // -> ------------------------------------------------------------------------------------------------------------------------------------------------------------
 

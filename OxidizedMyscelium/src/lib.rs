@@ -11,6 +11,7 @@
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod common;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]
@@ -18,6 +19,7 @@ mod common;
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod socket_client;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]
@@ -111,7 +113,6 @@ lazy_static! {
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
-
 }
 
 // Shared runtime for non-Send transposer functions
