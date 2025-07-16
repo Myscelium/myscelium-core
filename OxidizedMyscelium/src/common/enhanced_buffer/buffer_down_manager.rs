@@ -246,6 +246,7 @@ pub async fn buffer_down_initialize_table(buffer_path: String) {
             },
             Err(e) => {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsReceived table: {}", e);
+                // TODO >>> Convert this into a real error!
             },
         };
 
@@ -320,7 +321,7 @@ pub async fn buffer_down_get_scheduled_by_parity_id(client_key: String, parity_i
             };
 
             for command in commands_iter {
-                commands_schedule.push(command.unwrap());
+                commands_schedule.push(command.unwrap()); // TODO >>> Remove this unwrap and do the correct handling!
             }
 
             break 'loading Ok(commands_schedule);

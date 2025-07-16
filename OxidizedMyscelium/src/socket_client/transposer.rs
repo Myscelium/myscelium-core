@@ -245,7 +245,19 @@ async fn process(down_command: &DownCommand, client_key: &String) -> Result<(), 
             {
                 let mut global_command_patterns = CLIENT_NODE_CONFIGS.lock().await;
                 let host_handlers = global_command_patterns.get_node_handlers().unwrap();
-                let target_handler_params = host_handlers.get(&command_instructions.actf.clone()).unwrap();
+
+                let target_handler_params = match host_handlers.get(&command_instructions.actf) {
+                    Some(handler) => handler.clone(),
+                    None => {
+                        logger
+                            .exception(format!("Handler not found for actf: {:?}, available keys: {:?}", command_instructions.actf, host_handlers.keys().collect::<Vec<_>>()))
+                            .await;
+                        return Err(ProcessError::Error(format!("Handler for '{}' not found.", command_instructions.actf)));
+                    },
+                };
+
+                // < thread 'tokio-runtime-worker' panicked at D:\PrivateGit\repos\Myscelium\Myscelium\OxidizedMysceliumCore\OxidizedMyscelium\src\socket_client\transposer.rs:248:99:
+                // < called `Option::unwrap()` on a `None` value
 
                 //Obtain the correct order of the kwargs
                 args_pattern = target_handler_params.clone();
@@ -361,7 +373,7 @@ async fn clear_old_data() -> Result<(), BufferError> {
 /// - If the client is not running, the transposer shuts down.
 /// - If there are no scheduled commands, the function clears old data and goes to sleep for 500ms.
 /// - The function uses a logger named "Transposer" for logging various stages of the process.
-pub async fn initialize_socket_client_transposer() {
+pub async fn initialize_socket_client_transposer() -> Result<(), BufferError> {
     let logger = acquire_logger!("Transposer");
 
     // Retrieve scheduled commands
@@ -371,7 +383,7 @@ pub async fn initialize_socket_client_transposer() {
             Ok(scr) => scr,
             Err(e) => {
                 logger.exception(format!("Error retrieving down commands list, the error is: {:?}", e)).await;
-                return;
+                return Err(e);
             },
         }
     };
@@ -394,7 +406,7 @@ pub async fn initialize_socket_client_transposer() {
             },
         };
         thread::sleep(Duration::from_millis(100));
-        return;
+        return Ok(());
     } else {
         if schedule_len > 1 {
             logger.debug(format!("Find {} commands to process", schedule_len)).await
@@ -470,4 +482,6 @@ pub async fn initialize_socket_client_transposer() {
             }
         }
     }
+
+    Ok(())
 }

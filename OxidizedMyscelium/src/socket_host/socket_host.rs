@@ -398,25 +398,17 @@ pub async fn initialize_host(address: String, client_key: String) -> std::io::Re
     }
 
     let listener = TcpListener::bind(&address).await?;
-
     logger.info(format!("Listening: {}", address)).await;
 
     // Shared map from client_id -> Sender, so we can reply to each client.
     let client_txs: ClientMap = Arc::new(Mutex::new(HashMap::new()));
 
     // Create a channel for the Transposer unit, spawn its async task
-    let (tx_transposer, rx_transposer) = mpsc::channel::<(String, String)>(32);
-    {
-        // Clone for the transposer background task
-        // let client_txs_clone = Arc::clone(&client_txs);
-        // tokio::spawn(async move {
-        //     transposer(rx_transposer, client_txs_clone).await;
-        // });
-    }
+    // let (tx_transposer, rx_transposer) = mpsc::channel::<(String, String)>(32);
 
     // Put the transposer channel sender into a global map, in case we have more units later.
     let mut senders = HashMap::new();
-    senders.insert(Unit::Transposer, tx_transposer);
+    // senders.insert(Unit::Transposer, tx_transposer);
     let unit_senders = Arc::new(senders);
 
     loop {
@@ -728,15 +720,15 @@ async fn get_response_or_error(command: Command) -> Command {
 /// - Special care is given to the handling of special functions, which are identified by specific codes (e.g., "C202" and "C206").
 /// - There is a mechanism in place to check if a command's parity ID is already registered and to retrieve existing responses if necessary.
 async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
-    // Aquire logger to section Handle Conn
+    // Acquire logger to section Handle Conn
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
     // -> Before join in the loop, schedule a request of the client commands
     // let mut client: Option<Client> = None;
 
-    // TODO >>> Remove the loop, make it reactive
-    // TODO >>> Remove conver the strams senders into tx for the dispatcher thread
+    // TODO >>> Remove the loop, make it reactive.
+    // TODO >>> Remove convert the streams senders into tx for the dispatcher thread.
 
     loop {
         logger.debug(format!("Command received:\n{:?}\n", command)).await;
@@ -797,7 +789,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
         };
 
         // > Check if the max sync was reached
-        // > if is first sync and yes, diconnect client
+        // > if is first sync and yes, disconnect client
         // > if is not first sync and yes,change client status to not sync
         // > This should auto trigger sync to all clients that isn't sync in relation to the network map available for them
 
@@ -849,18 +841,17 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             break;
         }
 
-        // ! WE CAN'T USE THIS PY AQUIRE UNTIL THE PYTHON POOL IS FINISHED !
+        // ! WE CAN'T USE THIS PY ACQUIRE UNTIL THE PYTHON POOL IS FINISHED !
 
         // -> ---------------------------------------------------------------------------------------------------------------------
         // -> HOST FUNCTION VERIFICATION
         {
-            let mut command_patterns;
-
+            let mut command_patterns: NetworkMap;
             {
                 command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
             }
 
-            // println!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns);
+            // println!("[HOST][REGISTERED PATTERNS]:\n{:?}", command_patterns);
 
             logger.debug(format!("\nCommand.Command: {:?}", command.command)).await;
             logger.debug(format!("\nCommand.Command.function: {:?}", command.command.actf)).await;
@@ -879,7 +870,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
             }
 
             /// Updates the tasks in the task table based in the
-            /// incomming commands and the outcome tasks.
+            /// incoming commands and the outcome tasks.
             async fn update_task_table(command: &Command, incoming: bool) {
                 let logger = acquire_logger!("Core[update_task_table]");
 
@@ -897,7 +888,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             return;
                         },
                         _ => {
-                            // TODO >>> We can see about add the remove task here when the confirmation is confirmating the receive of the Response
+                            // TODO >>> We can see about add the remove task here when the confirmation is confirming the receive of the Response
                             return;
                         },
                     }
@@ -918,7 +909,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             }
                             //-> Here the node key needs to always be the target since we are scheduling a task to the target not origin
                             if command.client_key == command.command.target.to_string() {
-                                //> Handle the cases were we are sending some comand to a target
+                                //> Handle the cases were we are sending some command to a target
                                 {
                                     let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     let mut task = tasks_manager.get_node_task_by_id(&command.command.target.as_pure_string(), &command.parity_id.clone()).unwrap();
@@ -945,7 +936,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             // < C210 commands are always with (itisaspecialcase) parity_id by filtering the special case we can filter them
                             // TODO >>> Verify isn't just a confirmation
                             // TODO >>> Verify if the response matches some command
-                            // TODO >>> Remove the command of the taskss
+                            // TODO >>> Remove the command of the tasks
                         }
                     },
                 }
@@ -985,7 +976,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         },
                     };
 
-                    let command_alread_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
+                    let command_already_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), target.clone()).await {
                         Ok(b) => b,
                         Err(e) => {
                             logger.warn(format!("Error trying to check if the parity id is registered, command: {:?}, Error: {:?}", command, e)).await;
@@ -995,7 +986,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     };
 
                     //> HANDLE COMMANDS WITH RESPONSE:
-                    if command_alread_processed {
+                    if command_already_processed {
                         logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await;
                         return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
@@ -1020,7 +1011,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                     };
                                 },
                                 CommandVariant::DownCommand(_) => {
-                                    panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
+                                    panic!("Doesn't is expected to receive DownCommand here, something is wrong!")
                                 },
                             }
                         }
@@ -1162,30 +1153,23 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
 }
 
 async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, client_txs: ClientMap) -> std::io::Result<()> {
-    // Aquire logger to section Handle Conn
+    // Acquire logger to section Handle Connection
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
     // Create the channel for sending data back to this client from the transposer.
     let (tx_to_client, mut rx_from_transposer) = mpsc::channel::<String>(32);
-    let client_id = uuid::Uuid::new_v4().to_string();
 
-    // TODO >>> Late initialize the txs with the client id received from the client, but do all verifications first
-
-    // Insert into the global client map
-    {
-        let mut guard = client_txs.lock().await;
-        guard.insert(client_id.clone(), tx_to_client);
-    }
+    // We'll insert into the global client map after we get the actual client_key from the first command
 
     let mut cloned_ref_client_txs: ClientMap = Arc::clone(&client_txs);
 
     // Split the stream into reading and writing parts
     let (mut reader, mut writer) = stream.into_split();
 
-    let client_id_clone = client_id.clone();
-
     let read_task = tokio::spawn(async move {
+        let mut final_client_key: Option<String> = None;
+
         loop {
             let mut size_buffer = [0u8; 4];
 
@@ -1193,27 +1177,33 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
             if let Err(e) = reader.read_exact(&mut size_buffer).await {
                 match e.kind() {
                     ErrorKind::UnexpectedEof => {
-                        println!("Client {} disconnected", client_id_clone);
+                        println!("Client {} disconnected", client_key);
                     },
                     _ => {
-                        logger.exception(format!("Failed to read size from client {}: {:?}", client_id_clone, e)).await;
+                        logger.exception(format!("Failed to read size from client {}: {:?}", client_key, e)).await;
                     },
                 }
-                handle_client_disconnect(&client_key).await;
+                if let Some(ref key) = final_client_key {
+                    handle_client_disconnect(key).await;
+                }
                 break;
             }
 
             let data_size = u32::from_be_bytes(size_buffer) as usize;
             if data_size > MAX_DATA_SIZE {
-                logger.exception(format!("Client {} sent data too large: {}", client_id_clone, data_size)).await;
-                handle_client_disconnect(&client_key).await;
+                logger.exception(format!("Client {} sent data too large: {}", client_key, data_size)).await;
+                if let Some(ref key) = final_client_key {
+                    handle_client_disconnect(key).await;
+                }
                 break;
             }
 
             let mut data_buffer = vec![0u8; data_size];
             if let Err(e) = reader.read_exact(&mut data_buffer).await {
-                logger.exception(format!("Failed to read payload from client {}: {}", client_id_clone, e)).await;
-                handle_client_disconnect(&client_key).await;
+                logger.exception(format!("Failed to read payload from client {}: {}", client_key, e)).await;
+                if let Some(ref key) = final_client_key {
+                    handle_client_disconnect(key).await;
+                }
                 break;
             }
 
@@ -1221,6 +1211,20 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
             match serde_json::from_str::<Command>(&buffer_string) {
                 Ok(command) => {
+                    // Get the actual client_key from the first command and register the tx sender
+                    if final_client_key.is_none() {
+                        final_client_key = Some(command.client_key.clone());
+                        client_key = command.client_key.clone();
+
+                        // Insert into the global client map using the actual client_key
+                        {
+                            let mut guard = cloned_ref_client_txs.lock().await;
+                            guard.insert(client_key.clone(), tx_to_client.clone());
+                        }
+
+                        logger.info(format!("🔌 Registered client {} with tx sender", client_key)).await;
+                    }
+
                     // 🔁 Await the command handler
 
                     // println!("Entering in handle incoming command: {:?}", command);
@@ -1229,52 +1233,57 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
                         Ok(response) => {
                             if let Some(res) = response {
                                 let command_response_json: String = json!(res).to_string();
-                                let guard = cloned_ref_client_txs.lock().await;
-                                if let Some(tx) = guard.get(&client_id_clone) {
+
+                                let tx_opt = {
+                                    let guard = cloned_ref_client_txs.lock().await;
+                                    guard.get(&client_key).cloned() // Use actual client_key instead of client_id_clone
+                                }; // guard dropped here
+
+                                if let Some(tx) = tx_opt {
                                     // TODO >>> Verify if the tx will correctly send the response for the writer.
                                     // > This is done this way in order to keep the writer centralized and allow it to receive writing tasks
                                     // > from multiple sources without cause some kind of racing condition between the senders, this way
                                     // > We make the structure simpler and more event driven, more reactive and simpler than having to have multiple layers of nested senders all over the place.
                                     if let Err(e) = tx.send(command_response_json).await {
-                                        logger.exception(format!("Error sending response to client {}: {}", client_id_clone, e)).await;
+                                        logger.exception(format!("Error sending response to client {}: {}", client_key, e)).await;
                                     }
                                 } else {
-                                    logger.exception(format!("No client sender found for {}", client_id_clone)).await;
+                                    logger.exception(format!("No client sender found for {}", client_key)).await;
                                 }
                             } else {
                                 // TODO >>> Handle the cases were the some is none!
-                                panic!("Handle incomming response should not be None something is wrong!")
+                                panic!("Handle incoming response should not be None something is wrong!")
                             }
                         },
                         Err(e) => {
                             // TODO >>> Send an copy of the tx that connects to the client socket reactive task rx
-                            logger.warn(format!("Error handling command for client {}: {}", client_id_clone, e)).await;
+                            logger.warn(format!("Error handling command for client {}: {}", client_key, e)).await;
                         },
                     }
                 },
                 Err(e) => {
-                    logger.warn(format!("Failed to deserialize command from client {}: {}", client_id_clone, e)).await;
+                    logger.warn(format!("Failed to deserialize command from client {}: {}", client_key, e)).await;
                 },
             }
+        }
+
+        // Cleanup: remove client from map if we have the client key
+        if let Some(ref key) = final_client_key {
+            let mut guard = cloned_ref_client_txs.lock().await;
+            guard.remove(key);
+            logger.info(format!("🔌 Removed client {} from map.", key)).await;
         }
     });
 
     // >---------------------------------------------------------------------------------------------------------
-    let mut client_key: String = "".to_string();
     let logger = acquire_logger!("Core");
-
-    // let command_response_json: String = json!(data).to_string();
-
-    let client_id_clone = client_id.clone();
-
-    // A task for writing responses from the transposer back to the client
     let write_task = tokio::spawn(async move {
         while let Some(command_response_json) = rx_from_transposer.recv().await {
             if command_response_json.trim().is_empty() || command_response_json.trim() == "null" {
                 continue;
             }
 
-            logger.debug(format!("📨 Sending to client {}: {}", client_id_clone, command_response_json)).await;
+            logger.debug(format!("📨 Sending to client: {}", command_response_json)).await;
 
             // Check if the connection was closed
             if writer.peer_addr().is_err() {
@@ -1286,15 +1295,13 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
 
             // Send the size of the data
             if let Err(e) = writer.write_all(&size_buffer).await {
-                logger.exception(format!("Error writing size to client {}: {}", client_id_clone, e)).await;
-                handle_client_disconnect(&client_key).await;
+                logger.exception(format!("Error writing size to client: {}", e)).await;
                 break;
             }
 
             // Send the actual data
             if let Err(e) = writer.write_all(command_response_json.as_bytes()).await {
-                logger.exception(format!("Error writing to client {}: {}", client_id_clone, e)).await;
-                handle_client_disconnect(&client_key).await;
+                logger.exception(format!("Error writing to client: {}", e)).await;
                 break;
             }
         }
@@ -1309,13 +1316,9 @@ async fn handle_connection(mut stream: TcpStream, unit_senders: UnitSenders, cli
     }
 
     // -> Once either side is done, remove the client from the map
-    {
-        let mut guard = client_txs.lock().await;
-        guard.remove(&client_id);
-    }
-
+    // Note: Client cleanup is handled within the read_task when we have the client_key
     let logger = acquire_logger!("Core");
-    logger.info(format!("🔌 Removed client {} from map.", client_id)).await;
+    logger.info("🔌 Connection handler finished".to_string()).await;
 
     Ok(())
 }

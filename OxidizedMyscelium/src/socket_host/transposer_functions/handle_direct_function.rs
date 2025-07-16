@@ -72,9 +72,7 @@ impl From<SyncVerifierError> for ProcessResult {
 
 pub async fn handle_direct_function(client_key: &String, activation_key: &String, command: CommandInstructions, command_id: Option<u32>) -> ProcessResult {
     let logger = acquire_logger!("Transposer - Process - Handle Direct Functions");
-
     logger.info(format!("Initializing processing!")).await;
-
     logger.debug(format!("function received in handle direct function: {}", activation_key)).await;
 
     // -> ----------------------------------------------------------------------------------------------------------------------------------
@@ -327,8 +325,8 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
             //> Define the default acft
             let mut acft: String = "add_client_handler".to_string();
 
-            if let Some(command_actf) = command.response_target.clone() {
-                acft = command_actf.to_string();
+            if let Some(command_actf) = command.response_actf.clone() {
+                acft = command_actf.to_string()
             }
 
             let new_command_instructions: CommandInstructions = CommandInstructions::new(
@@ -374,7 +372,7 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
 
             // TODO >>> Update this to use the new kwargs structure where the new client is wrapped in updated_client
             //> The idea was to send the content of the "updated_client" to the cast_new_client, cast the updated client
-            //> and use the current clietn key to get the current client and change it to the new client casted
+            //> and use the current client key to get the current client and change it to the new client casted
 
             // This function now accepts a serde_json::Value that is expected to be a String containing JSON
             fn convert(value: &Value) -> Result<HashMap<String, Value>, ProcessResult> {
@@ -430,7 +428,7 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                     //> Define the default acft
                     let mut acft: String = "update_client_handler".to_string();
 
-                    if let Some(command_actf) = command.response_target.clone() {
+                    if let Some(command_actf) = command.response_actf.clone() {
                         acft = command_actf.to_string()
                     }
 
@@ -510,7 +508,7 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
                     //> Define the default acft
                     let mut acft: String = "remove_client_handler".to_string();
 
-                    if let Some(command_actf) = command.response_target.clone() {
+                    if let Some(command_actf) = command.response_actf.clone() {
                         acft = command_actf.to_string()
                     }
 
@@ -542,7 +540,7 @@ pub async fn handle_direct_function(client_key: &String, activation_key: &String
             // TODO >>> Implement a mechanism to send back the confirmation or a error message originated from the operation
         },
         _ => {
-            return ProcessResult::Error(format!("unknow direct function"));
+            return ProcessResult::Error(format!("unknown direct function"));
         },
     }
 }

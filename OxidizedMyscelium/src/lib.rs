@@ -11,6 +11,7 @@
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod common;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]
@@ -18,6 +19,7 @@ mod common;
 #[allow(unused_results)]
 #[allow(unused_variables)]
 mod socket_client;
+
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[allow(warnings)]
@@ -26,14 +28,18 @@ mod socket_client;
 #[allow(unused_variables)]
 mod socket_host;
 
+// use ::futures::future::BoxFuture;   // unused legacy import
 #[allow(unused_imports)]
 #[allow(unused_extern_crates)]
 #[deny(warnings)]
 #[allow(dead_code, unused_variables)]
 #[allow(unused_results)]
 use common::enhanced_buffer;
-use common::structs::reactive_activator::{CloneableBox, ReactiveActivator};
+use common::structs::reactive_activator::{BoxFuture, CloneableBox, ReactiveActivator};
 use common::types::SchedulingError;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
+// use ::futures::FutureExt;           // legacy duplicate import commented out
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use oxidized_myscelium_macros::callback;
@@ -45,7 +51,6 @@ use tokio::runtime::Runtime;
 use tokio::signal;
 use tokio::sync::Mutex;
 use tokio::sync::{Notify, Semaphore};
-use tokio::task::futures;
 
 use core::panic;
 use std::pin::Pin;
@@ -108,18 +113,23 @@ lazy_static! {
     pub static ref HOST_COMMAND_PATTERNS: Arc<Mutex<NetworkMap>> = Arc::new(Mutex::new(NetworkMap::new(Vec::new())));
     pub static ref HOST_CALLBACK_PATTERNS: MyCallbacks = MyCallbacks::new();
     pub static ref TASKS_MANAGER: Arc<Mutex<NodesTaskManager>> = Arc::new(Mutex::new(NodesTaskManager::new_empty()));
-
 }
+
+// Shared runtime for non-Send transposer functions
+static TRANSPOSER_RUNTIME: Lazy<tokio::sync::Mutex<Runtime>> = Lazy::new(|| {
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("Failed to create transposer runtime");
+    tokio::sync::Mutex::new(rt)
+});
 
 // -> HOST BUFFER TRANSPOSITION REACTIVE ACTIVATOR:
 
-// (1) Change HOST_BUFFER_ACTIVATION_CONTROLLER to mirror the client’s pattern:
+// (1) Change HOST_BUFFER_ACTIVATION_CONTROLLER to mirror the client's pattern:
 static HOST_BUFFER_ACTIVATION_CONTROLLER: Lazy<tokio::sync::Mutex<Option<Arc<ReactiveActivator>>>> = Lazy::new(|| tokio::sync::Mutex::new(None));
 
 ///  * `action()`  — spawns `initialize_socket_host_transposer()` on
 ///                  a blocking thread tied to the current runtime.
 ///  * `condition()` — **async predicate**; it resolves to `true` once
-///                    the host’s auto-collect queue is empty.  
+///                    the host's auto-collect queue is empty.  
 ///                    A background task polls the queue every 50 ms,
 ///                    prints debug info, and flips an `AtomicBool`.
 pub async fn init_host_reactive_activator() {
@@ -131,66 +141,46 @@ pub async fn init_host_reactive_activator() {
     }
     println!("[Host] Initialising ReactiveActivator …");
 
-    // ───── 2. Grab the current Tokio handle (once) ─────────────────────
-    let rt_handle = Handle::current();
+    use std::{future::Future, pin::Pin};
 
-    // ───── 3. ACTION: identical pattern to the client’s, but host fn ───
-    let action: Arc<dyn Fn() + Send + Sync + 'static> = {
-        let rt = rt_handle.clone();
-        Arc::new(move || {
-            rt.spawn_blocking({
-                let rt_for_block = rt.clone();
-                move || {
-                    rt_for_block.block_on(async {
-                        if let Err(e) = initialize_socket_host_transposer().await {
-                            eprintln!("[Host] transposer error: {e:?}");
-                        }
-                    });
-                }
-            });
+    // ───── 2. ACTION: identical pattern to the client's, but host fn ───
+    let action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
+        Box::pin(async move {
+            let result = tokio::task::spawn_blocking(|| {
+                let rt_guard = TRANSPOSER_RUNTIME.blocking_lock();
+                rt_guard.block_on(async {
+                    if let Err(e) = initialize_socket_host_transposer().await {
+                        eprintln!("[Host] transposer error: {e:?}");
+                    }
+                })
+            })
+            .await;
+
+            if let Err(e) = result {
+                eprintln!("[Host] spawn_blocking error: {e:?}");
+            }
         })
-    };
+    });
 
     // ───── 4. CONDITION: async predicate w/ background poll + debug ────
-    use std::pin::Pin;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     };
 
-    let condition: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync + 'static> = {
-        // shared flag, flipped to true once queue is empty
-        let flag = Arc::new(AtomicBool::new(false));
-
-        // spawn a polling task for debug + flag update
-        {
-            let flag_clone = Arc::clone(&flag);
-            rt_handle.spawn(async move {
-                loop {
-                    let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
-                    schedule.retain(|cmd| cmd.auto_collect);
-
-                    let empty = schedule.is_empty();
-                    println!("[Host][Condition-poll] auto_collect queue len = {}, empty = {}", schedule.len(), empty);
-
-                    flag_clone.store(empty, Ordering::SeqCst);
-                    if empty {
-                        println!("[Host][Condition-poll] queue empty → flag = true");
-                        break;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                }
-            });
-        }
-
-        // each call returns an *async ready* future wrapping the current flag
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> = {
         Arc::new(move || {
-            let current = flag.load(Ordering::SeqCst);
-            Box::pin(async move { current })
+            Box::pin(async move {
+                let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
+                schedule.retain(|cmd| cmd.auto_collect);
+                let empty = schedule.is_empty();
+                println!("[Host][Condition-poll] auto_collect queue len = {}, empty = {}", schedule.len(), empty);
+                empty
+            })
         })
     };
 
-    // ───── 5. Initialize a semaphore to control the transpositon execution flow
+    // ───── 5. Initialize a semaphore to control the transposition execution flow
     let transposer_sem = Arc::new(Semaphore::new(1));
 
     // ───── 6. Build & start the activator while still holding the lock ──
@@ -226,37 +216,39 @@ pub async fn init_client_reactive_activator() {
         return;
     }
 
-    // 3) Grab the current Tokio handle once
-    let rt_handle = Handle::current();
-
     // ─────────────────────── ACTION ────────────────────────────────────────────
+
+    use std::{future::Future, pin::Pin};
 
     // This closure moves `rt_handle.clone()` into a non‐Send blocking thread,
     // then builds a brand‐new current_thread runtime inside that thread and runs
     // `initialize_socket_client_transposer().await` there. This avoids deadlocks
     // if `initialize_socket_client_transposer()` itself is not Send.
-    let action: Arc<dyn Fn() + Send + Sync> = {
-        let rt = rt_handle.clone();
-        Arc::new(move || {
-            rt.spawn_blocking({
-                let rt_for_block = rt.clone();
-                move || {
-                    rt_for_block.block_on(async {
-                        initialize_socket_client_transposer().await;
-                    });
-                }
-            });
+    let action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync> = Arc::new(move || {
+        // We capture nothing non-Send in this block,
+        // so the resulting future is Send.
+        Box::pin(async move {
+            // Use shared runtime to avoid creation overhead
+            let result = tokio::task::spawn_blocking(|| {
+                let rt_guard = TRANSPOSER_RUNTIME.blocking_lock();
+                rt_guard.block_on(async {
+                    if let Err(e) = initialize_socket_client_transposer().await {
+                        eprintln!("[Client] transposer error: {e:?}");
+                    }
+                })
+            })
+            .await;
+
+            if let Err(e) = result {
+                eprintln!("[Client] spawn_blocking error: {e:?}");
+            }
         })
-    };
+    });
 
     // ───────────────────── CONDITION ────────────────────────────────────────────
 
-    let condition: Arc<dyn Fn() -> Pin<Box<dyn std::future::Future<Output = bool> + Send>> + Send + Sync> = {
+    let condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync> = {
         Arc::new(move || {
-            // Each time ReactiveActivator calls (condition)().await, we:
-            //   • await the current schedule
-            //   • filter out auto_collect
-            //   • return true if the schedule is empty.
             Box::pin(async move {
                 let mut schedule = enhanced_buffer::buffer_down_manager::buffer_down_list_schedule().await.unwrap_or_default();
                 schedule.retain(|cmd| cmd.auto_collect);
@@ -267,13 +259,12 @@ pub async fn init_client_reactive_activator() {
 
     // ───────────────────── ACTIVATOR ─────────────────────────────────────────────
 
-    // ───── Initialize a semaphore to control the transpositon execution flow
+    // ───── Initialize a semaphore to control the transposition execution flow
     let transposer_sem = Arc::new(Semaphore::new(1));
 
     // Create and start the ReactiveActivator as before—`start().await` will return
     // immediately because `action()` itself (when invoked) only does `spawn_blocking`.
     let activator = ReactiveActivator::new(action, condition, transposer_sem);
-
     activator.start().await; // ⬅️  awaits **while the mutex is held**
 
     *guard = Some(activator); // still inside the lock
@@ -897,7 +888,7 @@ pub fn initialize_socket_host(ip: String, port: i32, client_id: String) {
         .expect("Error setting Ctrl-C handler");
 
         // Build exactly one Tokio runtime here
-        let rt: Runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().expect("Failed to create Tokio runtime");
+        let rt: Runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(10).enable_all().build().expect("Failed to create Tokio runtime");
 
         // use that same `rt` to first load clients, then initialize the host
         rt.block_on(async {
