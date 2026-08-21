@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
 #![allow(unused_imports)]
 
 extern crate proc_macro;
@@ -250,27 +252,46 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::ReturnType::Default => "()".to_string(),
     };
 
-    let expected_types = [quote! {CommandInstructions}.to_string().replace(' ', ""), "()".to_string()];
+    let expected_types = [
+        quote! {CommandInstructions}.to_string().replace(' ', ""),
+        "()".to_string(),
+    ];
 
     if !expected_types.contains(&return_type) {
-        panic!("The return type must be `CommandInstructions` or `()`, found `{}`", return_type);
+        panic!(
+            "The return type must be `CommandInstructions` or `()`, found `{}`",
+            return_type
+        );
     }
 
     // Ensure the first argument is as expected with detailed error reporting
-    let first_arg = input.sig.inputs.first().expect("Function must have at least one argument");
+    let first_arg = input
+        .sig
+        .inputs
+        .first()
+        .expect("Function must have at least one argument");
     match first_arg {
         syn::FnArg::Typed(pat) => {
             let arg_name = match &*pat.pat {
                 syn::Pat::Ident(ident) => ident.ident.to_string(),
                 _ => panic!("Expected the first argument to be a named parameter"),
             };
-            let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), "");
-            let expected_type = quote! {&HashMap<String, Value>}.to_string().replace(' ', "");
+            let arg_type = quote! {#pat.ty}
+                .to_string()
+                .replace(' ', "")
+                .replace(".ty", "")
+                .replace(format!("{}:", arg_name).as_str(), "");
+            let expected_type = quote! {&HashMap<String, Value>}
+                .to_string()
+                .replace(' ', "");
 
             if arg_name.replace(" ", "").replace(":", "") != "info" || arg_type != expected_type {
-                panic!("First argument must be {}, found `{}` and arg_name must be `info`, found: {}", expected_type, arg_type, arg_name);
+                panic!(
+                    "First argument must be {}, found `{}` and arg_name must be `info`, found: {}",
+                    expected_type, arg_type, arg_name
+                );
             }
-        },
+        }
         _ => panic!("Unsupported argument type for the first argument"),
     }
 
@@ -285,11 +306,15 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     syn::Pat::Ident(ident) => ident.ident.to_string(),
                     _ => panic!("Unsupported argument pattern"),
                 };
-                let arg_type = quote! {#pat.ty}.to_string().replace(' ', "").replace(".ty", "").replace(format!("{}:", arg_name).as_str(), ""); // Removing spaces for better readability
+                let arg_type = quote! {#pat.ty}
+                    .to_string()
+                    .replace(' ', "")
+                    .replace(".ty", "")
+                    .replace(format!("{}:", arg_name).as_str(), ""); // Removing spaces for better readability
                 quote! {
                     (#arg_name.clone(), #arg_type.clone())
                 }
-            },
+            }
             _ => panic!("Unsupported argument type"),
         })
         .collect::<Vec<_>>();
@@ -316,7 +341,7 @@ pub fn callback(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         None => None, // Handle the case where args_iter.next() returned None
                     };
                 }
-            },
+            }
             _ => panic!("Unsupported argument type"),
         })
         .collect::<Vec<_>>();

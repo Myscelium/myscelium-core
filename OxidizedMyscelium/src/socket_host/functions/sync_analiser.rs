@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use core::panic;
 use std::collections::HashMap;
 
@@ -5,7 +8,10 @@ use crate::NodeStatus;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{common::client_manager::manager::get_all_clients, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
+use crate::{
+    common::client_manager::manager::get_all_clients, ClientError, NetworkMap, Node,
+    CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SyncVerifierError {
@@ -39,7 +45,7 @@ pub async fn sync_verifier() -> Result<(), SyncVerifierError> {
         Ok(c) => c,
         Err(e) => {
             panic!("Error getting clients in the sync analiser")
-        }, // handle this error case
+        } // handle this error case
     };
 
     let mut actual_patterns: NetworkMap = NetworkMap::new(Vec::new());
@@ -62,11 +68,14 @@ pub async fn sync_verifier() -> Result<(), SyncVerifierError> {
     for client in clients {
         let cli_status = node_map.get(&client.client_key).unwrap();
 
-        if (*cli_status == NodeStatus::NotImplemented || *cli_status == NodeStatus::Offline) || *cli_status == NodeStatus::NotSyncYet {
+        if (*cli_status == NodeStatus::NotImplemented || *cli_status == NodeStatus::Offline)
+            || *cli_status == NodeStatus::NotSyncYet
+        {
             continue; // -> We don't have any reasons to check node sync status for these cases (this will save hardware ressources)
         }
 
-        let mut expected_know_network: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
+        let mut expected_know_network: Vec<Node> =
+            actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
 
         // Erase the known network of the nodes here just for comparison, this evoids infinite nested known network entities
         for node in &mut expected_know_network {
@@ -89,38 +98,60 @@ pub async fn sync_verifier() -> Result<(), SyncVerifierError> {
 
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
-                controller.get_client(&client.client_key).unwrap().update_sync_status(false);
-                match client.change_sync_to(false).await.map_err(|e| SyncVerifierError::from(e)) {
-                    Ok(_) => {},
+                controller
+                    .get_client(&client.client_key)
+                    .unwrap()
+                    .update_sync_status(false);
+                match client
+                    .change_sync_to(false)
+                    .await
+                    .map_err(|e| SyncVerifierError::from(e))
+                {
+                    Ok(_) => {}
                     Err(e) => {
                         return Err(e);
-                    },
+                    }
                 };
 
-                match client.save_into_db().await.map_err(|e| SyncVerifierError::from(e)) {
-                    Ok(_) => {},
+                match client
+                    .save_into_db()
+                    .await
+                    .map_err(|e| SyncVerifierError::from(e))
+                {
+                    Ok(_) => {}
                     Err(e) => {
                         return Err(e);
-                    },
+                    }
                 };
                 // This should trigger sync to the client
             }
         } else {
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock().await;
-                controller.get_client(&client.client_key).unwrap().update_sync_status(true);
-                match client.change_sync_to(true).await.map_err(|e| SyncVerifierError::from(e)) {
-                    Ok(_) => {},
+                controller
+                    .get_client(&client.client_key)
+                    .unwrap()
+                    .update_sync_status(true);
+                match client
+                    .change_sync_to(true)
+                    .await
+                    .map_err(|e| SyncVerifierError::from(e))
+                {
+                    Ok(_) => {}
                     Err(e) => {
                         return Err(e);
-                    },
+                    }
                 };
 
-                match client.save_into_db().await.map_err(|e| SyncVerifierError::from(e)) {
-                    Ok(_) => {},
+                match client
+                    .save_into_db()
+                    .await
+                    .map_err(|e| SyncVerifierError::from(e))
+                {
+                    Ok(_) => {}
                     Err(e) => {
                         return Err(e);
-                    },
+                    }
                 };
                 // This should trigger sync to the client
             }

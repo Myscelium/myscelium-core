@@ -1,8 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use super::host_logger::log_handler::Logger;
 use super::socket_host::get_response;
 use super::transposer_functions::handle_redirect::RedirectError;
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, CommandVariant};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType, CommandVariant,
+};
 use crate::common::types::BufferError;
 use crate::socket_host::command_handler::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::socket_host::command_handler::enhanced_buffer::buffer_up_manager::UpCommand;
@@ -42,14 +48,18 @@ macro_rules! create_error_command_response {
 
 macro_rules! send_error_response {
     ($stream:expr, $command:expr, $logger:expr, $message:expr) => {
-        let response = create_error_command_response!($command.client_key, $command.parity_id, $message);
-        $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response));
+        let response =
+            create_error_command_response!($command.client_key, $command.parity_id, $message);
+        $logger.exception(format!(
+            "WARNING: {}, sending back: {:?}",
+            $message, response
+        ));
         match send($stream, response) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 handle_send_error!(e, $logger, $command.client_key);
                 break;
-            },
+            }
         }
     };
 }
@@ -99,100 +109,167 @@ macro_rules! acquire_logger {
     }};
 }
 
-pub async fn handle_redirect_error(e: RedirectError, client_key: String, parity_id: &String) -> Command {
+pub async fn handle_redirect_error(
+    e: RedirectError,
+    client_key: String,
+    parity_id: &String,
+) -> Command {
     let logger = acquire_logger!("Core");
     match e {
         RedirectError::ClientDoesnNotExist(client) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", client));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!(
+                    "Error! request to redirect to client_id: {} failed, client doesn't exist!",
+                    client
+                )
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::UnexpectedError(err) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Unexpected error: {err}"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Unexpected error: {err}")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::ClientIsNotFullyInitialized(client) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Client \"{client}\" is not fully initialized!"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Client \"{client}\" is not fully initialized!")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::ClientIsNotRunning(client) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Client \"{client}\" is not running!"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Client \"{client}\" is not running!")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::CanNotRedirectFromOriginToHost => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, "Can't redirect from host to origin, this is a Origin to Host direct case!");
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                "Can't redirect from host to origin, this is a Origin to Host direct case!"
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::CanNotRedirectFromHostToOrigin => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, "Can't redirect from origin to host, this is a Origin to Host direct case!");
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                "Can't redirect from origin to host, this is a Origin to Host direct case!"
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::TargetDoesntExists(target) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Target client \"{target}\" doesn’t exist!"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Target client \"{target}\" doesn’t exist!")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::HandlerDoesntExist(handler) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Handler \"{handler}\" doesn’t exist on the target client!"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Handler \"{handler}\" doesn’t exist on the target client!")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::ResponseHandlerDoesntExist(resp_handler) => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, format!("Response handler \"{resp_handler}\" doesn’t exist on the target client!"));
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                format!("Response handler \"{resp_handler}\" doesn’t exist on the target client!")
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::CantScheduleCommandsToItself => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, "The origin client cannot schedule commands to itself.");
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                "The origin client cannot schedule commands to itself."
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::HostCantSendResponseToItself => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, "The host client cannot send a response to itself.");
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                "The host client cannot send a response to itself."
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
 
         RedirectError::TargetCantSendResponseToItself => {
-            let command: Command = create_error_command_response!(client_key.clone(), parity_id, "The target client cannot send a response to itself.");
+            let command: Command = create_error_command_response!(
+                client_key.clone(),
+                parity_id,
+                "The target client cannot send a response to itself."
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             command
-        },
+        }
     }
 }
 
 // ->--------------------------------------------------------------------------------------------------------------
 // -> INCOMING REDIRECT COMMANDS PROCESSING
 
-pub async fn redirect_commands_processing(command: &Command, target: &String, command_patterns: &mut NetworkMap) -> Vec<CommandVariant> {
+pub async fn redirect_commands_processing(
+    command: &Command,
+    target: &String,
+    command_patterns: &mut NetworkMap,
+) -> Vec<CommandVariant> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
 
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
-    logger.debug(format!("[HOST][REGISTERED PATTERNS]:\n{:?}", command_patterns)).await;
+    logger
+        .debug(format!(
+            "[HOST][REGISTERED PATTERNS]:\n{:?}",
+            command_patterns
+        ))
+        .await;
 
     //> PREVIOUSLY CHECK REQUIREMENTS BEFORE REDIRECT
     if !command_patterns.target_is_reachable(target).unwrap() {
         let command: Command = create_error_command_response!(
             command.client_key.clone(),
             command.parity_id,
-            format!("Function: {}, can be redirected because target: {} isn't reachable", command.command.actf, target)
+            format!(
+                "Function: {}, can be redirected because target: {} isn't reachable",
+                command.command.actf, target
+            )
         );
         logger.debug(format!("Sending back: {:?}", &command)).await;
         let client_key = command.client_key.clone();
@@ -204,7 +281,10 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
         let command: Command = create_error_command_response!(
             command.client_key.clone(),
             command.parity_id,
-            format!("Function: {}, can be redirected because target: {} isn't ready", command.command.actf, target)
+            format!(
+                "Function: {}, can be redirected because target: {} isn't ready",
+                command.command.actf, target
+            )
         );
         logger.debug(format!("Sending back: {:?}", &command)).await;
         let client_key = command.client_key.clone();
@@ -215,7 +295,14 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
 
     if command.command.mode == "Function" {
         if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!(
+                    "Function: {}, Doesn't exist in target client: {}!",
+                    command.command.actf, target
+                )
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             let client_key = command.client_key.clone();
             return vec![CommandVariant::Command(command)];
@@ -246,7 +333,11 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
 
         //> IF TARGET IS EQUAL TO RESPONSE TARGET THEN RETURN A ERROR
         if &resp_target == target {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Can't send a response from target: {} to itself", target));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Can't send a response from target: {} to itself", target)
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             let client_key = command.client_key.clone();
             return vec![CommandVariant::Command(command)];
@@ -255,12 +346,19 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
         //> If resp target isn't origin, nor host then:
         if !vec!["origin", "host"].contains(&resp_target.as_str()) {
             let available_targets_map = command_patterns.get_node_keys().unwrap();
-            let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+            let available_targets_keys: Vec<String> = available_targets_map
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect();
 
             //> CHECK IF THE TARGET EXISTS
             if !available_targets_keys.contains(&resp_target) {
                 // If not exists
-                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
+                let command: Command = create_error_command_response!(
+                    command.client_key.clone(),
+                    command.parity_id,
+                    format!("Response target: {} isn't reachable", &resp_target.as_str())
+                );
                 logger.debug(format!("Sending back: {:?}", &command)).await;
                 let client_key = command.client_key.clone();
                 return vec![CommandVariant::Command(command)];
@@ -271,8 +369,17 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
                 if let Some(response_actf) = command.command.response_actf.clone() {
                     // > Only verify if handler exists if auto collect response == true
                     if command.command.collect_response && response_actf != "" {
-                        if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                        if !command_patterns
+                            .handler_exists_in(resp_target.as_str(), response_actf.as_str())
+                        {
+                            let command: Command = create_error_command_response!(
+                                command.client_key.clone(),
+                                command.parity_id,
+                                format!(
+                                    "Response Handler: {}, Doesn't exist in target client: {}!",
+                                    command.command.actf, target
+                                )
+                            );
                             logger.debug(format!("Sending back: {:?}", &command)).await;
                             let client_key = command.client_key.clone();
                             return vec![CommandVariant::Command(command)];
@@ -287,13 +394,25 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
 
     //>--------------------------------------------------------------------------------------------------
 
-    logger.debug(format!("Redirecting command to target: {}", target)).await;
+    logger
+        .debug(format!("Redirecting command to target: {}", target))
+        .await;
 
-    let command_instructions_to_schedule: CommandInstructions = match handle_redirect(&command.command.clone(), &mut command.client_key.clone(), command.parity_id.clone(), command.priority.clone()).await {
+    let command_instructions_to_schedule: CommandInstructions = match handle_redirect(
+        &command.command.clone(),
+        &mut command.client_key.clone(),
+        command.parity_id.clone(),
+        command.priority.clone(),
+    )
+    .await
+    {
         Ok(cmi) => cmi,
         Err(e) => {
-            return vec![CommandVariant::Command(handle_redirect_error(e, command.client_key.clone(), &command.parity_id.clone()).await)];
-        },
+            return vec![CommandVariant::Command(
+                handle_redirect_error(e, command.client_key.clone(), &command.parity_id.clone())
+                    .await,
+            )];
+        }
     };
 
     //> CAST COMMAND TO REDIRECT
@@ -304,14 +423,18 @@ pub async fn redirect_commands_processing(command: &Command, target: &String, co
         command: command_instructions_to_schedule,
     };
 
-    logger.debug("Command is in command patterns!".to_string()).await;
+    logger
+        .debug("Command is in command patterns!".to_string())
+        .await;
 
     let mut response: Vec<CommandVariant> = vec![];
 
     //> HANDLE COMMANDS WITHOUT RESPONSES:
     let up_command = UpCommand::from_command(command_to_redirect.clone());
     response.push(CommandVariant::UpCommand(up_command));
-    response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
+    response.push(CommandVariant::Command(
+        create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone()),
+    ));
 
     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
     logger.debug(format!("Sending back: {:?}", response)).await;
@@ -397,36 +520,82 @@ pub async fn host_commands_processing(command: &Command) -> Command {
         command_patterns = HOST_COMMAND_PATTERNS.lock().await.clone();
     }
 
-    logger.debug(format!("[HOST][REGISTERED PATTERNS]:\n{:?}", command_patterns)).await;
+    logger
+        .debug(format!(
+            "[HOST][REGISTERED PATTERNS]:\n{:?}",
+            command_patterns
+        ))
+        .await;
 
-    let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
+    let direct_functions: Vec<String> = vec![
+        "get_registered_commands",
+        "update_client_commands_ref",
+        "restrictive_update_client_commands_ref",
+        "add_client",
+        "update_client",
+        "remove_client",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     //> CHECK IF HANDLER DON'T EXIST AND RETURN & SEND ERROR MESSAGE IF NOT
-    if !command_patterns.handler_exists_in("host", command.command.actf.as_str()) && !direct_functions.contains(&command.command.actf) {
-        let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in host callbacks nor in any client!", command.command.actf));
+    if !command_patterns.handler_exists_in("host", command.command.actf.as_str())
+        && !direct_functions.contains(&command.command.actf)
+    {
+        let command: Command = create_error_command_response!(
+            command.client_key.clone(),
+            command.parity_id,
+            format!(
+                "Function: {}, Doesn't exist in host callbacks nor in any client!",
+                command.command.actf
+            )
+        );
         logger.debug(format!("Sending back: {:?}", &command)).await;
         let client_key = command.client_key.clone();
         return command;
     };
 
     // > VERIFY IF ALREADY PROCESSED:
-    logger.debug("Command is in command patterns!".to_string()).await;
-    let command_already_processed: bool = match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), command.client_key.clone()).await {
-        Ok(cminr) => cminr, // TODO >>> Verify if there is a better way to do this error handling!
-        Err(e) => {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying to check if parity id is registered: {:?}", &command));
-            logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
-            return command;
-        },
-    };
+    logger
+        .debug("Command is in command patterns!".to_string())
+        .await;
+    let command_already_processed: bool =
+        match enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(
+            command.parity_id.clone(),
+            command.client_key.clone(),
+        )
+        .await
+        {
+            Ok(cminr) => cminr, // TODO >>> Verify if there is a better way to do this error handling!
+            Err(e) => {
+                let command: Command = create_error_command_response!(
+                    command.client_key.clone(),
+                    command.parity_id,
+                    format!(
+                        "Error trying to check if parity id is registered: {:?}",
+                        &command
+                    )
+                );
+                logger
+                    .exception(format!(
+                        "Error trying to check if parity id is registered: {:?}",
+                        &command
+                    ))
+                    .await;
+                return command;
+            }
+        };
     let response: Command;
 
     //> HANDLE COMMANDS WITH RESPONSE:
     if command_already_processed {
-        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone())).await; // TODO >>> Change this error it's incorrect!
+        logger
+            .warn(format!(
+                "Command {}, already have a response!",
+                command.parity_id.clone()
+            ))
+            .await; // TODO >>> Change this error it's incorrect!
         let response = match get_response(command.clone()).await {
             Ok(sc) => {
                 if let Some(c) = sc {
@@ -434,18 +603,36 @@ pub async fn host_commands_processing(command: &Command) -> Command {
                         c
                     } else {
                         logger.info("Response is None!".to_string()).await;
-                        create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+                        create_special_command_confirmation!(
+                            command.client_key.clone(),
+                            command.parity_id.clone()
+                        )
                     }
                 } else {
                     logger.info("Response is None!".to_string()).await;
-                    create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+                    create_special_command_confirmation!(
+                        command.client_key.clone(),
+                        command.parity_id.clone()
+                    )
                 }
-            },
+            }
             Err(e) => {
                 // TODO >>> Handle this error!
-                logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
-                create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying get a response for the command: {:?}, the error was: {:?}", &command, e))
-            },
+                logger
+                    .exception(format!(
+                        "Error trying to check if parity id is registered: {:?}",
+                        &command
+                    ))
+                    .await;
+                create_error_command_response!(
+                    command.client_key.clone(),
+                    command.parity_id,
+                    format!(
+                        "Error trying get a response for the command: {:?}, the error was: {:?}",
+                        &command, e
+                    )
+                )
+            }
         };
 
         return response;
@@ -481,19 +668,31 @@ pub async fn host_commands_processing(command: &Command) -> Command {
             response = match handle_common_function(&command).await {
                 Ok(r) => r,
                 Err(e) => {
-                    logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
+                    logger
+                        .exception(format!(
+                            "Error trying to check if parity id is registered: {:?}",
+                            &command
+                        ))
+                        .await;
                     create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying handle a common function command: {:?}, the error was: {:?}", &command, e))
-                },
+                }
             };
             return response;
         }
 
         let available_targets_map = command_patterns.get_node_keys().unwrap();
-        let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+        let available_targets_keys: Vec<String> = available_targets_map
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect();
 
         //> CHECK IF THE TARGET EXISTS
         if !available_targets_keys.contains(&resp_target) {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Response target: {} isn't reachable", &resp_target.as_str())
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             return command;
         }
@@ -501,7 +700,11 @@ pub async fn host_commands_processing(command: &Command) -> Command {
         //> Check if the target is ready
         // TODO >>> Possible wait to target become ready
         if !command_patterns.target_is_ready(&resp_target).unwrap() {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Response target: {} isn't ready yet", &resp_target.as_str())
+            );
             logger.debug(format!("Sending back: {:?}", &command)).await;
             return command;
         }
@@ -510,11 +713,15 @@ pub async fn host_commands_processing(command: &Command) -> Command {
         if let Some(response_actf) = command.command.response_actf.clone() {
             if command.command.collect_response && response_actf != "" {
                 // Only verify if response actf exists if collect response == true
-                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
+                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str())
+                {
                     let command: Command = create_error_command_response!(
                         command.client_key.clone(),
                         command.parity_id,
-                        format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, resp_target)
+                        format!(
+                            "Response Handler: {}, Doesn't exist in target client: {}!",
+                            command.command.actf, resp_target
+                        )
                     );
                     logger.debug(format!("Sending back: {:?}", &command)).await;
                     return command;
@@ -526,9 +733,21 @@ pub async fn host_commands_processing(command: &Command) -> Command {
     response = match handle_common_function(&command).await {
         Ok(r) => r,
         Err(e) => {
-            logger.exception(format!("Error trying to check if parity id is registered: {:?}", &command)).await;
-            create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Error trying handle a common function command: {:?}, the error was: {:?}", &command, e))
-        },
+            logger
+                .exception(format!(
+                    "Error trying to check if parity id is registered: {:?}",
+                    &command
+                ))
+                .await;
+            create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!(
+                    "Error trying handle a common function command: {:?}, the error was: {:?}",
+                    &command, e
+                )
+            )
+        }
     };
 
     return response;

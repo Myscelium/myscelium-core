@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 
 #[macro_use]
@@ -26,7 +29,8 @@ lazy_static! {
     static ref BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
+    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> =
+        Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
 pub async fn set_workers_num(n_workers: u32) {
@@ -70,10 +74,13 @@ pub async fn client_channel_mananger_initialize_table(buffer_path: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize Channels table!");
-            },
+            }
             Err(e) => {
-                eprintln!("An error occurred while scheduling the command in the Channels table: {}", e);
-            },
+                eprintln!(
+                    "An error occurred while scheduling the command in the Channels table: {}",
+                    e
+                );
+            }
         };
 
         ((), conn)
@@ -117,8 +124,12 @@ pub enum ChannelPurpose {
 impl ToSql for ChannelPurpose {
     fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
         let value = match self {
-            ChannelPurpose::BinaryTransfer => rusqlite::types::Value::Text("BinaryTransfer".to_string()),
-            ChannelPurpose::BinarySignalStream => rusqlite::types::Value::Text("BinarySignalStream".to_string()),
+            ChannelPurpose::BinaryTransfer => {
+                rusqlite::types::Value::Text("BinaryTransfer".to_string())
+            }
+            ChannelPurpose::BinarySignalStream => {
+                rusqlite::types::Value::Text("BinarySignalStream".to_string())
+            }
         };
         Ok(ToSqlOutput::Owned(value))
     }
@@ -136,7 +147,12 @@ pub struct Channel {
 }
 
 impl Channel {
-    fn new(owner_key: String, channel_name: String, channel_purpose: ChannelPurpose, channel_lifetime: Duration) -> Self {
+    fn new(
+        owner_key: String,
+        channel_name: String,
+        channel_purpose: ChannelPurpose,
+        channel_lifetime: Duration,
+    ) -> Self {
         let channel_id = 0u32;
         let channel_lifetime = 0f64;
         let last_contact = 0f64;
@@ -158,7 +174,14 @@ impl Channel {
         }
     }
 
-    fn from(channel_id: u32, owner_key: String, channel_name: String, channel_purpose: ChannelPurpose, channel_lifetime: f64, last_contact: f64) -> Self {
+    fn from(
+        channel_id: u32,
+        owner_key: String,
+        channel_name: String,
+        channel_purpose: ChannelPurpose,
+        channel_lifetime: f64,
+        last_contact: f64,
+    ) -> Self {
         Self {
             channel_id,
             owner_key,
@@ -237,7 +260,15 @@ async fn get_registered_ids() -> Vec<u32> {
     .await
 }
 
-pub async fn registry_client(channel_id: u32, owner_key: String, channel_name: String, channel_purpose: ChannelPurpose, channel_status: ChannelStatus, channel_lifetime: f64, last_contact: f64) {
+pub async fn registry_client(
+    channel_id: u32,
+    owner_key: String,
+    channel_name: String,
+    channel_purpose: ChannelPurpose,
+    channel_status: ChannelStatus,
+    channel_lifetime: f64,
+    last_contact: f64,
+) {
     with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         // let now = Utc::now();
         // let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
@@ -252,14 +283,20 @@ pub async fn registry_client(channel_id: u32, owner_key: String, channel_name: S
         match result {
             Ok(rows) => {
                 if rows > 0 {
-                    println!("Successfully inserted Log in the table Channels. {} row(s) were affected.", rows);
+                    println!(
+                        "Successfully inserted Log in the table Channels. {} row(s) were affected.",
+                        rows
+                    );
                 } else {
                     println!("No rows were affected.");
                 }
-            },
+            }
             Err(e) => {
-                eprintln!("An error occurred while inserting the Log in the table Channels: {}", e);
-            },
+                eprintln!(
+                    "An error occurred while inserting the Log in the table Channels: {}",
+                    e
+                );
+            }
         };
 
         ((), conn)

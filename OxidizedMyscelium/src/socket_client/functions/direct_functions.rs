@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::structs::available_commands::CommandPatterns;
 use crate::common::structs::results_structs::ResultType;
 use crate::common::types::BufferError;
@@ -16,7 +19,10 @@ use crate::{CLIENT_IS_SYNC, CLIENT_LOG_LEVEL};
 use crate::HOST_ALLOWED_COMMANDS;
 
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget, ResponseType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType, ResponseTarget, ResponseType,
+};
 use crate::common::functions::converters::convert_to_value_map;
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
@@ -45,9 +51,15 @@ impl From<BufferError> for ProcessError {
     }
 }
 
-pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String, command_id: u32) -> Result<ProcessResult, ProcessError> {
+pub async fn handle_direct_function(
+    c: &CommandInstructions,
+    client_key: &String,
+    command_id: u32,
+) -> Result<ProcessResult, ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
-    logger.info(format!("Initializing Direct Function processing!")).await;
+    logger
+        .info(format!("Initializing Direct Function processing!"))
+        .await;
 
     // TODO >>> Change this for a match
 
@@ -61,19 +73,25 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
 
             // TODO >>> Maybe create a mechanism to validate the new_patterns received, maybe using regex, idk...
 
-            logger.debug("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS".to_string()).await;
+            logger
+                .debug("[CLIENT][GLOBAL][Try Lock] - HOST_ALLOWED_COMMANDS".to_string())
+                .await;
             let mut filtered_commands_map = HashMap::new();
-            logger.debug("Try to update the schedule with the new client state".to_string()).await;
+            logger
+                .debug("Try to update the schedule with the new client state".to_string())
+                .await;
 
             {
                 let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock().await;
-                logger.debug("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS".to_string()).await;
+                logger
+                    .debug("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS".to_string())
+                    .await;
 
                 match host_allowed_commands.update_from_value_map(response_map) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         // TODO >>> Better threat this error case
-                    },
+                    }
                 }
 
                 let state_manager: Option<ClientState>;
@@ -86,16 +104,16 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                             match e {
                                 StateManagerError::NotFullyInitialized => {
                                     logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!")).await;
-                                },
+                                }
                                 StateManagerError::CantgetStateFromDb(e) => {
                                     logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e)).await;
-                                },
+                                }
                                 StateManagerError::ErrorWhileSavingClientState(e) => {
                                     logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e)).await;
-                                },
+                                }
                             };
                             CLIENT_STATE_MANAGER.lock().await.clone()
-                        },
+                        }
                     }
                 };
 
@@ -105,19 +123,19 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 client_state.is_sync = Some(true);
 
                 match &client_state.update_schedule_with_this().await {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => match &client_state.save_in_storage().await {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => match e {
                             StateManagerError::NotFullyInitialized => {
                                 logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!")).await;
-                            },
+                            }
                             StateManagerError::CantgetStateFromDb(e) => {
                                 logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e)).await;
-                            },
+                            }
                             StateManagerError::ErrorWhileSavingClientState(e) => {
                                 logger.exception(format!("Error trying to save client state in the database, the error was: {:?}", e)).await;
-                            },
+                            }
                         },
                     },
                 };
@@ -126,21 +144,37 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 // > We should return an error back to the client or do something about the connection, it can't just continue to give the error, eveen that it will close the connect for not sync correctly after a while!
                 // > We should do something else toguether with the loggin, not only log the error, one example would be count the error attempts and then disconnect the client, better treat this to avoid unecessary use of ressources
 
-                logger.debug("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS".to_string()).await;
+                logger
+                    .debug("[CLIENT][GLOBAL][Release] - HOST_ALLOWED_COMMANDS".to_string())
+                    .await;
                 let actual_patterns: Value;
-                logger.debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string()).await;
+                logger
+                    .debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string())
+                    .await;
 
                 {
                     let mut command_patterns = CLIENT_NODE_CONFIGS.lock().await;
-                    logger.debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string()).await;
+                    logger
+                        .debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string())
+                        .await;
                     logger.info(format!("Lock In Host Command Patterns!")).await;
                     command_patterns.change_node_status(NodeStatus::Online);
-                    command_patterns.update_known_network(host_allowed_commands.get_all_nodes_except_node_with_key(&"".to_string()).clone());
+                    command_patterns.update_known_network(
+                        host_allowed_commands
+                            .get_all_nodes_except_node_with_key(&"".to_string())
+                            .clone(),
+                    );
                     actual_patterns = command_patterns.to_value();
                 }
 
-                logger.debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string()).await;
-                logger.info(format!("Successfully actualize the host available commands!")).await;
+                logger
+                    .debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string())
+                    .await;
+                logger
+                    .info(format!(
+                        "Successfully actualize the host available commands!"
+                    ))
+                    .await;
 
                 // TODO >>> Change this to use NetworkMap instead of commands
                 filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
@@ -169,37 +203,69 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
             // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
             logger.info("Finish building".to_string()).await;
-            let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from)?;
+            let parity_id: String =
+                enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(
+                    client_key.clone(),
+                )
+                .await
+                .map_err(ProcessError::from)?;
 
-            let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.map_err(|e| ProcessError::from(e))?;
+            let up_command: UpCommand = UpCommand::new(
+                client_key,
+                &parity_id,
+                11u8,
+                &to_string(&new_command_instructions).unwrap(),
+            );
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command)
+                .await
+                .map_err(|e| ProcessError::from(e))?;
 
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            )
+            .await
+            .map_err(|e| ProcessError::from(e))?;
             return Ok(ProcessResult::Empty);
-        },
+        }
         "get_socket_client_available_handlers" => {
             // -> DINAMIC RESPONSE IMPLEMENTED:
 
-            logger.info(format!("Receive Available Handlers Request")).await;
+            logger
+                .info(format!("Receive Available Handlers Request"))
+                .await;
 
             // Lock the CLIENT_NODE_CONFIGS and insert the new map
 
             let actual_patterns: Value;
-            logger.debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string()).await;
+            logger
+                .debug("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS".to_string())
+                .await;
 
             {
                 let command_patterns = CLIENT_NODE_CONFIGS.lock().await;
-                logger.debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string()).await;
+                logger
+                    .debug("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS".to_string())
+                    .await;
                 actual_patterns = command_patterns.to_value();
             }
 
-            logger.debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string()).await;
-            logger.info(format!("Successfully actualize the host available commands!")).await;
+            logger
+                .debug("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS".to_string())
+                .await;
+            logger
+                .info(format!(
+                    "Successfully actualize the host available commands!"
+                ))
+                .await;
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            )
+            .await
+            .map_err(|e| ProcessError::from(e))?;
             let mut filtered_commands_map: HashMap<String, Value> = HashMap::new();
             filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
 
@@ -218,26 +284,51 @@ pub async fn handle_direct_function(c: &CommandInstructions, client_key: &String
                 true,
             );
 
-            let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
-            let parity_id: String = rt.block_on(async { enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.map_err(ProcessError::from) })?;
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("Failed to create Tokio runtime");
+            let parity_id: String = rt.block_on(async {
+                enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(
+                    client_key.clone(),
+                )
+                .await
+                .map_err(ProcessError::from)
+            })?;
 
-            let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
+            let up_command: UpCommand = UpCommand::new(
+                client_key,
+                &parity_id,
+                11u8,
+                &to_string(&new_command_instructions).unwrap(),
+            );
 
-            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.map_err(|e| ProcessError::from(e))?;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone()).await.map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command)
+                .await
+                .map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            )
+            .await
+            .map_err(|e| ProcessError::from(e))?;
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            )
+            .await
+            .map_err(|e| ProcessError::from(e))?;
 
             return Ok(ProcessResult::Empty);
-        },
+        }
 
         // -> VITAL NETWORK COMPONENTS
         "update_client_network_rechable" => {
             return Ok(ProcessResult::Empty); // TODO >>> Implement the mechanism to allow update the Client Notion about the remote handlers
-        },
+        }
 
         // -> GENERAL OUT OF SCOPE CASES:
         _ => {
             return Err(ProcessError::CommandNotRegistered(c.actf.clone()));
-        },
+        }
     }
 }

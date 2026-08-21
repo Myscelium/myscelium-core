@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -38,9 +41,14 @@ impl fmt::Debug for ReactiveActivator {
 
 impl ReactiveActivator {
     pub fn new(
+<<<<<<< HEAD
         action: Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>,
         condition: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync + 'static>,
         sem: Arc<Semaphore>, // pass in the semaphore you want to use
+=======
+        action: Arc<dyn Fn() + Send + Sync>,
+        condition: Arc<dyn Fn() -> bool + Send + Sync>,
+>>>>>>> develop
     ) -> Arc<Self> {
         Arc::new(Self {
             thread_handle: Arc::new(Mutex::new(None)),

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 use serde_json::to_string;
 
@@ -6,7 +9,9 @@ use crate::socket_client::transposer::ProcessError;
 use crate::ClientLoaderError;
 #[macro_use]
 use crate::{with_connection, set_new_path_to_buffer_db};
-use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
+use crate::common::sql_pool::pool::{
+    SQLiteConnectionPool, UniqueIdGenerator, UniqueParityIdGenerator,
+};
 
 use rusqlite::params;
 use serde_json::{from_str, to_string_pretty, Value};
@@ -58,7 +63,8 @@ lazy_static! {
     static ref SQL_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("Data.db".to_string()));
     static ref SQL_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("Data.db".to_string()));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
+    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> =
+        Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
 pub async fn set_host_clients_manager__pool_workers_num(n_workers: u32) {
@@ -103,10 +109,13 @@ pub async fn clients_manager_initialize_table(sql_path: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize Clients table!");
-            },
+            }
             Err(e) => {
-                eprintln!("An error occurred while scheduling the command in the Clients table: {}", e);
-            },
+                eprintln!(
+                    "An error occurred while scheduling the command in the Clients table: {}",
+                    e
+                );
+            }
         };
 
         ((), conn)
@@ -138,17 +147,25 @@ impl fmt::Display for ClientError {
             ClientError::ClientAlreadyExist(name) => write!(f, "Client already exists: {}", name),
             ClientError::UnexpectedError(msg) => write!(f, "Unexpected error: {}", msg),
             ClientError::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
-
             ClientError::ClientIsNotRunning(c) => write!(f, "Client {:?} is not running", c),
-            ClientError::ClientIsNotFullyInitialized(c) => write!(f, "Client: {:?} is not fully initialized", c),
+            ClientError::ClientIsNotFullyInitialized(c) => {
+                write!(f, "Client: {:?} is not fully initialized", c)
+            }
             ClientError::NotAbleToReadClientStates => write!(f, "Unable to read client states"),
             ClientError::TargetDoesntExists(t) => write!(f, "Target: {:?} does not exist", t),
             ClientError::HandlerDoesntExist(h) => write!(f, "Handler: {:?} does not exist", h),
-            ClientError::ResponseHandlerDoesntExist(rh) => write!(f, "Response: {:?} handler does not exist", rh),
-            ClientError::CantScheduleCommandsToItself => write!(f, "Cannot schedule commands to itself"),
-            ClientError::HostCantSendResponseToItself => write!(f, "Host cannot send response to itself"),
-            ClientError::TargetCantSendResponseToItself => write!(f, "Target cannot send response to itself"),
-
+            ClientError::ResponseHandlerDoesntExist(rh) => {
+                write!(f, "Response: {:?} handler does not exist", rh)
+            }
+            ClientError::CantScheduleCommandsToItself => {
+                write!(f, "Cannot schedule commands to itself")
+            }
+            ClientError::HostCantSendResponseToItself => {
+                write!(f, "Host cannot send response to itself")
+            }
+            ClientError::TargetCantSendResponseToItself => {
+                write!(f, "Target cannot send response to itself")
+            }
             ClientError::BufferError(err) => write!(f, "Buffer error: {}", err),
         }
     }
@@ -181,15 +198,23 @@ impl From<SchedulingError> for ClientError {
         match value {
             SchedulingError::CantReadStates => {
                 return ClientError::NotAbleToReadClientStates;
-            },
+            }
             SchedulingError::ClientIsntFullyInitialized(c) => {
                 return ClientError::ClientIsNotFullyInitialized(c);
-            },
-            SchedulingError::CantScheduleCommandsToItself(c) => return ClientError::ClientIsNotFullyInitialized(c),
+            }
+            SchedulingError::CantScheduleCommandsToItself(c) => {
+                return ClientError::ClientIsNotFullyInitialized(c)
+            }
             SchedulingError::HandlerDoesntExist(h) => return ClientError::HandlerDoesntExist(h),
-            SchedulingError::HostCantSendResponseToItself => return ClientError::HostCantSendResponseToItself,
-            SchedulingError::ResponseHandlerDoesntExist(r) => return ClientError::ResponseHandlerDoesntExist(r),
-            SchedulingError::TargetCantSendResponseToItself => return ClientError::TargetCantSendResponseToItself,
+            SchedulingError::HostCantSendResponseToItself => {
+                return ClientError::HostCantSendResponseToItself
+            }
+            SchedulingError::ResponseHandlerDoesntExist(r) => {
+                return ClientError::ResponseHandlerDoesntExist(r)
+            }
+            SchedulingError::TargetCantSendResponseToItself => {
+                return ClientError::TargetCantSendResponseToItself
+            }
             SchedulingError::TargetDoesntExists(t) => return ClientError::TargetDoesntExists(t),
             SchedulingError::UnsuportedAction(a) => return ClientError::InvalidCommand(a),
             SchedulingError::BufferError(e) => return ClientError::BufferError(e),
@@ -292,7 +317,8 @@ impl Client {
                 }
             ]"#;
 
-            client_handlers = serde_json::from_str::<Vec<HashMap<String, Value>>>(json_str).unwrap();
+            client_handlers =
+                serde_json::from_str::<Vec<HashMap<String, Value>>>(json_str).unwrap();
             // Using unwrap because the source is controlled!
         }
 
@@ -318,12 +344,19 @@ impl Client {
 
     pub async fn exists_in_db(&self) -> Result<bool, ClientError> {
         with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
-            let result = conn.query_row("SELECT 1 FROM Clients WHERE ClientName = ? LIMIT 1", params![self.client_name], |_row| Ok(()));
+            let result = conn.query_row(
+                "SELECT 1 FROM Clients WHERE ClientName = ? LIMIT 1",
+                params![self.client_name],
+                |_row| Ok(()),
+            );
 
             let result = match result {
                 Ok(_) => Ok(true),                                      // Found a row
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false), // No match
-                Err(e) => Err(ClientError::UnexpectedError(format!("Error checking client existence: {:?}", e))),
+                Err(e) => Err(ClientError::UnexpectedError(format!(
+                    "Error checking client existence: {:?}",
+                    e
+                ))),
             };
 
             (result, conn)
@@ -332,7 +365,9 @@ impl Client {
     }
 
     pub async fn save_into_db(&self) -> Result<(), ClientError> {
-        let serialzied_owned_sub_channels_keys = serde_json::to_string(&self.owned_sub_channels_keys).expect("Failed to serialize to JSON");
+        let serialzied_owned_sub_channels_keys =
+            serde_json::to_string(&self.owned_sub_channels_keys)
+                .expect("Failed to serialize to JSON");
 
         if self.exists_in_db().await? {
             self.update_to(self).await?;
@@ -349,7 +384,8 @@ impl Client {
                 client_handlers = "".to_string();
             } else {
                 // Try to convert Vec<HashMap<String, Value>> to string
-                client_handlers = to_string_pretty(&self.client_handlers).expect("Failed to serialize");
+                client_handlers =
+                    to_string_pretty(&self.client_handlers).expect("Failed to serialize");
             }
 
             let result = conn.execute(
@@ -387,13 +423,16 @@ impl Client {
     }
 
     pub async fn update_to(&self, new_client: &Client) -> Result<Self, ClientError> {
-        let serialized_owned_sub_channels_keys = serde_json::to_string(&new_client.owned_sub_channels_keys).expect("Failed to serialize to JSON");
+        let serialized_owned_sub_channels_keys =
+            serde_json::to_string(&new_client.owned_sub_channels_keys)
+                .expect("Failed to serialize to JSON");
 
         let _ = with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
             // let now = Utc::now();
             // let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
-            let client_handlers = to_string_pretty(&self.client_handlers).expect("Failed to serialize"); // Try to convert Vec<HashMap<String, Value>> to string
+            let client_handlers =
+                to_string_pretty(&self.client_handlers).expect("Failed to serialize"); // Try to convert Vec<HashMap<String, Value>> to string
 
             let result = conn.execute(
                 "UPDATE Clients SET ClientName = ?, ClientKey = ?, ClientType = ?, PermissionGroup = ?, SuperUser = ?, LastContact = ?, MaxSubChannels = ?, OwnedSubChannelsKeys = ?, SubChannelsInUse = ?, Handlers = ?, Syncronized = ? WHERE ID = ?",
@@ -420,10 +459,13 @@ impl Client {
                     } else {
                         println!("No rows were affected.");
                     }
-                },
+                }
                 Err(e) => {
-                    eprintln!("An error occurred while inserting the Log in the table Clients: {}", e);
-                },
+                    eprintln!(
+                        "An error occurred while inserting the Log in the table Clients: {}",
+                        e
+                    );
+                }
             };
 
             ((), conn)
@@ -450,7 +492,11 @@ impl Client {
             let clients: Result<Vec<Client>, ClientError> = 'loading: {
                 let mut smtp = match conn.prepare("SELECT * FROM Clients WHERE ClientName = ?") {
                     Ok(s) => s,
-                    Err(e) => break 'loading Err(ClientError::UnexpectedError(format!("prepare failed: {e}"))),
+                    Err(e) => {
+                        break 'loading Err(ClientError::UnexpectedError(format!(
+                            "prepare failed: {e}"
+                        )))
+                    }
                 };
 
                 let mut clients: Vec<Client> = Vec::new();
@@ -464,16 +510,23 @@ impl Client {
                         row.get(5).unwrap(),
                         row.get(6).unwrap(),
                         row.get(7).unwrap(),
-                        serde_json::from_str::<Vec<String>>(row.get::<_, String>(8)?.as_str()).unwrap(),
+                        serde_json::from_str::<Vec<String>>(row.get::<_, String>(8)?.as_str())
+                            .unwrap(),
                         row.get(9).unwrap(),
-                        serde_json::from_str::<Vec<HashMap<String, Value>>>(row.get::<_, String>(10)?.as_str()).unwrap(),
+                        serde_json::from_str::<Vec<HashMap<String, Value>>>(
+                            row.get::<_, String>(10)?.as_str(),
+                        )
+                        .unwrap(),
                         row.get(11).unwrap(),
                     ))
                 }) {
                     Ok(clients) => clients,
                     Err(e) => {
-                        break 'loading Err(ClientError::UnexpectedError(format!("Query map error: {}", e)));
-                    },
+                        break 'loading Err(ClientError::UnexpectedError(format!(
+                            "Query map error: {}",
+                            e
+                        )));
+                    }
                 };
 
                 for client_result in clients_iter {
@@ -483,8 +536,11 @@ impl Client {
                             Err(e) => break 'loading Err(e),
                         },
                         Err(e) => {
-                            break 'loading Err(ClientError::UnexpectedError(format!("Client row parse error: {}", e)));
-                        },
+                            break 'loading Err(ClientError::UnexpectedError(format!(
+                                "Client row parse error: {}",
+                                e
+                            )));
+                        }
                     }
                 }
 
@@ -498,7 +554,7 @@ impl Client {
                     } else {
                         Ok(clients.remove(0))
                     }
-                },
+                }
                 Err(e) => Err(e),
             };
 
@@ -513,7 +569,11 @@ impl Client {
                 let mut clients: Vec<Client> = Vec::new();
                 let mut smtp = match conn.prepare("SELECT * FROM Clients WHERE ClientKey = ?") {
                     Ok(s) => s,
-                    Err(e) => break 'get Err(ClientError::UnexpectedError(format!("prepare failed: {e}"))),
+                    Err(e) => {
+                        break 'get Err(ClientError::UnexpectedError(format!(
+                            "prepare failed: {e}"
+                        )))
+                    }
                 };
 
                 let clients_iter = match smtp.query_map(params![*client_key], |row| {
@@ -526,18 +586,31 @@ impl Client {
                         row.get(5).unwrap(),
                         row.get(6).unwrap(),
                         row.get(7).unwrap(),
-                        serde_json::from_str::<Vec<String>>(row.get::<_, String>(8)?.as_str()).unwrap(),
+                        serde_json::from_str::<Vec<String>>(row.get::<_, String>(8)?.as_str())
+                            .unwrap(),
                         row.get(9).unwrap(),
-                        serde_json::from_str::<Vec<HashMap<String, Value>>>(row.get::<_, String>(10)?.as_str()).unwrap(),
+                        serde_json::from_str::<Vec<HashMap<String, Value>>>(
+                            row.get::<_, String>(10)?.as_str(),
+                        )
+                        .unwrap(),
                         row.get(11).unwrap(),
                     ))
                 }) {
                     Ok(i) => i,
-                    Err(e) => break 'get Err(ClientError::UnexpectedError(format!("query_map failed: {e}"))),
+                    Err(e) => {
+                        break 'get Err(ClientError::UnexpectedError(format!(
+                            "query_map failed: {e}"
+                        )))
+                    }
                 };
 
                 for client in clients_iter {
-                    match client.map_err(|e| ClientError::UnexpectedError(format!("Error retrieving clients from key: {:?}", e))) {
+                    match client.map_err(|e| {
+                        ClientError::UnexpectedError(format!(
+                            "Error retrieving clients from key: {:?}",
+                            e
+                        ))
+                    }) {
                         Ok(c) => match c {
                             Ok(c) => clients.push(c),
                             Err(e) => break 'get Err(e),
@@ -575,10 +648,10 @@ impl Client {
             match result {
                 Ok(rows) => {
                     println!("Successfully deleted all clients from clients table! {} Rows were affected.", rows);
-                },
+                }
                 Err(e) => {
                     eprintln!("An error occurred while deleting all clients from clients table! And the error was: {}", e);
-                },
+                }
             }
 
             ((), conn)
@@ -598,11 +671,14 @@ impl Client {
 
             match result {
                 Ok(rows) => {
-                    println!("Successfully deleted Client: {} from clients! {} Rows were affected.", self.client_key, rows);
-                },
+                    println!(
+                        "Successfully deleted Client: {} from clients! {} Rows were affected.",
+                        self.client_key, rows
+                    );
+                }
                 Err(e) => {
                     eprintln!("An error occurred while deleting Client: {} from clients! And the error was: {}", self.client_key, e);
-                },
+                }
             }
 
             ((), conn)
@@ -645,7 +721,10 @@ impl Client {
         Ok(new_client)
     }
 
-    pub async fn update_handlers(&self, new_handlers: Vec<HashMap<String, Value>>) -> Result<Self, ClientError> {
+    pub async fn update_handlers(
+        &self,
+        new_handlers: Vec<HashMap<String, Value>>,
+    ) -> Result<Self, ClientError> {
         let new_client = Self {
             client_id: self.client_id.clone(),
             client_name: self.client_name.clone(),
@@ -803,7 +882,9 @@ async fn get_clients_keys_registered() -> Result<Vec<String>, ClientError> {
         let keys: Result<Vec<String>, ClientError> = 'load: {
             let mut smtp: Statement<'_> = match conn.prepare("SELECT * FROM Clients") {
                 Ok(s) => s,
-                Err(e) => break 'load Err(ClientError::UnexpectedError(format!("prepare failed: {e}"))),
+                Err(e) => {
+                    break 'load Err(ClientError::UnexpectedError(format!("prepare failed: {e}")))
+                }
             };
 
             let keys_iter = match smtp.query_map(params![], |row: &Row<'_>| {
@@ -811,14 +892,24 @@ async fn get_clients_keys_registered() -> Result<Vec<String>, ClientError> {
                 Ok(key)
             }) {
                 Ok(k) => k,
-                Err(e) => break 'load Err(ClientError::UnexpectedError(format!("Error trying to load the client keys registered, the error was: {:?}", e))),
+                Err(e) => {
+                    break 'load Err(ClientError::UnexpectedError(format!(
+                        "Error trying to load the client keys registered, the error was: {:?}",
+                        e
+                    )))
+                }
             };
 
             let mut keys: Vec<String> = Vec::new();
             for key in keys_iter {
                 match key {
                     Ok(k) => keys.push(k),
-                    Err(e) => break 'load Err(ClientError::UnexpectedError(format!("Error trying to load the client keys registered, the error was: {:?}", e))),
+                    Err(e) => {
+                        break 'load Err(ClientError::UnexpectedError(format!(
+                            "Error trying to load the client keys registered, the error was: {:?}",
+                            e
+                        )))
+                    }
                 }
             }
 
@@ -838,7 +929,9 @@ pub async fn get_all_clients() -> Result<Vec<Client>, ClientError> {
             let mut keys: Vec<String> = Vec::new();
             let mut smtp = match conn.prepare("SELECT * FROM Clients") {
                 Ok(s) => s,
-                Err(e) => break 'load Err(ClientError::UnexpectedError(format!("prepare failed: {e}"))),
+                Err(e) => {
+                    break 'load Err(ClientError::UnexpectedError(format!("prepare failed: {e}")))
+                }
             };
 
             let clients_iter = match smtp.query_map(params![], |row: &Row<'_>| {
@@ -853,12 +946,19 @@ pub async fn get_all_clients() -> Result<Vec<Client>, ClientError> {
                     row.get(7).unwrap(),
                     serde_json::from_str::<Vec<String>>(row.get::<_, String>(8)?.as_str()).unwrap(),
                     row.get(9).unwrap(),
-                    serde_json::from_str::<Vec<HashMap<String, Value>>>(row.get::<_, String>(10)?.as_str()).unwrap(),
+                    serde_json::from_str::<Vec<HashMap<String, Value>>>(
+                        row.get::<_, String>(10)?.as_str(),
+                    )
+                    .unwrap(),
                     row.get(11).unwrap(),
                 ))
             }) {
                 Ok(i) => i,
-                Err(e) => break 'load Err(ClientError::UnexpectedError(format!("query_map failed: {e}"))),
+                Err(e) => {
+                    break 'load Err(ClientError::UnexpectedError(format!(
+                        "query_map failed: {e}"
+                    )))
+                }
             };
 
             let mut clients: Vec<Client> = Vec::new();
@@ -866,14 +966,26 @@ pub async fn get_all_clients() -> Result<Vec<Client>, ClientError> {
                 match client {
                     Ok(c) => match c {
                         Ok(c) => clients.push(c),
-                        Err(e) => break 'load Err(ClientError::UnexpectedError(format!("Error trying to load the client, the error is: {:?}", e))),
+                        Err(e) => {
+                            break 'load Err(ClientError::UnexpectedError(format!(
+                                "Error trying to load the client, the error is: {:?}",
+                                e
+                            )))
+                        }
                     },
-                    Err(e) => break 'load Err(ClientError::UnexpectedError(format!("Error trying to load the client, the error is: {:?}", e))),
+                    Err(e) => {
+                        break 'load Err(ClientError::UnexpectedError(format!(
+                            "Error trying to load the client, the error is: {:?}",
+                            e
+                        )))
+                    }
                 };
             }
 
             if clients.len() == 0 {
-                break 'load Err(ClientError::UnexpectedError("Any clients registred!".to_string()));
+                break 'load Err(ClientError::UnexpectedError(
+                    "Any clients registred!".to_string(),
+                ));
             } else {
                 break 'load Ok(clients);
             }
@@ -911,7 +1023,8 @@ pub async fn edit_client(client: Client) {
     with_connection!(SQL_POOL, |conn: rusqlite::Connection| async {
         let serialized_owned_sub_channels_keys = serde_json::to_string(&client.owned_sub_channels_keys).expect("Failed to serialize to JSON");
 
-        let client_handlers = to_string_pretty(&client.client_handlers).expect("Failed to serialize"); // Try to convert Vec<HashMap<String, Value>> to string
+        let client_handlers =
+            to_string_pretty(&client.client_handlers).expect("Failed to serialize"); // Try to convert Vec<HashMap<String, Value>> to string
 
         let result = conn.execute(
             "UPDATE Clients SET ClientName = ?, ClientKey = ?, ClientType = ?, PermissionGroup = ?, SuperUser = ?, LastContact = ?, MaxSubChannels = ?, OwnedSubChannelsKeys = ?, SubChannelsInUse = ?, Handlers = ? WHERE ID = ?;",
@@ -935,10 +1048,13 @@ pub async fn edit_client(client: Client) {
                 if rows > 0 {
                     // println!("Successfully update client: {} in database", client.client_name);
                 }
-            },
+            }
             Err(e) => {
-                eprintln!("Error while update client: {} in the database, the error is: {}", client.client_name, e);
-            },
+                eprintln!(
+                    "Error while update client: {} in the database, the error is: {}",
+                    client.client_name, e
+                );
+            }
         }
 
         ((), conn)

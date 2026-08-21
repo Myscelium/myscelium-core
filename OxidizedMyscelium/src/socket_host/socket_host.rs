@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use std::io::prelude::*;
 
 use once_cell::sync::Lazy;
@@ -34,7 +37,10 @@ use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::common::enhanced_buffer::utilities::ResponseTarget;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType,
+};
 use crate::socket_host::transposer_functions::handle_redirect::handle_redirect;
 use crate::ClientState;
 use crate::NetworkMap;
@@ -260,10 +266,10 @@ macro_rules! handle_client_manager_error {
             ClientError::ClientDoesNotExist(_) => {
                 let message = "Your client isn't registered in the whitelist!";
                 send_error_response!($stream, $command, $logger, message);
-            },
+            }
             _ => {
                 send_error_response!($stream, $command, $logger, $default_message);
-            },
+            }
         }
     };
 }
@@ -279,11 +285,11 @@ macro_rules! send_error_response {
         let response = create_error_command_response!($command.client_key, $command.parity_id, $message);
         $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response)).await;
         match send($stream, response) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 handle_send_error!(e, $logger, $command.client_key);
                 break;
-            },
+            }
         }
     };
 }
@@ -562,7 +568,7 @@ async fn handle_special_functions(client_key: String, function: String) -> Comma
                 // TODO >>> Handle the invalid Commands cases
                 logger.warn(format!("Command received during ping: {} is invalid, gives error: {:?}! Returning C207", command_response, e)).await;
                 return create_special_command_response!(client_key, "C207");
-            },
+            }
         };
 
         match enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&client_key, &response_command.parity_id).await {
@@ -649,7 +655,9 @@ async fn update_client_sync_attempt(client_key: &String, logger: &Logger) -> Res
         // -> node iteself and only in the first time that it is tring to sync, this will help other nodes awaits,
         // -> know that the node is initializing and this will make them wait to give an exception or send someting to this one.
 
-        if ref_node.get_node_status() == NodeStatus::NotImplemented || ref_node.get_node_status() == NodeStatus::Offline {
+        if ref_node.get_node_status() == NodeStatus::NotImplemented
+            || ref_node.get_node_status() == NodeStatus::Offline
+        {
             ref_node.change_node_status(NodeStatus::NotSyncYet)
         }
     }
@@ -766,14 +774,14 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                 Err(e) => {
                     handle_client_controller_error!(e, &command.client_key, logger);
                     None
-                },
+                }
             };
             client_last_sync = match controller.get_last_sync(&command.client_key.clone()) {
                 Ok(last_sync) => Some(last_sync),
                 Err(e) => {
                     handle_client_controller_error!(e, &command.client_key, logger);
                     None
-                },
+                }
             };
             logger.debug(format!("Clients In Sync Controller: {:?}", controller)).await;
         }
@@ -886,11 +894,11 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             // let mut task = tasks_manager.get_node_task_by_id(&command.client_key, &command.parity_id.clone()).unwrap();
                             // task.received_conf(); // this store that the function was received by the target
                             return;
-                        },
+                        }
                         _ => {
                             // TODO >>> We can see about add the remove task here when the confirmation is confirming the receive of the Response
                             return;
-                        },
+                        }
                     }
                 }
 
@@ -901,7 +909,11 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             if command.client_key != command.command.target.to_string() {
                                 //> Case were we are receiving the command to redirect to a target
                                 //> We pass the origin here just in case it isn't in the command instruction so then we can easily trace it
-                                let node_task: NodeTask = NodeTask::new(command.client_key.clone(), command.parity_id.clone(), command.command.clone());
+                                let node_task: NodeTask = NodeTask::new(
+                                    command.client_key.clone(),
+                                    command.parity_id.clone(),
+                                    command.command.clone(),
+                                );
                                 {
                                     let mut tasks_manager = TASKS_MANAGER.lock().await;
                                     tasks_manager.add_task_to_node(&command.command.target.as_pure_string(), node_task).unwrap();
@@ -917,7 +929,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                 }
                             }
                         }
-                    },
+                    }
                     CommandMode::Response => {
                         if !incoming {
                             // -> Here theoretically the client_key of the command is the target of the command that cause this response
@@ -938,7 +950,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             // TODO >>> Verify if the response matches some command
                             // TODO >>> Remove the command of the tasks
                         }
-                    },
+                    }
                 }
             }
 
@@ -956,8 +968,8 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         },
                     };
                     continue;
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             // -> HANDLE HOST FUNCTIONS - DIRECT AND EXTERNAL FUNCTION:
@@ -1016,7 +1028,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                             }
                         }
                     }
-                },
+                }
                 CommandTarget::Host => {
                     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
                     // < WARNING: This locks command_patterns!
@@ -1069,8 +1081,12 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         return Ok(Some(get_response_or_error(command.clone()).await));
                     // > HANDLE COMMANDS WITHOUT RESPONSE:
                     } else {
-                        println!("Find real origin to: {} that is: {}", &command.parity_id, real_origin);
-                        command.command.target = CommandTarget::ClientKey(real_origin.to_string().clone());
+                        println!(
+                            "Find real origin to: {} that is: {}",
+                            &command.parity_id, real_origin
+                        );
+                        command.command.target =
+                            CommandTarget::ClientKey(real_origin.to_string().clone());
 
                         // Get the command patterns map index with all network map variants:
                         let mut command_patterns: NetworkMap;
@@ -1083,7 +1099,10 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                         for com in commands {
                             match com {
                                 CommandVariant::Command(res) => {
-                                    println!("Command: {} swaped to origin: {}", &command.parity_id, real_origin);
+                                    println!(
+                                        "Command: {} swaped to origin: {}",
+                                        &command.parity_id, real_origin
+                                    );
                                     println!("New command casted: \n{:#?}\n", &res);
 
                                     if res.command.status == "Failure" {
@@ -1124,11 +1143,11 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                                 },
                                 CommandVariant::DownCommand(_) => {
                                     panic!("Doesn't is expected to receive DownCommand here, smething is wrong!")
-                                },
+                                }
                             };
                         }
                     }
-                },
+                }
                 _ => {
                     // -> HANDLE THE CASE WERE A COMMAND DOES EXISTS HERE IN HOST NOR IN ANY NODE THAT CLIENT HAS PERMISSION
                     let res: Command = create_error_command_response!(
@@ -1142,7 +1161,7 @@ async fn handle_incoming(command: Command) -> std::io::Result<Option<Command>> {
                     return Ok(Some(res));
                     handle_client_disconnect(&client_key).await;
                     break;
-                },
+                }
             }
         }
     }

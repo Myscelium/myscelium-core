@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 extern crate rand;
 use rand::distr::Alphanumeric;
 use rand::Rng;
@@ -56,7 +59,10 @@ impl UniqueParityIdGenerator {
     /// # Returns
     /// An instance of `UniqueParityIdGenerator`.
     pub fn new(length: usize, registered_ids: Vec<String>) -> Self {
-        Self { length, registered_ids }
+        Self {
+            length,
+            registered_ids,
+        }
     }
 
     /// Updates the internal list of registered IDs.
@@ -86,7 +92,11 @@ impl UniqueParityIdGenerator {
     /// A `String` of random alphanumeric characters.
     fn random_string(&self) -> String {
         let rng = rand::thread_rng();
-        let id: String = rng.sample_iter(&Alphanumeric).take(self.length).map(char::from).collect();
+        let id: String = rng
+            .sample_iter(&Alphanumeric)
+            .take(self.length)
+            .map(char::from)
+            .collect();
         id
     }
 
@@ -156,7 +166,9 @@ impl SQLiteConnectionPool {
         let (tx, rx) = mpsc::channel(max_connections);
         for _ in 0..max_connections {
             let conn = Connection::open(db)?;
-            tx.send(conn).await.map_err(|e| PoolError::SendError(e.to_string()))?;
+            tx.send(conn)
+                .await
+                .map_err(|e| PoolError::SendError(e.to_string()))?;
         }
         Ok(Self {
             connections: Arc::new(Mutex::new(rx)),
@@ -198,7 +210,9 @@ impl SQLiteConnectionPool {
     /// - `connection`: The `Connection` object to be returned to the pool.
     pub async fn release_connection(&self, connection: Connection) -> Result<(), PoolError> {
         let lock = &self.sender;
-        lock.send(connection).await.map_err(|e| PoolError::SendError(e.to_string()))?;
+        lock.send(connection)
+            .await
+            .map_err(|e| PoolError::SendError(e.to_string()))?;
         Ok(())
     }
 }

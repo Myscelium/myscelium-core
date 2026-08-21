@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::functions::callbacks::call_callback;
 use indexmap::IndexMap;
 use parking_lot::Mutex;
@@ -55,7 +58,9 @@ pub enum CallbackError {
 
 impl MyCallbacks {
     pub fn new() -> Self {
-        MyCallbacks { map: Arc::new(Mutex::new(HashMap::new())) }
+        MyCallbacks {
+            map: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn insert(&self, key: String, closure: CallbackClosure) {
@@ -70,7 +75,12 @@ impl MyCallbacks {
     /// - kwrags -> are the arguments to call thins function
     /// - args_pattern -> are the patterns to organize the arguments in the tuple to call it
     ///
-    pub fn call(&self, key: &str, kwargs: HashMap<String, Value>, args_pattern: IndexMap<std::string::String, std::string::String>) -> Result<Box<dyn Any>, CallbackError> {
+    pub fn call(
+        &self,
+        key: &str,
+        kwargs: HashMap<String, Value>,
+        args_pattern: IndexMap<std::string::String, std::string::String>,
+    ) -> Result<Box<dyn Any>, CallbackError> {
         let map = self.map.lock();
         if let Some(closure) = map.get(key) {
             //>----------------------------------------------------------------------------

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 
 #[macro_use]
@@ -60,7 +63,14 @@ pub struct UpCommand {
 }
 
 impl UpCommand {
-    pub fn from(command_id: u32, client_key: String, parity_id: String, priority: u8, command: String, created_time: f64) -> Self {
+    pub fn from(
+        command_id: u32,
+        client_key: String,
+        parity_id: String,
+        priority: u8,
+        command: String,
+        created_time: f64,
+    ) -> Self {
         let now = Utc::now();
         let timestamp = now.timestamp() as f64 + (now.timestamp_subsec_millis() as f64 / 1000.0);
 
@@ -191,10 +201,13 @@ pub async fn buffer_up_initialize_table(buffer_path: String) {
         match conn.execute(&sql, params![]) {
             Ok(_) => {
                 println!("Successfully dropped table ClientCommandsTosend");
-            },
+            }
             Err(e) => {
-                eprintln!("An error occurred while dropping the table ClientCommandsTosend: {}", e);
-            },
+                eprintln!(
+                    "An error occurred while dropping the table ClientCommandsTosend: {}",
+                    e
+                );
+            }
         };
 
         let result = conn.execute(
@@ -205,10 +218,10 @@ pub async fn buffer_up_initialize_table(buffer_path: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize ClientCommandsTosend table!");
-            },
+            }
             Err(e) => {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsTosend table: {}", e);
-            },
+            }
         };
 
         ((), conn)
@@ -477,16 +490,22 @@ pub async fn buffer_up_remove_schedule_by_id(id: u32) -> Result<(), BufferError>
             ))),
         };
 
-        (result, conn)
-    })
-    .await
-}
-
-pub async fn buffer_up_remove_schedule_by_parity_id(client_key: &String, parity_id: &String) -> Result<(), BufferError> {
-    BufferHistory::new("UP").log_remove_operation(&client_key, &parity_id, None.as_ref(), &"Remove From Schedule".to_string()).await;
-
-    with_connection!(BUFFER_POOL, |conn: rusqlite::Connection| async {
         let result = conn.execute("DELETE from ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?", params![client_key, parity_id]);
+=======
+pub fn buffer_up_remove_schedule_by_parity_id(client_key: &String, parity_id: &String) {
+    BufferHistory::new("UP").log_remove_operation(
+        &client_key,
+        &parity_id,
+        None.as_ref(),
+        &"Remove From Schedule".to_string(),
+    );
+
+    with_connection!(BUFFER_POOL, |conn: &rusqlite::Connection| {
+        let result = conn.execute(
+            "DELETE from ClientCommandsTosend WHERE ClientKey = ? AND ParityId = ?",
+            params![client_key, parity_id],
+        );
+>>>>>>> develop
 
         let result = match result {
             Ok(_) => {

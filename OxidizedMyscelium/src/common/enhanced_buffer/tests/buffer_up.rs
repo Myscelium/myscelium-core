@@ -1,6 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType,
+};
 use serde_json::to_string;
 use std::collections::HashMap;
 
@@ -19,12 +25,22 @@ fn test_buffer_up() {
 
     // -> TEST ADD AND RETRIEVE
 
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().expect("Failed to create Tokio runtime");
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime");
     rt.block_on(async {
-        unsafe { enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string()).await };
+        unsafe {
+            enhanced_buffer::buffer_up_manager::buffer_up_initialize_table("./Temp/".to_string())
+                .await
+        };
 
         let client_key: String = "randomsclientids".to_string();
-        let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone()).await.unwrap();
+        let parity_id =
+            enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone())
+                .await
+                .unwrap();
         let priority = 1u8;
 
         let command_instruction = CommandInstructions::new(
@@ -42,14 +58,22 @@ fn test_buffer_up() {
             true,
         );
 
-        let command = Command::new(client_key.clone(), parity_id.clone(), priority, command_instruction);
+        let command = Command::new(
+            client_key.clone(),
+            parity_id.clone(),
+            priority,
+            command_instruction,
+        );
         let up_command = UpCommand::from_command(command.clone());
 
         // Schedule command:
 
-        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command).await.unwrap();
+        enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command)
+            .await
+            .unwrap();
 
-        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await {
+        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await
+        {
             Ok(bup) => bup,
             Err(e) => panic!("{:?}", e),
         };
@@ -57,19 +81,28 @@ fn test_buffer_up() {
         let command_extracted = buffer_list.first().unwrap();
         let cm = Command::from_up_command(command_extracted).unwrap();
 
-        assert_eq!(serde_json::to_string(&command).unwrap(), serde_json::to_string(&cm).unwrap());
+        assert_eq!(
+            serde_json::to_string(&command).unwrap(),
+            serde_json::to_string(&cm).unwrap()
+        );
 
         // -> TEST DELETE:
 
-        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await {
+        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await
+        {
             Ok(bup) => bup,
             Err(e) => panic!("{:?}", e),
         };
 
         let command_extracted = buffer_list.first().unwrap();
-        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(command_extracted.command_id.unwrap()).await.unwrap();
+        enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_id(
+            command_extracted.command_id.unwrap(),
+        )
+        .await
+        .unwrap();
 
-        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await {
+        let buffer_list = match enhanced_buffer::buffer_up_manager::buffer_up_list_schedule().await
+        {
             Ok(bup) => bup,
             Err(e) => panic!("{:?}", e),
         };

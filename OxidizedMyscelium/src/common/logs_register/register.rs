@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 use std::fs::OpenOptions;
 use std::{fs::File, sync::Arc};
@@ -36,7 +39,10 @@ pub async fn initialize_logs_file(path: &str) -> io::Result<()> {
     fs::create_dir_all(parent)?;
 
     println!("Opening logfile at {:?}", file_path);
-    let file = OpenOptions::new().create(true).append(true).open(&file_path)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file_path)?;
 
     let mut guard = FILE.lock().await;
     *guard = Some(file);

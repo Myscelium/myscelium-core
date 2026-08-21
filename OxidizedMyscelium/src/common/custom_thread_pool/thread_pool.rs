@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 // use lazy_static::lazy_static;
 // use std::sync::atomic::AtomicUsize;
 // use std::sync::atomic::{AtomicBool, Ordering};

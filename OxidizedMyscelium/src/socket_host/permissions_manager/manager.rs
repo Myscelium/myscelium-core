@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 
 use crate::common::sql_pool::pool::{SQLiteConnectionPool, UniqueParityIdGenerator};
@@ -23,7 +26,8 @@ lazy_static! {
     static ref BUFFER_NAME: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref BUFFER_PATH: Arc<Mutex<String>> = Arc::new(Mutex::new("buffer.db".to_string()));
     static ref NUM_WORKERS: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
-    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> = Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
+    static ref SQL_POOL: Arc<Mutex<SQLiteConnectionPool>> =
+        Arc::new(Mutex::new(SQLiteConnectionPool::empty()));
 }
 
 pub async fn set_workers_num(n_workers: u32) {
@@ -64,10 +68,10 @@ pub async fn groups_mananger_initialize_table(buffer_path: String) {
         match result {
             Ok(_) => {
                 println!("Successfully initialize ClientCommandsToSend table!");
-            },
+            }
             Err(e) => {
                 eprintln!("An error occurred while scheduling the command in the ClientCommandsToSend table: {}", e);
-            },
+            }
         };
 
         ((), conn)
@@ -203,10 +207,10 @@ impl PermissionGroup {
                     } else {
                         println!("No rows were affected.");
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("An error occurred while inserting the Log in the table PermissionGroups: {}", e);
-                },
+                }
             };
 
             ((), conn)
@@ -239,24 +243,30 @@ impl PermissionGroup {
             let mut groups: Vec<PermissionGroup> = Vec::new();
 
             {
-                let mut smtp = conn.prepare("SELECT * FROM PermissionGroups WHERE GroupName = ?").unwrap();
+                let mut smtp = conn
+                    .prepare("SELECT * FROM PermissionGroups WHERE GroupName = ?")
+                    .unwrap();
 
                 let permission_groups_iter = smtp
                     .query_map(params![group_name], |row| {
                         Ok(PermissionGroup::from(
                             row.get(0).unwrap(),
                             row.get(1).unwrap(),
-                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(2)?.as_str()).unwrap(),
-                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(3)?.as_str()).unwrap(),
+                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(2)?.as_str())
+                                .unwrap(),
+                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(3)?.as_str())
+                                .unwrap(),
                             row.get(4).unwrap(),
                             row.get(5).unwrap(),
                             row.get(6).unwrap(),
                             row.get(7).unwrap(),
                             row.get(8).unwrap(),
-                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(9)?.as_str()).unwrap(),
+                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(9)?.as_str())
+                                .unwrap(),
                             row.get(10).unwrap(),
                             row.get(11).unwrap(),
-                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(12)?.as_str()).unwrap(),
+                            serde_json::from_str::<Vec<String>>(row.get::<_, String>(12)?.as_str())
+                                .unwrap(),
                         ))
                     })
                     .unwrap();
@@ -334,12 +344,18 @@ impl PermissionGroup {
             match result {
                 Ok(rows) => {
                     if rows > 0 {
-                        println!("Successfully update PermissionGroups: {} in databse", group_name);
+                        println!(
+                            "Successfully update PermissionGroups: {} in databse",
+                            group_name
+                        );
                     }
-                },
+                }
                 Err(e) => {
-                    eprintln!("Error while update PermissionGroups: {} in the databse, the error is: {}", group_name, e);
-                },
+                    eprintln!(
+                        "Error while update PermissionGroups: {} in the databse, the error is: {}",
+                        group_name, e
+                    );
+                }
             }
 
             ((), conn)
@@ -375,10 +391,10 @@ impl PermissionGroup {
             match result {
                 Ok(rows) => {
                     println!("Successfully deleted PermissionGroups: {} from groups! {} Rows were affected.", self.group_name, rows);
-                },
+                }
                 Err(e) => {
                     eprintln!("An error occurred while deleting PermissionGroups: {} from groups! And the error was: {}", self.group_name, e);
-                },
+                }
             }
 
             ((), conn)
@@ -607,11 +623,14 @@ async fn remove_permission_group(group: PermissionGroup) {
 
         match result {
             Ok(rows) => {
-                println!("Successfully deleted PermissionGroups: {} from groups! {} Rows were affected.", group.group_name, rows);
-            },
+                println!(
+                    "Successfully deleted PermissionGroups: {} from groups! {} Rows were affected.",
+                    group.group_name, rows
+                );
+            }
             Err(e) => {
                 eprintln!("An error occurred while deleting PermissionGroups: {} from groups! And the error was: {}", group.group_name, e);
-            },
+            }
         }
 
         ((), conn)

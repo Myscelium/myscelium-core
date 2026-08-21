@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{self, format};
@@ -47,7 +50,7 @@ impl fmt::Display for ResultType {
                     write!(f, "{}", item)?;
                 }
                 write!(f, "]")
-            },
+            }
             ResultType::Map(map) => {
                 write!(f, "{{")?;
                 let mut first = true;
@@ -59,7 +62,7 @@ impl fmt::Display for ResultType {
                     first = false;
                 }
                 write!(f, "}}")
-            },
+            }
             ResultType::Error(err) => write!(f, "Error: {}", err),
         }
     }
@@ -212,7 +215,9 @@ impl ResultType {
                 for (tk, tv) in target_map {
                     // Case where the map doesn't contain the expected key
                     if !&map.contains_key(tk) {
-                        return Err(ExpectationError::Missingkwarg(format!("{}:{}", tk.clone(), tv.clone()).to_string()));
+                        return Err(ExpectationError::Missingkwarg(
+                            format!("{}:{}", tk.clone(), tv.clone()).to_string(),
+                        ));
                     }
 
                     // Check if inner ResultsTypes are correct and then insert the update one into the new map
@@ -220,7 +225,7 @@ impl ResultType {
                 }
 
                 return Ok(ResultType::Map(new_map));
-            },
+            }
 
             // Check if Lists have matching elements and types.
             (ResultType::List(list), ResultType::List(target_list)) => {
@@ -240,36 +245,48 @@ impl ResultType {
                 }
 
                 return Ok(ResultType::List(new_list));
-            },
+            }
 
             // Special case: self is Int and target is Bool
             (ResultType::Int(i), ResultType::Bool(_)) => {
                 match *i {
                     1 => Ok(ResultType::Bool(true)),  // Consider 1 as true
                     0 => Ok(ResultType::Bool(false)), // Consider 0 as false
-                    _ => Err(ExpectationError::MismatchType(format!("get: Int({}), expecting: Bool", i))),
+                    _ => Err(ExpectationError::MismatchType(format!(
+                        "get: Int({}), expecting: Bool",
+                        i
+                    ))),
                 }
-            },
+            }
 
             // Special case: self is Str("1" or "0") and target is Bool
             (ResultType::Str(s), ResultType::Bool(_)) => {
                 match s.as_str() {
                     "1" => Ok(ResultType::Bool(true)),  // Consider "1" as true
                     "0" => Ok(ResultType::Bool(false)), // Consider "0" as false
-                    _ => Err(ExpectationError::MismatchType(format!("get: Str({}), expecting: Bool", s))),
+                    _ => Err(ExpectationError::MismatchType(format!(
+                        "get: Str({}), expecting: Bool",
+                        s
+                    ))),
                 }
-            },
+            }
 
             // Special case: self is Str("i64") and target is Int
             (ResultType::Str(s), ResultType::Int(_)) => match s.parse::<i64>() {
                 Ok(i) => Ok(ResultType::Int(i)),
-                Err(_) => Err(ExpectationError::MismatchType(format!("get: Str({}), expecting: Int", s))),
+                Err(_) => Err(ExpectationError::MismatchType(format!(
+                    "get: Str({}), expecting: Int",
+                    s
+                ))),
             },
 
             // Special case: self is Str("f64") and target is Float
             (ResultType::Str(s), ResultType::Float(_)) => match s.parse::<f64>() {
                 Ok(f) => Ok(ResultType::Float(f)),
-                Err(_) => Err(ExpectationError::MismatchType(format!("get: Str({}), expecting: Float", s))),
+                Err(_) => Err(ExpectationError::MismatchType(format!(
+                    "get: Str({}), expecting: Float",
+                    s
+                ))),
             },
 
             // For other types, just check if the types match.
@@ -277,9 +294,13 @@ impl ResultType {
                 if std::mem::discriminant(self) == std::mem::discriminant(target) {
                     Ok(self.clone())
                 } else {
-                    Err(ExpectationError::MismatchType(format!("get: {}, expecting: {}", self.type_of().to_string(), target.type_of())))
+                    Err(ExpectationError::MismatchType(format!(
+                        "get: {}, expecting: {}",
+                        self.type_of().to_string(),
+                        target.type_of()
+                    )))
                 }
-            },
+            }
         }
     }
 
@@ -297,7 +318,10 @@ impl ResultType {
     ///
     /// * `Ok(())` if the current instance matches the target in both structure and types.
     /// * `Err(ExpectationError)` if there's any mismatch.
-    pub fn fast_verify_kwargs_and_types(&self, target: &ResultType) -> Result<(), ExpectationError> {
+    pub fn fast_verify_kwargs_and_types(
+        &self,
+        target: &ResultType,
+    ) -> Result<(), ExpectationError> {
         match (self, target) {
             // Check if the Maps have matching keys and types.
             (ResultType::Map(map), ResultType::Map(target_map)) => {
@@ -308,7 +332,9 @@ impl ResultType {
                 for (tk, tv) in target_map {
                     // Case where the map doesn't contain the expected key
                     if !&map.contains_key(tk) {
-                        return Err(ExpectationError::Missingkwarg(format!("{}:{}", tk.clone(), tv.clone()).to_string()));
+                        return Err(ExpectationError::Missingkwarg(
+                            format!("{}:{}", tk.clone(), tv.clone()).to_string(),
+                        ));
                     }
 
                     // Check if inner ResultsTypes are correct
@@ -316,7 +342,7 @@ impl ResultType {
                 }
 
                 return Ok(());
-            },
+            }
 
             // Check if Lists have matching elements and types.
             (ResultType::List(list), ResultType::List(target_list)) => {
@@ -335,16 +361,20 @@ impl ResultType {
                 }
 
                 return Ok(());
-            },
+            }
 
             // For other types, just check if the types match.
             _ => {
                 if std::mem::discriminant(self) == std::mem::discriminant(target) {
                     return Ok(());
                 } else {
-                    return Err(ExpectationError::MismatchType(format!("get: {}, expecting: {}", self.type_of().to_string(), target.type_of())));
+                    return Err(ExpectationError::MismatchType(format!(
+                        "get: {}, expecting: {}",
+                        self.type_of().to_string(),
+                        target.type_of()
+                    )));
                 }
-            },
+            }
         }
     }
 }

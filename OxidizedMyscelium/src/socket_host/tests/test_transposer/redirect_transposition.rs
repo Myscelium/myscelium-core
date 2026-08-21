@@ -1,14 +1,20 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use indexmap::IndexMap;
 use rusqlite::types::Value;
 
 use crate::{
     common::enhanced_buffer::{
         buffer_down_manager::DownCommand,
-        utilities::{CommandMode, CommandOrigin, CommandStatus, CommandTarget, ResponseTarget, ResponseType},
+        utilities::{
+            CommandMode, CommandOrigin, CommandStatus, CommandTarget, ResponseTarget, ResponseType,
+        },
     },
     set_host_callbacks,
     socket_host::transposer::process,
-    Command, CommandInstructions, CommandType, HandlerStatus, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
+    Command, CommandInstructions, CommandType, HandlerStatus, Node, NodeHandler, NodeStatus,
+    NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
 };
 use core::panic;
 use oxidized_myscelium_macros::callback;
