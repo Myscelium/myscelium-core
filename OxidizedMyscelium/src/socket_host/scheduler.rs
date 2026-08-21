@@ -1,8 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType,
+};
 use crate::common::enhanced_buffer::utilities::{ResponseTarget, ResponseType};
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
@@ -69,7 +75,12 @@ pub fn request_client_available_commands(client_key: String) {
         true,
     );
 
-    schedule(&command_instructions, 11, client_key, "itisaspecialcase".to_string())
+    schedule(
+        &command_instructions,
+        11,
+        client_key,
+        "itisaspecialcase".to_string(),
+    )
 }
 
 pub fn send_network_available_commands(client_key: String) {
@@ -84,7 +95,9 @@ pub fn send_network_available_commands(client_key: String) {
     //> status is updted since now it is marked as not sync yet. Also if this isn't syncing the controller
     //> changes the sync status to NotSyncYet, if it persists it will be changed to Offline.
 
-    logger.info(format!("Send update_available_host_commands to client trying to sync!"));
+    logger.info(format!(
+        "Send update_available_host_commands to client trying to sync!"
+    ));
 
     // Lock the HOST_COMMAND_PATTERNS and insert the new map
 
@@ -106,7 +119,10 @@ pub fn send_network_available_commands(client_key: String) {
         }
 
         // -> Save to deliver to the node
-        filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
+        filtered_commands.insert(
+            "network_nodes".to_string(),
+            serde_json::to_value(nodes).unwrap(),
+        );
     }
 
     //> Sync mechanism don't uses the response_actf dinamic system cause it is splicity configured and has diferent cases in the sync flow
@@ -128,7 +144,12 @@ pub fn send_network_available_commands(client_key: String) {
         true,
     );
 
-    schedule(&command_instructions, 11u8, client_key, "itisaspecialcase".to_string())
+    schedule(
+        &command_instructions,
+        11u8,
+        client_key,
+        "itisaspecialcase".to_string(),
+    )
 }
 
 /// Schedules a command for processing.
@@ -141,19 +162,31 @@ pub fn send_network_available_commands(client_key: String) {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command: &CommandInstructions, priority: u8, client_key: String, parity_id: String) {
+pub fn schedule(
+    command: &CommandInstructions,
+    priority: u8,
+    client_key: String,
+    parity_id: String,
+) {
     let response: Value;
     let new_client_key: String;
 
-    (response, new_client_key) = process_map_result(&command, &client_key, &parity_id, &priority, &None);
+    (response, new_client_key) =
+        process_map_result(&command, &client_key, &parity_id, &priority, &None);
 
     let logger = acquire_logger!("Core - Scheduler");
 
     logger.debug("Enter Scheduler".to_string());
 
-    let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+    let parity_id =
+        enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 
-    let command_to_schedule = UpCommand::new(&new_client_key, &parity_id, priority, &to_string(&response).unwrap());
+    let command_to_schedule = UpCommand::new(
+        &new_client_key,
+        &parity_id,
+        priority,
+        &to_string(&response).unwrap(),
+    );
 
     enhanced_buffer::buffer_up_manager::buffer_up_schedule(command_to_schedule.clone());
 

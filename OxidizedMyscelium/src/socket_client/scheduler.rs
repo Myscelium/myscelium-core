@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::common::enhanced_buffer::buffer_up_manager::UpCommand;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandTarget, CommandType, ResponseTarget};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandTarget, CommandType, ResponseTarget,
+};
 use crate::common::functions::advanced_lockers::smart_lock;
 use crate::socket_client::states_manager::manager::ClientState;
 
@@ -49,7 +54,10 @@ pub enum SchedulingError {
 /// - `command`: A map representing the command to be scheduled.
 /// - `priority`: The priority level of the command. Commands with higher priority values
 ///               are processed before those with lower priority values.
-pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Result<String, SchedulingError> {
+pub fn schedule(
+    command_instructions: CommandInstructions,
+    priority: u8,
+) -> Result<String, SchedulingError> {
     let mut command_instructions: CommandInstructions = command_instructions;
 
     let logger: Logger = acquire_logger!("Core - Scheduler");
@@ -99,14 +107,14 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
     match command_instructions.target.clone() {
         CommandTarget::Origin => {
             return Err(SchedulingError::CantScheduleCommandsToItself);
-        },
+        }
         CommandTarget::Host => command_target = "host".to_string(),
         CommandTarget::ClientKey(k) => {
             if &k == &this_client_key_ref {
                 return Err(SchedulingError::CantScheduleCommandsToItself);
             }
             command_target = k;
-        },
+        }
     }
 
     if let Some(network_map) = &mut state_manager.network_map {
@@ -116,14 +124,16 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                 if !v {
                     return Err(SchedulingError::TargetDoesntExists);
                 }
-            },
+            }
             Err(_) => {
                 return Err(SchedulingError::TargetDoesntExists);
-            },
+            }
         }
 
         //> VERIFY IF THE HANDLER EXISTS IN THE TARGET
-        if !network_map.handler_exists_in(command_target.as_str(), command_instructions.actf.as_str()) {
+        if !network_map
+            .handler_exists_in(command_target.as_str(), command_instructions.actf.as_str())
+        {
             return Err(SchedulingError::HandlerDoesntExist);
         }
 
@@ -137,12 +147,13 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                             Ok(n) => n,
                             Err(_) => {
                                 return Err(SchedulingError::ClientIsntFullyInitialized);
-                            },
+                            }
                         };
 
                         if command_instructions.collect_response {
                             // Only verify if response_actf exist is collect response is true
-                            if let Some(response_actf) = command_instructions.response_actf.clone() {
+                            if let Some(response_actf) = command_instructions.response_actf.clone()
+                            {
                                 if response_actf != "".to_string() {
                                     //> See if this node has the expected handler
                                     if !this_node_handlers.contains_key(&response_actf) {
@@ -155,7 +166,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                             // If !collect_response resp_actf = ""
                         }
                     }
-                },
+                }
                 ResponseTarget::ClientKey(k) => {
                     //* See if target response is pointing to target
                     if command_target == k {
@@ -166,7 +177,9 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         // Only verify if response_actf exist is collect response is true
                         if let Some(response_actf) = command_instructions.response_actf.clone() {
                             if response_actf != "".to_string() {
-                                if !network_map.handler_exists_in(k.as_str(), response_actf.as_str()) {
+                                if !network_map
+                                    .handler_exists_in(k.as_str(), response_actf.as_str())
+                                {
                                     return Err(SchedulingError::HandlerDoesntExist);
                                 }
                             }
@@ -178,7 +191,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                         // command_instructions.response_actf = Some("".to_string());
                         // If !collect_response resp_actf = ""
                     }
-                },
+                }
                 ResponseTarget::Host => {
                     //* See if the target is host and if the response is pointing to itself
                     if command_target == "host" {
@@ -199,7 +212,7 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
                     } else {
                         return Err(SchedulingError::UnsuportedAction("Can't send not autocollect response to host, it doesn't suports it yet!".to_string()));
                     }
-                },
+                }
             }
         } else {
             //* If response target is none then response will be ignored
@@ -218,9 +231,15 @@ pub fn schedule(command_instructions: CommandInstructions, priority: u8) -> Resu
 
     logger.debug(format!("Client id is: {:?}", client_key));
 
-    let parity_id: String = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
+    let parity_id: String =
+        enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
 
-    let command = Command::new(client_key, parity_id.clone(), priority, command_instructions);
+    let command = Command::new(
+        client_key,
+        parity_id.clone(),
+        priority,
+        command_instructions,
+    );
 
     logger.debug(format!("[CLIENT] - Scheduling: {:?}", command));
 

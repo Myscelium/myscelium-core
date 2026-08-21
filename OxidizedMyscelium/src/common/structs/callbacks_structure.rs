@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use std::collections::HashMap;
 use std::fmt;
 
@@ -33,7 +36,15 @@ impl fmt::Debug for FunctionMetadata {
 }
 
 impl Callback {
-    pub fn new(actf_name: String, callable: Box<CallbackClosure>, parameters: IndexMap<String, String>, callback_type: CommandType, status: HandlerStatus, response_structure: HashMap<String, Value>, description: String) -> Self {
+    pub fn new(
+        actf_name: String,
+        callable: Box<CallbackClosure>,
+        parameters: IndexMap<String, String>,
+        callback_type: CommandType,
+        status: HandlerStatus,
+        response_structure: HashMap<String, Value>,
+        description: String,
+    ) -> Self {
         Self {
             actf_name,
             callable,

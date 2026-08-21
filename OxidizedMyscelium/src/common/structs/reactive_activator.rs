@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -10,7 +13,10 @@ pub struct ReactiveActivator {
 }
 
 impl ReactiveActivator {
-    pub fn new(action: Arc<dyn Fn() + Send + Sync>, condition: Arc<dyn Fn() -> bool + Send + Sync>) -> Arc<Self> {
+    pub fn new(
+        action: Arc<dyn Fn() + Send + Sync>,
+        condition: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             thread_handle: Arc::new(Mutex::new(None)),
             action,

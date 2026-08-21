@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType,
+};
 
 use crate::common::client_manager::manager::check_if_client_key_exists;
 
@@ -95,7 +101,12 @@ macro_rules! acquire_logger {
 /// let response = handle_redirect(m, &mut client_id, down_command);
 /// ```
 ///
-pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_id: String, priority: u8) -> CommandInstructions {
+pub fn handle_redirect(
+    m: &CommandInstructions,
+    client_id: &mut String,
+    parity_id: String,
+    priority: u8,
+) -> CommandInstructions {
     let logger = acquire_logger!("[Process][Handle Redirect]");
 
     println!("Try to redirect: {:?}", m);
@@ -109,21 +120,37 @@ pub fn handle_redirect(m: &CommandInstructions, client_id: &mut String, parity_i
     // -> Filter not allowed cases:
     let redirect_to = match &m.target {
         CommandTarget::Host => {
-            logger.warn("Error! Cont redirect from origin to host, this is a Origin to Host direct case!".to_string());
-            return create_error_response_and_return!("Error! Cont redirect from origin to host, this is a Origin to Host direct case!");
-        },
+            logger.warn(
+                "Error! Cont redirect from origin to host, this is a Origin to Host direct case!"
+                    .to_string(),
+            );
+            return create_error_response_and_return!(
+                "Error! Cont redirect from origin to host, this is a Origin to Host direct case!"
+            );
+        }
         CommandTarget::Origin => {
-            logger.warn("Error! Cont redirect from host to origin, this is a host to origin direct case!".to_string());
-            return create_error_response_and_return!("Error! Cant redirect from host to origin, this is a Origin to Host direct case!");
-        },
+            logger.warn(
+                "Error! Cont redirect from host to origin, this is a host to origin direct case!"
+                    .to_string(),
+            );
+            return create_error_response_and_return!(
+                "Error! Cant redirect from host to origin, this is a Origin to Host direct case!"
+            );
+        }
         CommandTarget::ClientKey(c) => {
             if !check_if_client_key_exists(c.clone()) {
-                logger.warn(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
-                return create_error_response_and_return!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", c));
+                logger.warn(format!(
+                    "Error! request to redirect to client_id: {} failed, client doesn't exist!",
+                    c
+                ));
+                return create_error_response_and_return!(format!(
+                    "Error! request to redirect to client_id: {} failed, client doesn't exist!",
+                    c
+                ));
                 // return error_response!(format!("Error! request to redirect to client_id: {} failed, client doesn't exist!", redirect_to.to_string()));
             }
             c.clone()
-        },
+        }
     };
 
     //> This was remove because in the cases that sends a lot of redirect this makes a spamming into the client that sends the list to retransmit:

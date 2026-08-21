@@ -1,10 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use core::panic;
 use std::collections::HashMap;
 
 use crate::NodeStatus;
 use rusqlite::types::Value;
 
-use crate::{common::client_manager::manager::get_all_clients, handle_manager_client_error, ClientError, NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS};
+use crate::{
+    common::client_manager::manager::get_all_clients, handle_manager_client_error, ClientError,
+    NetworkMap, Node, CLIENTS_SYNC_CONTROLLER, HOST_COMMAND_PATTERNS,
+};
 
 pub fn sync_verifier() {
     // -> Try to get the clients registred in the database
@@ -12,7 +18,7 @@ pub fn sync_verifier() {
         Ok(c) => c,
         Err(e) => {
             panic!("Error getting clients in the sync analiser")
-        }, // handle this error case
+        } // handle this error case
     };
 
     let mut actual_patterns: NetworkMap = NetworkMap::new(Vec::new());
@@ -35,11 +41,14 @@ pub fn sync_verifier() {
     for client in clients {
         let cli_status = node_map.get(&client.client_key).unwrap();
 
-        if (*cli_status == NodeStatus::NotImplemented || *cli_status == NodeStatus::Offline) || *cli_status == NodeStatus::NotSyncYet {
+        if (*cli_status == NodeStatus::NotImplemented || *cli_status == NodeStatus::Offline)
+            || *cli_status == NodeStatus::NotSyncYet
+        {
             continue; // -> We don't have any reasons to check node sync status for these cases (this will save hardware ressources)
         }
 
-        let mut expected_know_network: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
+        let mut expected_know_network: Vec<Node> =
+            actual_patterns.get_all_nodes_except_node_with_key(&client.client_key);
 
         // Erase the known network of the nodes here just for comparison, this evoids infinite nested known network entities
         for node in &mut expected_know_network {
@@ -62,7 +71,10 @@ pub fn sync_verifier() {
 
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-                controller.get_client(&client.client_key).unwrap().update_sync_status(false);
+                controller
+                    .get_client(&client.client_key)
+                    .unwrap()
+                    .update_sync_status(false);
                 client.change_sync_to(false);
                 client.save_into_db();
                 // This should trigger sync to the client
@@ -70,7 +82,10 @@ pub fn sync_verifier() {
         } else {
             {
                 let mut controller = CLIENTS_SYNC_CONTROLLER.lock();
-                controller.get_client(&client.client_key).unwrap().update_sync_status(true);
+                controller
+                    .get_client(&client.client_key)
+                    .unwrap()
+                    .update_sync_status(true);
                 client.change_sync_to(true);
                 client.save_into_db();
                 // This should trigger sync to the client

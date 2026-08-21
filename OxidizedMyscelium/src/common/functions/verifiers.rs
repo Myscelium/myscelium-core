@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use serde_json::{Error as JsonError, Value};
 use std::collections::HashMap;
 
@@ -32,14 +35,21 @@ pub enum ComparatorError {
 /// assert!(result.is_ok());
 /// ```
 pub fn fast_json_comparator(val: &Value, target: &Value) -> Result<Value, ComparatorError> {
-    println!("\n\nCompraing json val:\n{}\nwith json pattern val:\n{}\n\n", &val, &target);
+    println!(
+        "\n\nCompraing json val:\n{}\nwith json pattern val:\n{}\n\n",
+        &val, &target
+    );
 
     match (val, target) {
         // Convert string "[]" to empty array
-        (Value::String(s), Value::Array(pattern_arr)) if s == "[]" && pattern_arr.is_empty() => Ok(Value::Array(vec![])),
+        (Value::String(s), Value::Array(pattern_arr)) if s == "[]" && pattern_arr.is_empty() => {
+            Ok(Value::Array(vec![]))
+        }
 
         // Convert string "{}" to empty object
-        (Value::String(s), Value::Object(pattern_obj)) if s == "{}" && pattern_obj.is_empty() => Ok(Value::Object(serde_json::Map::new())),
+        (Value::String(s), Value::Object(pattern_obj)) if s == "{}" && pattern_obj.is_empty() => {
+            Ok(Value::Object(serde_json::Map::new()))
+        }
 
         (Value::Object(obj), Value::Object(pattern_obj)) => {
             if pattern_obj.is_empty() {
@@ -53,8 +63,10 @@ pub fn fast_json_comparator(val: &Value, target: &Value) -> Result<Value, Compar
                     None => return Err(ComparatorError::MissingKey(k.clone())),
                 };
             }
-            Ok(Value::Object(serde_json::Map::from_iter(new_obj.into_iter())))
-        },
+            Ok(Value::Object(serde_json::Map::from_iter(
+                new_obj.into_iter(),
+            )))
+        }
 
         (Value::Array(arr), Value::Array(pattern_arr)) => {
             if pattern_arr.is_empty() {
@@ -65,10 +77,14 @@ pub fn fast_json_comparator(val: &Value, target: &Value) -> Result<Value, Compar
                 return Err(ComparatorError::LengthMismatch);
             }
 
-            let new_arr: Result<Vec<_>, _> = arr.iter().zip(pattern_arr.iter()).map(|(elem, pattern_elem)| fast_json_comparator(elem, pattern_elem)).collect();
+            let new_arr: Result<Vec<_>, _> = arr
+                .iter()
+                .zip(pattern_arr.iter())
+                .map(|(elem, pattern_elem)| fast_json_comparator(elem, pattern_elem))
+                .collect();
 
             Ok(Value::Array(new_arr?))
-        },
+        }
 
         // Convert string to number
         (Value::String(s), Value::Number(_)) => {
@@ -77,7 +93,7 @@ pub fn fast_json_comparator(val: &Value, target: &Value) -> Result<Value, Compar
             } else {
                 Err(ComparatorError::TypeMismatch(val.clone()))
             }
-        },
+        }
 
         // Convert string "1" or "0" to boolean
         (Value::String(s), Value::Bool(_)) => match s.as_str() {
@@ -98,6 +114,6 @@ pub fn fast_json_comparator(val: &Value, target: &Value) -> Result<Value, Compar
             } else {
                 Err(ComparatorError::TypeMismatch(val.clone()))
             }
-        },
+        }
     }
 }

@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use super::host_logger::log_handler::Logger;
 use super::socket_host::{get_response, Response};
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, CommandVariant};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType, CommandVariant,
+};
 use crate::socket_host::command_handler::enhanced_buffer::buffer_down_manager::DownCommand;
 use crate::socket_host::command_handler::enhanced_buffer::buffer_up_manager::UpCommand;
 use crate::socket_host::command_handler::enhanced_buffer::utilities::ResponseTarget;
@@ -40,14 +46,18 @@ macro_rules! create_error_command_response {
 
 macro_rules! send_error_response {
     ($stream:expr, $command:expr, $logger:expr, $message:expr) => {
-        let response = create_error_command_response!($command.client_key, $command.parity_id, $message);
-        $logger.exception(format!("WARNING: {}, sending back: {:?}", $message, response));
+        let response =
+            create_error_command_response!($command.client_key, $command.parity_id, $message);
+        $logger.exception(format!(
+            "WARNING: {}, sending back: {:?}",
+            $message, response
+        ));
         match send($stream, response) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 handle_send_error!(e, $logger, $command.client_key);
                 break;
-            },
+            }
         }
     };
 }
@@ -100,20 +110,30 @@ macro_rules! acquire_logger {
 // ->--------------------------------------------------------------------------------------------------------------
 // -> INCOMMING REDIRECT COMMANDS PROCESSING
 
-pub fn redirect_commands_processing(command: &Command, target: &String, command_patterns: &mut NetworkMap) -> Vec<CommandVariant> {
+pub fn redirect_commands_processing(
+    command: &Command,
+    target: &String,
+    command_patterns: &mut NetworkMap,
+) -> Vec<CommandVariant> {
     // TODO >>> WHEN ADD THE PERMISSIONS ADD A MECHANISM TO CHECK IF THE CLIENT HAS PERMISSION TO ACCESS THIS ENDPOINTS
 
     let logger = acquire_logger!("Core");
     let mut client_key: String = "".to_string();
 
-    logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
+    logger.debug(format!(
+        "[HOST][REGIRSTRED PATTERNS]:\n{:?}",
+        command_patterns
+    ));
 
     //> PREVIOUSLY CHECK REQUIREMENTS BEFORE REDIRECT
     if !command_patterns.target_is_reachable(target).unwrap() {
         let command: Command = create_error_command_response!(
             command.client_key.clone(),
             command.parity_id,
-            format!("Function: {}, can be redirected because target: {} isn't reachable", command.command.actf, target)
+            format!(
+                "Function: {}, can be redirected because target: {} isn't reachable",
+                command.command.actf, target
+            )
         );
         logger.debug(format!("Sending back: {:?}", &command));
         let client_key = command.client_key.clone();
@@ -125,7 +145,10 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
         let command: Command = create_error_command_response!(
             command.client_key.clone(),
             command.parity_id,
-            format!("Function: {}, can be redirected because target: {} isn't ready", command.command.actf, target)
+            format!(
+                "Function: {}, can be redirected because target: {} isn't ready",
+                command.command.actf, target
+            )
         );
         logger.debug(format!("Sending back: {:?}", &command));
         let client_key = command.client_key.clone();
@@ -136,7 +159,14 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
 
     if command.command.mode == "Function" {
         if !command_patterns.handler_exists_in(target.as_str(), command.command.actf.as_str()) {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!(
+                    "Function: {}, Doesn't exist in target client: {}!",
+                    command.command.actf, target
+                )
+            );
             logger.debug(format!("Sending back: {:?}", &command));
             let client_key = command.client_key.clone();
             return vec![CommandVariant::Command(command)];
@@ -167,7 +197,11 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
 
         //> IF TARGET IS EQUAL TO RESPONSE TARGET THEN RETURN A ERROR
         if &resp_target == target {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Can't send a response from target: {} to itself", target));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Can't send a response from target: {} to itself", target)
+            );
             logger.debug(format!("Sending back: {:?}", &command));
             let client_key = command.client_key.clone();
             return vec![CommandVariant::Command(command)];
@@ -176,12 +210,19 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
         //> If resp target isn't origin, nor host then:
         if !vec!["origin", "host"].contains(&resp_target.as_str()) {
             let available_targets_map = command_patterns.get_node_keys().unwrap();
-            let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+            let available_targets_keys: Vec<String> = available_targets_map
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect();
 
             //> CHECK IF THE TARGET EXISTS
             if !available_targets_keys.contains(&resp_target) {
                 // If not exists
-                let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
+                let command: Command = create_error_command_response!(
+                    command.client_key.clone(),
+                    command.parity_id,
+                    format!("Response target: {} isn't reachable", &resp_target.as_str())
+                );
                 logger.debug(format!("Sending back: {:?}", &command));
                 let client_key = command.client_key.clone();
                 return vec![CommandVariant::Command(command)];
@@ -192,8 +233,17 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
                 if let Some(response_actf) = command.command.response_actf.clone() {
                     // > Only verify if handler exists if auto collect response == true
                     if command.command.collect_response && response_actf != "" {
-                        if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
-                            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, target));
+                        if !command_patterns
+                            .handler_exists_in(resp_target.as_str(), response_actf.as_str())
+                        {
+                            let command: Command = create_error_command_response!(
+                                command.client_key.clone(),
+                                command.parity_id,
+                                format!(
+                                    "Response Handler: {}, Doesn't exist in target client: {}!",
+                                    command.command.actf, target
+                                )
+                            );
                             logger.debug(format!("Sending back: {:?}", &command));
                             let client_key = command.client_key.clone();
                             return vec![CommandVariant::Command(command)];
@@ -210,7 +260,12 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
 
     logger.debug(format!("Redirecting command to target: {}", target));
 
-    let command_instructions_to_schedule: CommandInstructions = handle_redirect(&command.command.clone(), &mut command.client_key.clone(), command.parity_id.clone(), command.priority.clone());
+    let command_instructions_to_schedule: CommandInstructions = handle_redirect(
+        &command.command.clone(),
+        &mut command.client_key.clone(),
+        command.parity_id.clone(),
+        command.priority.clone(),
+    );
 
     //> CAST COMMAND TO REDIRECT
     let command_to_redirect: Command = Command {
@@ -227,7 +282,9 @@ pub fn redirect_commands_processing(command: &Command, target: &String, command_
     //> HANDLE COMMANDS WITHOUT RESPONSES:
     let up_command = UpCommand::from_command(command_to_redirect.clone());
     response.push(CommandVariant::UpCommand(up_command));
-    response.push(CommandVariant::Command(create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())));
+    response.push(CommandVariant::Command(
+        create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone()),
+    ));
 
     //> SEND RESPONSE BACK - HERE IT CAN BE COMMAND RESPONSES OR CONFIRMATIONS
     logger.debug(format!("Sending back: {:?}", response));
@@ -309,16 +366,35 @@ pub fn host_commands_processing(command: &Command) -> Command {
         command_patterns = HOST_COMMAND_PATTERNS.lock().clone();
     }
 
-    logger.debug(format!("[HOST][REGIRSTRED PATTERNS]:\n{:?}", command_patterns));
+    logger.debug(format!(
+        "[HOST][REGIRSTRED PATTERNS]:\n{:?}",
+        command_patterns
+    ));
 
-    let direct_functions: Vec<String> = vec!["get_registered_commands", "update_client_commands_ref", "restrictive_update_client_commands_ref", "add_client", "update_client", "remove_client"]
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
+    let direct_functions: Vec<String> = vec![
+        "get_registered_commands",
+        "update_client_commands_ref",
+        "restrictive_update_client_commands_ref",
+        "add_client",
+        "update_client",
+        "remove_client",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     //> CHECK IF HANDLER DON'T EXIST AND RETURN & SEND ERROR MESSAGE IF NOT
-    if !command_patterns.handler_exists_in("host", command.command.actf.as_str()) && !direct_functions.contains(&command.command.actf) {
-        let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Function: {}, Doesn't exist in host callbacks nor in any client!", command.command.actf));
+    if !command_patterns.handler_exists_in("host", command.command.actf.as_str())
+        && !direct_functions.contains(&command.command.actf)
+    {
+        let command: Command = create_error_command_response!(
+            command.client_key.clone(),
+            command.parity_id,
+            format!(
+                "Function: {}, Doesn't exist in host callbacks nor in any client!",
+                command.command.actf
+            )
+        );
         logger.debug(format!("Sending back: {:?}", &command));
         let client_key = command.client_key.clone();
         return command;
@@ -326,25 +402,38 @@ pub fn host_commands_processing(command: &Command) -> Command {
 
     // > VERIFY IF ALREADY PROCESSED:
     logger.debug("Command is in command patterns!".to_string());
-    let command_is_not_registry: bool = enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(command.parity_id.clone(), command.client_key.clone());
+    let command_is_not_registry: bool =
+        enhanced_buffer::buffer_up_manager::check_if_parity_id_is_registered(
+            command.parity_id.clone(),
+            command.client_key.clone(),
+        );
     let response: Command;
 
     //> HANDLE COMMANDS WITH RESPONSE:
     if !command_is_not_registry {
-        logger.warn(format!("Command {}, already have a response!", command.parity_id.clone()));
+        logger.warn(format!(
+            "Command {}, already have a response!",
+            command.parity_id.clone()
+        ));
         let response = match get_response(command.clone()) {
             Response::Command(c) => {
                 if c.client_key == command.client_key {
                     c
                 } else {
                     logger.info("Response is None!".to_string());
-                    create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
+                    create_special_command_confirmation!(
+                        command.client_key.clone(),
+                        command.parity_id.clone()
+                    )
                 }
-            },
+            }
             Response::None => {
                 logger.info("Response is None!".to_string());
-                create_special_command_confirmation!(command.client_key.clone(), command.parity_id.clone())
-            },
+                create_special_command_confirmation!(
+                    command.client_key.clone(),
+                    command.parity_id.clone()
+                )
+            }
         };
 
         return response;
@@ -382,11 +471,18 @@ pub fn host_commands_processing(command: &Command) -> Command {
         }
 
         let available_targets_map = command_patterns.get_node_keys().unwrap();
-        let available_targets_keys: Vec<String> = available_targets_map.into_iter().map(|(_, value)| value).collect();
+        let available_targets_keys: Vec<String> = available_targets_map
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect();
 
         //> CHECK IF THE TARGET EXISTS
         if !available_targets_keys.contains(&resp_target) {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't reachable", &resp_target.as_str()));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Response target: {} isn't reachable", &resp_target.as_str())
+            );
             logger.debug(format!("Sending back: {:?}", &command));
             return command;
         }
@@ -394,7 +490,11 @@ pub fn host_commands_processing(command: &Command) -> Command {
         //> Check if the target is ready
         // TODO >>> Possible wait to target become ready
         if !command_patterns.target_is_ready(&resp_target).unwrap() {
-            let command: Command = create_error_command_response!(command.client_key.clone(), command.parity_id, format!("Response target: {} isn't ready yet", &resp_target.as_str()));
+            let command: Command = create_error_command_response!(
+                command.client_key.clone(),
+                command.parity_id,
+                format!("Response target: {} isn't ready yet", &resp_target.as_str())
+            );
             logger.debug(format!("Sending back: {:?}", &command));
             return command;
         }
@@ -403,11 +503,15 @@ pub fn host_commands_processing(command: &Command) -> Command {
         if let Some(response_actf) = command.command.response_actf.clone() {
             if command.command.collect_response && response_actf != "" {
                 // Only verify if response actf exists if collect response == true
-                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str()) {
+                if !command_patterns.handler_exists_in(resp_target.as_str(), response_actf.as_str())
+                {
                     let command: Command = create_error_command_response!(
                         command.client_key.clone(),
                         command.parity_id,
-                        format!("Response Handler: {}, Doesn't exist in target client: {}!", command.command.actf, resp_target)
+                        format!(
+                            "Response Handler: {}, Doesn't exist in target client: {}!",
+                            command.command.actf, resp_target
+                        )
                     );
                     logger.debug(format!("Sending back: {:?}", &command));
                     return command;

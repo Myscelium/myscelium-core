@@ -1,10 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 #[macro_export]
 macro_rules! init_thread_pool {
     ($size:expr) => {{
         use std::sync::{mpsc, Arc, Mutex};
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let pool = Arc::new(Mutex::new(crate::common::custom_thread_pool::thread_pool::UnifiedThreadPool::new($size)));
+            let pool = Arc::new(Mutex::new(
+                crate::common::custom_thread_pool::thread_pool::UnifiedThreadPool::new($size),
+            ));
             if let Err(err) = tx.send(pool) {
                 println!("Error initializing thread pool: {:?}", err);
             }
@@ -14,7 +19,7 @@ macro_rules! init_thread_pool {
             Err(err) => {
                 println!("Error receiving thread pool: {:?}", err);
                 panic!("Failed to initialize thread pool!"); // or handle the error as appropriate
-            },
+            }
         }
     }};
 }
@@ -52,7 +57,7 @@ macro_rules! wait_all_threads {
                 Ok(result) => results.push(result),
                 Err(err) => {
                     println!("Error receiving result from thread: {:?}", err);
-                },
+                }
             }
         }
         results

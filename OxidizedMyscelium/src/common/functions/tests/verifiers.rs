@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
 
 use super::*;
 use crate::common::functions::verifiers::{fast_json_comparator, ComparatorError};
