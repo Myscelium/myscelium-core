@@ -1,14 +1,20 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use indexmap::IndexMap;
 use rusqlite::types::Value;
 
 use crate::{
     common::enhanced_buffer::{
         buffer_down_manager::DownCommand,
-        utilities::{CommandMode, CommandOrigin, CommandStatus, CommandTarget, ResponseTarget, ResponseType},
+        utilities::{
+            CommandMode, CommandOrigin, CommandStatus, CommandTarget, ResponseTarget, ResponseType,
+        },
     },
     set_host_callbacks,
     socket_host::transposer::process,
-    Command, CommandInstructions, CommandType, HandlerStatus, NetworkMap, Node, NodeHandler, NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
+    Command, CommandInstructions, CommandType, HandlerStatus, NetworkMap, Node, NodeHandler,
+    NodeStatus, NodeVersion, VersionIndentifier, HOST_COMMAND_PATTERNS,
 };
 use core::panic;
 use oxidized_myscelium_macros::callback;
@@ -42,13 +48,18 @@ fn test_redirect_command_response_pointing_to_origin() {
         collect_response: true,
     };
 
-    let command = Command::new("someclientid".to_string(), "xNmlMpN34x14s".to_string(), 1u8, instructions.clone());
+    let command = Command::new(
+        "someclientid".to_string(),
+        "xNmlMpN34x14s".to_string(),
+        1u8,
+        instructions.clone(),
+    );
 
     let target = match &command.command.target {
         CommandTarget::ClientKey(c) => c,
         _ => {
             panic!("Target not supported to this test!")
-        },
+        }
     };
 
     // TODO >>> Add the required nodes to this test do what it is supposed to do.

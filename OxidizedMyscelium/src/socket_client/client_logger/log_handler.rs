@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 
 use serde_json::{from_str, Value};
@@ -39,7 +42,13 @@ pub fn set_client_log_level(log_level: String) {
 // }
 
 // This function takes log parameters and writes them to a file in a structured JSON format.
-fn log_event(node_name: String, log_time: f64, log_name: String, log_level: String, log_msg: String) {
+fn log_event(
+    node_name: String,
+    log_time: f64,
+    log_name: String,
+    log_level: String,
+    log_msg: String,
+) {
     // Serialize the log event into a JSON string.
     let log_entry = json!({
         "node_name": node_name,
@@ -75,29 +84,69 @@ impl Logger {
 
     pub fn debug(&self, log: String) {
         if self.log_level == "DEBUG" {
-            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "DEBUG".to_string(), log.to_string());
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            log_event(
+                self.node_name.clone(),
+                ts,
+                self.section.clone(),
+                "DEBUG".to_string(),
+                log.to_string(),
+            );
         }
     }
 
     pub fn info(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "DEBUG") {
-            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "INFO".to_string(), log.to_string());
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            log_event(
+                self.node_name.clone(),
+                ts,
+                self.section.clone(),
+                "INFO".to_string(),
+                log.to_string(),
+            );
         }
     }
 
     pub fn warn(&self, log: String) {
         if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") {
-            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "WARN".to_string(), log.to_string());
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            log_event(
+                self.node_name.clone(),
+                ts,
+                self.section.clone(),
+                "WARN".to_string(),
+                log.to_string(),
+            );
         }
     }
 
     pub fn exception(&self, log: String) {
-        if (self.log_level == "INFO") || (self.log_level == "WARN") || (self.log_level == "DEBUG") || (self.log_level == "EXCEPTION") {
-            let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
-            log_event(self.node_name.clone(), ts, self.section.clone(), "EXCEPTION".to_string(), log.to_string());
+        if (self.log_level == "INFO")
+            || (self.log_level == "WARN")
+            || (self.log_level == "DEBUG")
+            || (self.log_level == "EXCEPTION")
+        {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            log_event(
+                self.node_name.clone(),
+                ts,
+                self.section.clone(),
+                "EXCEPTION".to_string(),
+                log.to_string(),
+            );
         }
     }
 }

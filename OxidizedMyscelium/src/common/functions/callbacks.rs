@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::enhanced_buffer::utilities::CommandInstructions;
 use crate::common::enhanced_buffer::utilities::CommandType;
@@ -38,7 +41,11 @@ fn convert_json_value_to_any(value: &Value) -> Option<Box<dyn Any>> {
     }
 }
 
-pub fn call_callback(key: &str, kwargs: HashMap<String, Value>, callback: &Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>) -> Result<Box<dyn Any>, String> {
+pub fn call_callback(
+    key: &str,
+    kwargs: HashMap<String, Value>,
+    callback: &Box<dyn Fn(&[&dyn Any]) -> Box<dyn Any> + Send + Sync>,
+) -> Result<Box<dyn Any>, String> {
     let mut args: Vec<Box<dyn Any>> = Vec::new();
     for (_key, value) in kwargs {
         if let Some(any) = convert_json_value_to_any(&value) {

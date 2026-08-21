@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -111,7 +114,11 @@ impl UnifiedThreadPool {
         let lock = Mutex::new(());
         let mut guard = lock.lock().unwrap();
         while self.free_workers().is_empty() {
-            guard = self.free_condvar.wait_timeout(guard, std::time::Duration::from_secs(1)).unwrap().0;
+            guard = self
+                .free_condvar
+                .wait_timeout(guard, std::time::Duration::from_secs(1))
+                .unwrap()
+                .0;
         }
         if let Some(func) = f {
             self.execute(func);
@@ -124,7 +131,11 @@ impl UnifiedThreadPool {
     ///
     /// * A `Vec<usize>` containing IDs of the free workers.
     pub fn free_workers(&self) -> Vec<usize> {
-        self.workers.iter().filter(|worker| !worker.busy.load(Ordering::SeqCst)).map(|worker| worker.id).collect()
+        self.workers
+            .iter()
+            .filter(|worker| !worker.busy.load(Ordering::SeqCst))
+            .map(|worker| worker.id)
+            .collect()
     }
 
     /// Helper method to check if all worker threads are free.
@@ -133,7 +144,9 @@ impl UnifiedThreadPool {
     ///
     /// * `true` if all workers are free, `false` otherwise.
     fn all_workers_free(&self) -> bool {
-        self.workers.iter().all(|worker| !worker.busy.load(Ordering::SeqCst))
+        self.workers
+            .iter()
+            .all(|worker| !worker.busy.load(Ordering::SeqCst))
     }
 
     /// Waits for all worker threads to become free.
@@ -143,7 +156,11 @@ impl UnifiedThreadPool {
         let lock = Mutex::new(());
         let mut guard = lock.lock().unwrap();
         while !self.all_workers_free() {
-            guard = self.free_condvar.wait_timeout(guard, std::time::Duration::from_millis(10)).unwrap().0;
+            guard = self
+                .free_condvar
+                .wait_timeout(guard, std::time::Duration::from_millis(10))
+                .unwrap()
+                .0;
         }
     }
 
@@ -198,7 +215,12 @@ impl Worker {
     /// # Returns
     ///
     /// * A new instance of `Worker`.
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>, free_condvar: Arc<Condvar>, task_count: Arc<AtomicUsize>) -> Worker {
+    fn new(
+        id: usize,
+        receiver: Arc<Mutex<mpsc::Receiver<Job>>>,
+        free_condvar: Arc<Condvar>,
+        task_count: Arc<AtomicUsize>,
+    ) -> Worker {
         let busy = Arc::new(AtomicBool::new(false));
         let busy_clone = Arc::clone(&busy);
         let free_condvar_clone = Arc::clone(&free_condvar);
@@ -209,7 +231,7 @@ impl Worker {
                 Ok(Some(job)) => {
                     task_count_clone.fetch_sub(1, Ordering::SeqCst);
                     job
-                },
+                }
                 Ok(None) => return,
                 Err(_) => return,
             };
@@ -223,7 +245,11 @@ impl Worker {
             free_condvar_clone.notify_one();
         });
 
-        Worker { id, thread: Some(thread), busy }
+        Worker {
+            id,
+            thread: Some(thread),
+            busy,
+        }
     }
 }
 

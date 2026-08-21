@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use lazy_static::lazy_static;
 use std::fs::OpenOptions;
 use std::{
@@ -39,13 +42,19 @@ pub fn initialize_logs_file(file_path: &str) -> Result<(), Error> {
 
         fs::create_dir_all(parent_dir)?;
     } else {
-        return Err(Error::new(std::io::ErrorKind::NotFound, "No parent directory found."));
+        return Err(Error::new(
+            std::io::ErrorKind::NotFound,
+            "No parent directory found.",
+        ));
     }
 
     // Debug print the final file path
     println!("Final file path: {:?}", full_path);
 
-    let file = OpenOptions::new().create(true).append(true).open(&full_path)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&full_path)?;
 
     // Use smart_lock to safely update FILE with the opened file
     let mut file_option = FILE.lock().unwrap();

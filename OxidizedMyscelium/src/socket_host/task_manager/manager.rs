@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::{common::enhanced_buffer::utilities::CommandOrigin, CommandInstructions};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -97,7 +100,9 @@ pub struct NodesTaskManager {
 //Manage Nodes
 impl NodesTaskManager {
     pub fn new_empty() -> Self {
-        Self { tasks: HashMap::new() }
+        Self {
+            tasks: HashMap::new(),
+        }
     }
 
     pub fn add_node(&mut self, new_node_key: String) -> Result<(), TaskManagerError> {
@@ -115,7 +120,10 @@ impl NodesTaskManager {
 
 //Manage Node Tasks
 impl NodesTaskManager {
-    pub fn get_node_tasks(&mut self, node_key: &String) -> Result<&mut Vec<NodeTask>, TaskManagerError> {
+    pub fn get_node_tasks(
+        &mut self,
+        node_key: &String,
+    ) -> Result<&mut Vec<NodeTask>, TaskManagerError> {
         if let Some(tasks) = self.tasks.get_mut(node_key) {
             return Ok(tasks);
         } else {
@@ -123,13 +131,20 @@ impl NodesTaskManager {
         }
     }
 
-    pub fn get_node_task_origin(&mut self, node_key: &String, parity_id: &String) -> Result<String, TaskManagerError> {
+    pub fn get_node_task_origin(
+        &mut self,
+        node_key: &String,
+        parity_id: &String,
+    ) -> Result<String, TaskManagerError> {
         let mut tasks = self.get_node_tasks(node_key)?;
         let task = tasks.iter().find(|&task| &task.parity_id == parity_id);
         if let Some(task) = task {
             return Ok(task.clone().get_origin());
         }
-        return Err(TaskManagerError::TaskNotFound(node_key.clone(), parity_id.clone()));
+        return Err(TaskManagerError::TaskNotFound(
+            node_key.clone(),
+            parity_id.clone(),
+        ));
     }
 
     pub fn show_node_tasks(&mut self, node_key: &String) -> Result<(), TaskManagerError> {
@@ -143,13 +158,21 @@ impl NodesTaskManager {
         Ok(())
     }
 
-    pub fn add_task_to_node(&mut self, node_key: &String, task: NodeTask) -> Result<(), TaskManagerError> {
+    pub fn add_task_to_node(
+        &mut self,
+        node_key: &String,
+        task: NodeTask,
+    ) -> Result<(), TaskManagerError> {
         let mut node_tasks = self.get_node_tasks(node_key)?;
         node_tasks.push(task);
         Ok(())
     }
 
-    pub fn get_node_task_by_id(&mut self, node_key: &String, parity_id: &String) -> Result<&mut NodeTask, TaskManagerError> {
+    pub fn get_node_task_by_id(
+        &mut self,
+        node_key: &String,
+        parity_id: &String,
+    ) -> Result<&mut NodeTask, TaskManagerError> {
         let mut node_tasks = self.get_node_tasks(node_key)?;
         for task in node_tasks {
             if task.parity_id == *parity_id {
@@ -157,10 +180,17 @@ impl NodesTaskManager {
             }
             continue;
         }
-        return Err(TaskManagerError::TaskNotFound(node_key.clone(), parity_id.clone()));
+        return Err(TaskManagerError::TaskNotFound(
+            node_key.clone(),
+            parity_id.clone(),
+        ));
     }
 
-    pub fn remove_task_from_node(&mut self, node_key: &String, parity_id: &String) -> Result<(), TaskManagerError> {
+    pub fn remove_task_from_node(
+        &mut self,
+        node_key: &String,
+        parity_id: &String,
+    ) -> Result<(), TaskManagerError> {
         let mut tasks = self.get_node_tasks(node_key)?;
         tasks.retain(|t| t.parity_id != *parity_id);
         Ok(())

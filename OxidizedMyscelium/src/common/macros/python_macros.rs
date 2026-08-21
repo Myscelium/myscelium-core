@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 #[macro_export]
 macro_rules! process_commands {
     ($py:expr, $commands:expr, $callback_pattern:expr) => {

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::structs::available_commands::CommandPatterns;
 use crate::common::structs::results_structs::ResultType;
 
@@ -15,7 +18,10 @@ use crate::{CLIENT_IS_SYNC, CLIENT_LOG_LEVEL};
 use crate::HOST_ALLOWED_COMMANDS;
 
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget, ResponseType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType, ResponseTarget, ResponseType,
+};
 use crate::common::functions::converters::convert_to_value_map;
 use crate::common::functions::converters::convert_value_map_to_resulttype_map;
 use crate::common::functions::converters::ConversionError;
@@ -36,7 +42,11 @@ macro_rules! acquire_logger {
     }};
 }
 
-pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, command_id: u32) -> Result<ProcessResult, ProcessError> {
+pub fn handle_direct_function(
+    c: &CommandInstructions,
+    client_key: &String,
+    command_id: u32,
+) -> Result<ProcessResult, ProcessError> {
     let logger = acquire_logger!("Transposer - Process");
 
     logger.info(format!("Initializing Direct Function processing!"));
@@ -62,10 +72,10 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 let mut host_allowed_commands = HOST_ALLOWED_COMMANDS.lock();
                 println!("[CLIENT][GLOBAL][Lock] - HOST_ALLOWED_COMMANDS");
                 match host_allowed_commands.update_from_value_map(response_map) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         // TODO >>> Better threat this error case
-                    },
+                    }
                 }
 
                 // -> CLIENT STATE NETWORK MAP LOADING
@@ -75,29 +85,29 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                         match e {
                             StateManagerError::NotFullyInitialized => {
                                 logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!"));
-                            },
+                            }
                             StateManagerError::CantgetStateFromDb(e) => {
                                 logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
-                            },
+                            }
                         };
                         CLIENT_STATE_MANAGER.lock().clone()
-                    },
+                    }
                 };
                 client_state.network_map = Some(host_allowed_commands.clone());
                 client_state.is_ready = Some(true);
                 client_state.is_connected = Some(true);
                 client_state.is_sync = Some(true);
                 match &client_state.update_schedule_with_this() {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => match &client_state.save_in_storage() {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => match e {
                             StateManagerError::NotFullyInitialized => {
                                 logger.exception(format!("Error trying to update client states in direct_functions, not fully initialized!"));
-                            },
+                            }
                             StateManagerError::CantgetStateFromDb(e) => {
                                 logger.exception(format!("Error trying to load client state from db, the error was: {:?}", e));
-                            },
+                            }
                         },
                     },
                 };
@@ -111,13 +121,19 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                     println!("[CLIENT][GLOBAL][Lock] - CLIENT_NODE_CONFIGS");
                     logger.info(format!("Lock In Host Command Patterns!"));
                     command_patterns.change_node_status(NodeStatus::Online);
-                    command_patterns.update_known_network(host_allowed_commands.get_all_nodes_except_node_with_key(&"".to_string()).clone());
+                    command_patterns.update_known_network(
+                        host_allowed_commands
+                            .get_all_nodes_except_node_with_key(&"".to_string())
+                            .clone(),
+                    );
                     actual_patterns = command_patterns.to_value();
                 }
 
                 println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
 
-                logger.info(format!("Successfully actualize the host available commands!"));
+                logger.info(format!(
+                    "Successfully actualize the host available commands!"
+                ));
 
                 // TODO >>> Change this to use NetworkMap instead of commands
                 filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
@@ -144,16 +160,25 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             // > This need to be scheduled this way since this is a new command and need a new parity id, if return this will use the parity id received
             // TODO >>> A possible way to do this is by call the schedule instead of schedule by hand, maybe is a better option to avoid code repetition
 
-            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-            let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
+            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(
+                client_key.clone(),
+            );
+            let up_command: UpCommand = UpCommand::new(
+                client_key,
+                &parity_id,
+                11u8,
+                &to_string(&new_command_instructions).unwrap(),
+            );
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
 
             //> TURN CLIENT SYNC STATUS TO TRUE
             CLIENT_IS_SYNC.store(true, Ordering::SeqCst);
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            );
             return Ok(ProcessResult::Empty);
-        },
+        }
         "get_socket_client_available_handlers" => {
             // -> DINAMIC RESPONSE IMPLEMENTED:
 
@@ -171,9 +196,13 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
             }
             println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
 
-            logger.info(format!("Successfully actualize the host available commands!"));
+            logger.info(format!(
+                "Successfully actualize the host available commands!"
+            ));
 
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            );
 
             let mut filtered_commands_map: HashMap<String, Value> = HashMap::new();
             filtered_commands_map.insert("client_handlers".to_string(), actual_patterns);
@@ -193,26 +222,37 @@ pub fn handle_direct_function(c: &CommandInstructions, client_key: &String, comm
                 true,
             );
 
-            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(client_key.clone());
-            let up_command: UpCommand = UpCommand::new(client_key, &parity_id, 11u8, &to_string(&new_command_instructions).unwrap());
+            let parity_id = enhanced_buffer::buffer_up_manager::buffer_up_gen_valid_parity_id(
+                client_key.clone(),
+            );
+            let up_command: UpCommand = UpCommand::new(
+                client_key,
+                &parity_id,
+                11u8,
+                &to_string(&new_command_instructions).unwrap(),
+            );
 
             enhanced_buffer::buffer_up_manager::buffer_up_schedule(up_command);
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
-            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            );
+            enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(
+                command_id.clone(),
+            );
 
             return Ok(ProcessResult::Empty);
-        },
+        }
 
         // -> VITAL NETWORK COMPONENTS
         "update_client_network_rechable" => {
             // TODO >>> Implement the mechanism to allow update the Client Notion about the remote handlers
 
             return Ok(ProcessResult::Empty);
-        },
+        }
 
         // -> GENERAL OUT OF SCOPE CASES:
         _ => {
             return Err(ProcessError::CommandNotRegistered(c.actf.clone()));
-        },
+        }
     }
 }

@@ -1,9 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::chrono::TimeZone;
 use crate::common::client_manager::manager::get_all_clients;
 use crate::common::client_manager::manager::{check_if_client_key_exists, Client, ClientError};
 use crate::common::enhanced_buffer;
-use crate::common::enhanced_buffer::utilities::{Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType, ResponseTarget, ResponseType};
-use crate::common::functions::converters::{convert_json_map_to_hash_map, convert_value_map_to_resulttype_map, ConversionError};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget,
+    CommandType, ResponseTarget, ResponseType,
+};
+use crate::common::functions::converters::{
+    convert_json_map_to_hash_map, convert_value_map_to_resulttype_map, ConversionError,
+};
 use crate::common::structs::available_commands::NodeStatus;
 use crate::common::structs::available_commands::{CommandPatterns, Node};
 use crate::common::structs::results_structs::ResultType;
@@ -42,12 +50,20 @@ pub enum ProcessResult {
     CommandInstructions(CommandInstructions),
 }
 
-pub fn handle_direct_function(client_key: &String, activation_key: &String, command: CommandInstructions, command_id: Option<u32>) -> ProcessResult {
+pub fn handle_direct_function(
+    client_key: &String,
+    activation_key: &String,
+    command: CommandInstructions,
+    command_id: Option<u32>,
+) -> ProcessResult {
     let logger = acquire_logger!("Transposer - Process - Handle Direct Functions");
 
     logger.info(format!("Initializing processing!"));
 
-    logger.debug(format!("function received in handle direct function: {}", activation_key));
+    logger.debug(format!(
+        "function received in handle direct function: {}",
+        activation_key
+    ));
 
     // -> ----------------------------------------------------------------------------------------------------------------------------------
     // -> SYNCRONIZATION MECHANISM
@@ -79,9 +95,14 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
 
             let nodes: Vec<Node> = actual_patterns.get_all_nodes_except_node_with_key(client_key);
             let mut filtered_commands: HashMap<String, Value> = HashMap::new();
-            filtered_commands.insert("network_nodes".to_string(), serde_json::to_value(nodes).unwrap());
+            filtered_commands.insert(
+                "network_nodes".to_string(),
+                serde_json::to_value(nodes).unwrap(),
+            );
 
-            logger.info(format!("Successfully actualize the host available commands!"));
+            logger.info(format!(
+                "Successfully actualize the host available commands!"
+            ));
 
             // enhanced_buffer::buffer_down_manager::buffer_down_remove_schedule_by_id(command_id.clone());
 
@@ -103,7 +124,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             );
 
             return ProcessResult::CommandInstructions(new_command_instructions);
-        },
+        }
         "update_client_commands_ref" => {
             // TODO >>> This should't anymore trigger sync to other clients nor send the sync commands to the other clients
 
@@ -121,11 +142,17 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 Ok(c) => c,
                 Err(e) => match e {
                     ClientError::ClientDoesNotExist(_) => {
-                        return ProcessResult::Error(format!("Unknow client_key: {:?}", client_key));
-                    },
+                        return ProcessResult::Error(format!(
+                            "Unknow client_key: {:?}",
+                            client_key
+                        ));
+                    }
                     _ => {
-                        return ProcessResult::Error(format!("Get a error {:?}, obtaining client: {:?}", e, client_key));
-                    },
+                        return ProcessResult::Error(format!(
+                            "Get a error {:?}, obtaining client: {:?}",
+                            e, client_key
+                        ));
+                    }
                 },
             };
 
@@ -150,8 +177,11 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 let mut client_node = match Node::from_value(client_handlers.clone()) {
                     Ok(n) => n,
                     Err(e) => {
-                        return ProcessResult::Error(format!("Error creating node, the error was: {:?}", e));
-                    },
+                        return ProcessResult::Error(format!(
+                            "Error creating node, the error was: {:?}",
+                            e
+                        ));
+                    }
                 };
 
                 client_node.change_node_status(NodeStatus::Online);
@@ -197,21 +227,29 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             sync_verifier();
 
             return ProcessResult::CommandInstructions(new_command_instructions);
-        },
+        }
 
         "restrictive_update_client_commands_ref" => {
-            logger.info(format!("Receive restrictive_update_client_commands_ref in host!"));
+            logger.info(format!(
+                "Receive restrictive_update_client_commands_ref in host!"
+            ));
 
             // -> get the client by the client key
             let client = match Client::get_by_key(client_key) {
                 Ok(c) => c,
                 Err(e) => match e {
                     ClientError::ClientDoesNotExist(_) => {
-                        return ProcessResult::Error(format!("Unknow client_key: {:?}", client_key));
-                    },
+                        return ProcessResult::Error(format!(
+                            "Unknow client_key: {:?}",
+                            client_key
+                        ));
+                    }
                     _ => {
-                        return ProcessResult::Error(format!("Get a error {:?}, obtaining client: {:?}", e, client_key));
-                    },
+                        return ProcessResult::Error(format!(
+                            "Get a error {:?}, obtaining client: {:?}",
+                            e, client_key
+                        ));
+                    }
                 },
             };
 
@@ -237,7 +275,7 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             }
 
             return ProcessResult::Empty;
-        },
+        }
         "add_client" => {
             // > edit client
             // {'response_mode':'InternalManagement', 'activation_function':'add_client', 'kwargs':response, 'response_activation_function':'function_name'}
@@ -292,10 +330,13 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 command.collect_response,
             );
 
-            logger.info(format!("Successfully add a client: {}!", new_client.client_key));
+            logger.info(format!(
+                "Successfully add a client: {}!",
+                new_client.client_key
+            ));
 
             return ProcessResult::CommandInstructions(new_command_instructions);
-        },
+        }
         "update_client" => {
             // > update client
             // {'response_mode':'InternalManagement', 'activation_function':'update_client', 'kwargs':response, 'response_activation_function':'function_name'}
@@ -305,16 +346,32 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             logger.debug("Receive a update client inner command!".to_string());
 
             if !command.kwargs.contains_key("actual_client_key") {
-                logger.warn("Error! Callback response kwargs don't have actual_client_key kwarg!".to_string());
-                return ProcessResult::Error(format!("Error! Callback response kwargs don't have actual_client_key kwarg!"));
+                logger.warn(
+                    "Error! Callback response kwargs don't have actual_client_key kwarg!"
+                        .to_string(),
+                );
+                return ProcessResult::Error(format!(
+                    "Error! Callback response kwargs don't have actual_client_key kwarg!"
+                ));
             }
 
             if !command.kwargs.contains_key("updated_client") {
-                logger.warn("ERROR, Error! Callback response kwargs don't have update_client kwarg!".to_string());
-                return ProcessResult::Error(format!("Error! Callback response kwargs don't have update_client kwarg!"));
+                logger.warn(
+                    "ERROR, Error! Callback response kwargs don't have update_client kwarg!"
+                        .to_string(),
+                );
+                return ProcessResult::Error(format!(
+                    "Error! Callback response kwargs don't have update_client kwarg!"
+                ));
             }
 
-            let actual_client_key = &command.kwargs.get("actual_client_key").unwrap().as_str().unwrap().clone();
+            let actual_client_key = &command
+                .kwargs
+                .get("actual_client_key")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .clone();
 
             // from("client_name":"str", "client_key":"str", "client_type":"str", "permission_group":"str", "is_super_user":"bool", "max_sub_channels":"int", "owned_sub_channels_keys":"list")
 
@@ -329,9 +386,18 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                     match serde_json::from_str::<Value>(&json_string) {
                         Ok(parsed_json_value) => {
                             // Convert the serde_json::Value to a HashMap<String, Value>
-                            serde_json::from_value::<HashMap<String, Value>>(parsed_json_value).map_err(|e| ProcessResult::Error(format!("Failed to parse JSON to HashMap: {}", e)))
-                        },
-                        Err(e) => Err(ProcessResult::Error(format!("Failed to parse string to JSON: {}", e))),
+                            serde_json::from_value::<HashMap<String, Value>>(parsed_json_value)
+                                .map_err(|e| {
+                                    ProcessResult::Error(format!(
+                                        "Failed to parse JSON to HashMap: {}",
+                                        e
+                                    ))
+                                })
+                        }
+                        Err(e) => Err(ProcessResult::Error(format!(
+                            "Failed to parse string to JSON: {}",
+                            e
+                        ))),
                     }
                 } else {
                     Err(ProcessResult::Error("Expected a JSON string".to_string()))
@@ -350,14 +416,19 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         Ok(c) => c,
                         Err(e) => return e,
                     }
-                },
+                }
                 None => {
-                    logger.warn(format!("Error! Kwargs doesn't have the `updated_client` kwargs"));
-                    return ProcessResult::Error(format!("Error! Kwargs doesn't have the `updated_client` kwargs"));
-                },
+                    logger.warn(format!(
+                        "Error! Kwargs doesn't have the `updated_client` kwargs"
+                    ));
+                    return ProcessResult::Error(format!(
+                        "Error! Kwargs doesn't have the `updated_client` kwargs"
+                    ));
+                }
             };
 
-            let old_client = handle_manager_client_error!(Client::get_by_key(&actual_client_key.to_string()));
+            let old_client =
+                handle_manager_client_error!(Client::get_by_key(&actual_client_key.to_string()));
 
             // TODO >>> Maybe implement a fast result-ype to client if needed
 
@@ -366,7 +437,10 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                 Ok(_) => {
                     let mut resp_kwargs: HashMap<String, Value> = HashMap::new();
 
-                    resp_kwargs.insert("actual_client_key".to_string(), Value::String(actual_client_key.to_string())); // TODO >>> See if this actual client key is correct
+                    resp_kwargs.insert(
+                        "actual_client_key".to_string(),
+                        Value::String(actual_client_key.to_string()),
+                    ); // TODO >>> See if this actual client key is correct
 
                     //> Define the default acft
                     let mut acft: String = "update_client_handler".to_string();
@@ -383,27 +457,44 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         CommandOrigin::Host,
                         acft,
                         resp_kwargs,
-                        format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key).to_string(),
+                        format!(
+                            "Successfully executed the function: {} and remove client: {}!",
+                            activation_key, old_client.client_key
+                        )
+                        .to_string(),
                         command.response_type,
                         command.response_target,
                         command.response_actf,
                         command.collect_response,
                     );
 
-                    logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, old_client.client_key));
+                    logger.info(format!(
+                        "Successfully executed the function: {} and remove client: {}!",
+                        activation_key, old_client.client_key
+                    ));
 
                     return ProcessResult::CommandInstructions(new_command_instructions);
-                },
+                }
 
                 Err(e) => match e {
                     ClientError::ClientDoesNotExist(e) => {
-                        logger.warn(format!("Error! Can't Update client because client {} Don't exist!", e));
-                        return ProcessResult::Error(format!("Error! Can't Update client because client {} Don't exist!", e));
-                    },
+                        logger.warn(format!(
+                            "Error! Can't Update client because client {} Don't exist!",
+                            e
+                        ));
+                        return ProcessResult::Error(format!(
+                            "Error! Can't Update client because client {} Don't exist!",
+                            e
+                        ));
+                    }
                     _ => {
-                        logger.warn("Error! Can Update client because a unexpected error!".to_string());
-                        return ProcessResult::Error(format!("Error! Can Update client because a unexpected error!"));
-                    },
+                        logger.warn(
+                            "Error! Can Update client because a unexpected error!".to_string(),
+                        );
+                        return ProcessResult::Error(format!(
+                            "Error! Can Update client because a unexpected error!"
+                        ));
+                    }
                 },
             }
 
@@ -412,17 +503,25 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             //     logger.warn("Error! Callback response kwargs isn't a Map!".to_string());
             //     return create_error_response_and_return!("Error! Callback response kwargs isn't a Map!", converted_m, to_send);
             // }
-        },
+        }
         "remove_client" => {
             // > remove client
             // {'response_mode':'InternalManagement', 'activation_function':'remove_client', 'kwargs':response, 'response_activation_function':'function_name'}
             // 'kwargs':{'client_key':String}
 
             if !command.kwargs.contains_key("client_key") {
-                return ProcessResult::Error(format!("Error! Callback response kwargs don't have client_key kwarg!"));
+                return ProcessResult::Error(format!(
+                    "Error! Callback response kwargs don't have client_key kwarg!"
+                ));
             }
 
-            let client_key: String = command.kwargs.get("client_key").unwrap().as_str().map(|s| s.to_string()).unwrap();
+            let client_key: String = command
+                .kwargs
+                .get("client_key")
+                .unwrap()
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap();
 
             let client = handle_manager_client_error!(Client::get_by_key(&client_key));
 
@@ -431,13 +530,23 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             match result {
                 Err(e) => match e {
                     ClientError::ClientDoesNotExist(e) => {
-                        logger.warn(format!("Error! Can't Remove client because client {} Don't exist!", e));
-                        return ProcessResult::Error(format!("Error! Can't Remove client because client {} Don't exist!", e));
-                    },
+                        logger.warn(format!(
+                            "Error! Can't Remove client because client {} Don't exist!",
+                            e
+                        ));
+                        return ProcessResult::Error(format!(
+                            "Error! Can't Remove client because client {} Don't exist!",
+                            e
+                        ));
+                    }
                     _ => {
-                        logger.warn("Error! Can Remove client because a unexpected error!".to_string());
-                        return ProcessResult::Error(format!("Error! Can Remove client because a unexpected error!"));
-                    },
+                        logger.warn(
+                            "Error! Can Remove client because a unexpected error!".to_string(),
+                        );
+                        return ProcessResult::Error(format!(
+                            "Error! Can Remove client because a unexpected error!"
+                        ));
+                    }
                 },
                 Ok(_) => {
                     // let mut resp_kwargs: HashMap<String, Value> = HashMap::new();
@@ -458,17 +567,24 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
                         CommandOrigin::Host,
                         acft,
                         HashMap::new(),
-                        format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key).to_string(),
+                        format!(
+                            "Successfully executed the function: {} and remove client: {}!",
+                            activation_key, client_key
+                        )
+                        .to_string(),
                         command.response_type,
                         command.response_target,
                         command.response_actf,
                         command.collect_response,
                     );
 
-                    logger.info(format!("Successfully executed the function: {} and remove client: {}!", activation_key, client_key));
+                    logger.info(format!(
+                        "Successfully executed the function: {} and remove client: {}!",
+                        activation_key, client_key
+                    ));
 
                     return ProcessResult::CommandInstructions(new_command_instructions);
-                },
+                }
             }
             // else {
             //     logger.warn("Error! Callback response kwargs isn't a Map!".to_string());
@@ -476,9 +592,9 @@ pub fn handle_direct_function(client_key: &String, activation_key: &String, comm
             // }
 
             // TODO >>> Implement a mechanism to send back the confirmation or a error message originated from the operation
-        },
+        }
         _ => {
             return ProcessResult::Error(format!("unknow direct function"));
-        },
+        }
     }
 }

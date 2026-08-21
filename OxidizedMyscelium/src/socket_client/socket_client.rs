@@ -1,10 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::enhanced_buffer;
 use crate::common::enhanced_buffer::buffer_down_manager::DownCommand;
-use crate::common::enhanced_buffer::utilities::{Command, CommandError, CommandInstructions, CommandMode, CommandOrigin, CommandStatus, CommandTarget, CommandType};
+use crate::common::enhanced_buffer::utilities::{
+    Command, CommandError, CommandInstructions, CommandMode, CommandOrigin, CommandStatus,
+    CommandTarget, CommandType,
+};
 
 use super::client_logger::log_handler::Logger;
 
-use crate::{CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME};
+use crate::{
+    CLIENT_BUFFER_ACTIVATION_CONTROLLER, CLIENT_IS_SYNC, CLIENT_NODE_CONFIGS, MEDIAN_CON_RESP_TIME,
+};
 
 use indexmap::IndexMap;
 use serde_json::json;
@@ -88,7 +96,10 @@ use crate::common::enhanced_buffer::history::register::register::initialize_buff
 /// - If not already initialized, the function will create and initialize the buffer database
 ///   at the specified location.
 pub fn initialize_client_buffer(buffer_location: String) {
-    println!("initializing the buffer database into: {}buffer.db, if not initialized!", buffer_location);
+    println!(
+        "initializing the buffer database into: {}buffer.db, if not initialized!",
+        buffer_location
+    );
 
     initialize_buffer_history(&buffer_location);
 
@@ -120,8 +131,12 @@ pub fn initialize_client_buffer(buffer_location: String) {
 ///
 /// # Returns
 /// - A `HashMap` containing the available command patterns.
-pub fn get_available_handlers_registered() -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
-    let global_command_patterns: HashMap<String, IndexMap<std::string::String, std::string::String>>;
+pub fn get_available_handlers_registered(
+) -> HashMap<String, IndexMap<std::string::String, std::string::String>> {
+    let global_command_patterns: HashMap<
+        String,
+        IndexMap<std::string::String, std::string::String>,
+    >;
 
     {
         println!("[CLIENT][GLOBAL][Try Lock] - CLIENT_NODE_CONFIGS");
@@ -132,7 +147,7 @@ pub fn get_available_handlers_registered() -> HashMap<String, IndexMap<std::stri
             Err(e) => {
                 println!("Get a error while trying to get the client node handlers!");
                 panic!("Get a error while trying to get the client node handlers!");
-            },
+            }
         };
     }
     println!("[CLIENT][GLOBAL][Release] - CLIENT_NODE_CONFIGS");
@@ -219,20 +234,26 @@ fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool {
 
         // Send the size of the data
         match stream.write(&size_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
-                println!("Error sending data lenght to client: {:?}, the error was:  {:?}", command.client_key, e);
-            },
+                println!(
+                    "Error sending data lenght to client: {:?}, the error was:  {:?}",
+                    command.client_key, e
+                );
+            }
         };
 
         println!("Data lenght: {:?}", data_size);
 
         // Send the actual data
         match stream.write(command_response_json.as_bytes()) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
-                println!("Error sending data to host: {:?} the error was: {:?}", command.client_key, e);
-            },
+                println!(
+                    "Error sending data to host: {:?} the error was: {:?}",
+                    command.client_key, e
+                );
+            }
         };
 
         println!("Connection verification sended!");
@@ -247,7 +268,7 @@ fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool {
             eprintln!("Failed to read from the stream: {:?}", e);
             // Handle the error, e.g., by returning from the function or taking corrective action
             return false; // or handle differently
-        },
+        }
     };
 
     println!("Confirmation data received!");
@@ -261,12 +282,14 @@ fn verify_connection(stream: &mut TcpStream, client_key: &String) -> bool {
     let mut data_buffer = vec![0; data_size];
 
     let buffer_string = match stream.read_exact(&mut data_buffer) {
-        Ok(_) => String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(),
+        Ok(_) => String::from_utf8_lossy(&data_buffer)
+            .trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0')
+            .to_string(),
         Err(e) => {
             eprintln!("Failed to read from the stream: {:?}", e);
             // Handle the error, e.g., by returning from the function or taking corrective action
             return false; // or handle differently
-        },
+        }
     };
 
     println!("Confirmation data decoded!");
@@ -332,20 +355,20 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
 
         // Send the size of the data
         match stream.write(&size_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 return Err(StreamError::WriteSizeError(e));
-            },
+            }
         };
 
         println!("Data lenght: {:?}", size_buffer);
 
         // Send the actual data
         match stream.write(command_response_json.as_bytes()) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 return Err(StreamError::WriteError(e));
-            },
+            }
         };
 
         println!("Data sended!")
@@ -358,7 +381,7 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
         Ok(_) => u32::from_be_bytes(size_buffer) as usize,
         Err(e) => {
             return Err(StreamError::ReadSizeError(e));
-        },
+        }
     };
 
     println!("Receive incomming data lenght: {}", data_size);
@@ -374,10 +397,12 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
     let mut data_buffer = vec![0; data_size];
 
     let buffer_string = match stream.read_exact(&mut data_buffer) {
-        Ok(_) => String::from_utf8_lossy(&data_buffer).trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0').to_string(),
+        Ok(_) => String::from_utf8_lossy(&data_buffer)
+            .trim_end_matches(|c| c == '\n' || c == '\r' || c == '\0')
+            .to_string(),
         Err(e) => {
             return Err(StreamError::ReadDataError(e));
-        },
+        }
     };
     println!("Received binary data");
 
@@ -403,7 +428,10 @@ fn send(stream: &mut TcpStream, command: &Command) -> Result<Response, StreamErr
 ///
 /// # Behavior
 /// - If the `CLIENT_IS_RUNNING` global flag is set to false, the function will immediately return `None`.
-pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<DownCommand>, StreamError> {
+pub fn send_ping(
+    stream: &mut TcpStream,
+    client_key: &String,
+) -> Result<Option<DownCommand>, StreamError> {
     let logger = acquire_logger!("[CLIENT][SOCKET]");
 
     let command_to_request = create_special_command!(client_key, CommandMode::Function, "C206");
@@ -424,11 +452,11 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
                 }
                 guard.push(duration.as_nanos() as f64);
                 break; // Exit loop after successful lock and update
-            },
+            }
             None => {
                 // If lock can't be acquired, sleep for a short duration
                 thread::sleep(Duration::from_millis(50));
-            },
+            }
         }
     }
 
@@ -438,12 +466,15 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
         Response::Command(c) => {
             match c.command.status {
                 CommandStatus::Failure => {
-                    logger.exception(format!("\nAn error occurred in host, the error was: {}\n", c.command.message));
+                    logger.exception(format!(
+                        "\nAn error occurred in host, the error was: {}\n",
+                        c.command.message
+                    ));
                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                     CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                     return Ok(None);
-                },
-                CommandStatus::Success => {},
+                }
+                CommandStatus::Success => {}
             }
 
             match c.command_type() {
@@ -459,15 +490,15 @@ pub fn send_ping(stream: &mut TcpStream, client_key: &String) -> Result<Option<D
                             return Ok(None);
                         }
                     }
-                },
-                _ => {},
+                }
+                _ => {}
             }
             let down_command: DownCommand = DownCommand::from_command(c);
             return Ok(Some(down_command));
-        },
+        }
         Response::None => {
             return Ok(None);
-        },
+        }
     }
 }
 
@@ -545,11 +576,11 @@ pub fn initialize_client(address: String) -> Option<String> {
                 ErrorKind::ConnectionRefused => {
                     logger.debug(format!("Can't connect in host!"));
                     return None;
-                },
+                }
                 _ => {
                     logger.debug(format!("Unhandled error: {}", e));
                     panic!("Unhandled error: {}", e)
-                },
+                }
             },
         };
 
@@ -602,7 +633,9 @@ pub fn initialize_client(address: String) -> Option<String> {
     loop {
         if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-            logger.info(format!("running is set to false, shutdown socket client main process!"));
+            logger.info(format!(
+                "running is set to false, shutdown socket client main process!"
+            ));
             break;
         }
 
@@ -632,7 +665,8 @@ pub fn initialize_client(address: String) -> Option<String> {
         let up_schdule_len = up_schedule.len();
 
         if !(up_schdule_len > 0) {
-            let option_down_command: Option<DownCommand> = match send_ping(&mut stream, &client_key) {
+            let option_down_command: Option<DownCommand> = match send_ping(&mut stream, &client_key)
+            {
                 Ok(d) => d,
                 Err(e) => {
                     logger.exception("A exception occurred!".to_string());
@@ -640,62 +674,82 @@ pub fn initialize_client(address: String) -> Option<String> {
                     CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                     match e {
                         StreamError::ConnectionClosed => {
-                            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            logger.exception(format!(
+                                "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                &client_key
+                            ));
                             continue;
-                        },
+                        }
                         StreamError::WriteError(e) => {
                             logger.exception(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
-                            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            logger.exception(format!(
+                                "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                &client_key
+                            ));
                             match e.kind() {
                                 io::ErrorKind::ConnectionReset => continue,
                                 _ => {
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                     println!("Other error occurred")
-                                },
+                                }
                             }
                             break;
-                        },
+                        }
                         StreamError::WriteSizeError(e) => {
-                            logger.exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
-                            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            logger
+                                .exception(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
+                            logger.exception(format!(
+                                "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                &client_key
+                            ));
                             match e.kind() {
                                 io::ErrorKind::ConnectionReset => continue,
                                 _ => {
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                     println!("Other error occurred")
-                                },
+                                }
                             }
                             break;
-                        },
+                        }
                         StreamError::ReadSizeError(e) => {
-                            logger.exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
-                            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            logger
+                                .exception(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
+                            logger.exception(format!(
+                                "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                &client_key
+                            ));
                             match e.kind() {
                                 io::ErrorKind::ConnectionReset => continue,
                                 _ => {
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                     println!("Other error occurred")
-                                },
+                                }
                             }
                             break;
-                        },
+                        }
                         StreamError::ReadDataError(e) => {
-                            logger.exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
-                            logger.exception(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                            logger
+                                .exception(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
+                            logger.exception(format!(
+                                "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                &client_key
+                            ));
                             match e.kind() {
                                 io::ErrorKind::ConnectionReset => continue,
                                 _ => {
                                     CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                     println!("Other error occurred")
-                                },
+                                }
                             }
                             break;
-                        },
+                        }
                     };
-                },
+                }
             };
 
-            logger.debug(format!("Nothing in schedule to send to host, so sending ping!"));
+            logger.debug(format!(
+                "Nothing in schedule to send to host, so sending ping!"
+            ));
             if let Some(down_command) = option_down_command {
                 enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
                 {
@@ -703,7 +757,9 @@ pub fn initialize_client(address: String) -> Option<String> {
                     react_actv.start();
                 }
             } else {
-                logger.debug(format!("[Socket] - No command received in ping, skipping.."));
+                logger.debug(format!(
+                    "[Socket] - No command received in ping, skipping.."
+                ));
             }
 
             thread::sleep(Duration::from_millis(10));
@@ -724,7 +780,9 @@ pub fn initialize_client(address: String) -> Option<String> {
 
             if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
                 CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
-                logger.info(format!("running is set to false, shutdown socket client main process!"));
+                logger.info(format!(
+                    "running is set to false, shutdown socket client main process!"
+                ));
                 break;
             }
 
@@ -734,21 +792,21 @@ pub fn initialize_client(address: String) -> Option<String> {
                     match error {
                         CommandError::InvalidCommand(e) => {
                             logger.exception(format!("Command: {:?} gives an exception when converting to command, the error was: \n{:?}", up_command, e));
-                        },
+                        }
                         CommandError::DeserializationError(e) => {
                             logger.exception(format!("Command: {:?} gives and exception when converting to command, the error was: \n{:?}", up_command, e));
-                        },
+                        }
                         CommandError::InvalidResponse(e) => {
                             logger.exception(format!("Command: {:?} have a InvalidResponse detected when converting to command, the error was: \n{:?}", up_command, e));
-                        },
+                        }
                         CommandError::NotAJsonObject => {
                             logger.exception(format!("Command: {:?} Isn't a valid json command to be deserialized, verify if it is a object!", up_command));
-                        },
+                        }
                     }
 
                     index = index + 1;
                     continue;
-                },
+                }
             };
 
             loop {
@@ -757,7 +815,9 @@ pub fn initialize_client(address: String) -> Option<String> {
                 let received: Response;
 
                 if !CLIENT_IS_RUNNING.load(Ordering::SeqCst) {
-                    logger.info(format!("running is set to false, shutdown socket client main process!"));
+                    logger.info(format!(
+                        "running is set to false, shutdown socket client main process!"
+                    ));
                     break;
                 }
 
@@ -769,59 +829,84 @@ pub fn initialize_client(address: String) -> Option<String> {
                             CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                             match e {
                                 StreamError::ConnectionClosed => {
-                                    logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                        &client_key
+                                    ));
                                     continue;
-                                },
+                                }
                                 StreamError::WriteError(e) => {
-                                    logger.debug(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
-                                    logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    logger
+                                        .debug(format!("[CLIENT][SOCKET][WRITE ERROR] - {:?}", e));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                        &client_key
+                                    ));
                                     match e.kind() {
                                         io::ErrorKind::ConnectionReset => continue,
                                         _ => {
                                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                             println!("Other error occurred")
-                                        },
+                                        }
                                     }
                                     break;
-                                },
+                                }
                                 StreamError::WriteSizeError(e) => {
-                                    logger.debug(format!("[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}", e));
-                                    logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][WRITE SIZE ERROR] - {:?}",
+                                        e
+                                    ));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                        &client_key
+                                    ));
                                     match e.kind() {
                                         io::ErrorKind::ConnectionReset => continue,
                                         _ => {
                                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                             println!("Other error occurred")
-                                        },
+                                        }
                                     }
                                     break;
-                                },
+                                }
                                 StreamError::ReadSizeError(e) => {
-                                    logger.debug(format!("[CLIENT][SOCKET][READ SIZE ERROR] - {:?}", e));
-                                    logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][READ SIZE ERROR] - {:?}",
+                                        e
+                                    ));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                        &client_key
+                                    ));
                                     match e.kind() {
                                         io::ErrorKind::ConnectionReset => continue,
                                         _ => {
                                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                             println!("Other error occurred")
-                                        },
+                                        }
                                     }
                                     break;
-                                },
+                                }
                                 StreamError::ReadDataError(e) => {
-                                    logger.debug(format!("[CLIENT][SOCKET][READ DATA ERROR] - {:?}", e));
-                                    logger.debug(format!("[CLIENT][SOCKET][CLOSE CONNECTION] - {}", &client_key));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][READ DATA ERROR] - {:?}",
+                                        e
+                                    ));
+                                    logger.debug(format!(
+                                        "[CLIENT][SOCKET][CLOSE CONNECTION] - {}",
+                                        &client_key
+                                    ));
                                     match e.kind() {
                                         io::ErrorKind::ConnectionReset => continue,
                                         _ => {
                                             CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                             println!("Other error occurred")
-                                        },
+                                        }
                                     }
                                     break;
-                                },
+                                }
                             }
-                        },
+                        }
                     };
                 }
 
@@ -829,41 +914,54 @@ pub fn initialize_client(address: String) -> Option<String> {
                     Response::Command(c) => {
                         match c.command.status {
                             CommandStatus::Failure => {
-                                logger.exception(format!("\nAn error occurred in host, the error was: {}\n", c.command.message));
+                                logger.exception(format!(
+                                    "\nAn error occurred in host, the error was: {}\n",
+                                    c.command.message
+                                ));
                                 enhanced_buffer::buffer_up_manager::buffer_up_remove_schedule_by_parity_id(&c.client_key, &c.parity_id);
                                 CLIENT_IS_RUNNING.store(false, Ordering::SeqCst);
                                 CLIENT_IS_CONNECTED.store(false, Ordering::SeqCst);
                                 CLIENT_IS_SYNC.store(false, Ordering::SeqCst);
                                 break;
-                            },
-                            CommandStatus::Success => {},
+                            }
+                            CommandStatus::Success => {}
                         }
 
                         match c.command_type() {
                             CommandType::ExternalFunction => {
                                 let down_command = DownCommand::from_command(c);
-                                logger.debug(format!("[Socket Client] - Receives Data.. : {:?}", down_command));
-                                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                                logger.debug(format!(
+                                    "[Socket Client] - Receives Data.. : {:?}",
+                                    down_command
+                                ));
+                                enhanced_buffer::buffer_down_manager::buffer_down_schedule(
+                                    &down_command,
+                                );
                                 {
                                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
                                     react_actv.start();
                                 }
                                 index = index + 1;
                                 break;
-                            },
+                            }
                             CommandType::DirectFunction => {
                                 // TODO >>> Need to actualize this to the new patter like Response handler to redirect works as intended!
                                 // > Also we can use a similar system to sync multiple hosts
-                                logger.info(format!("[Socket Client] - Received a direct function!:\n {:?}", c.command.actf));
+                                logger.info(format!(
+                                    "[Socket Client] - Received a direct function!:\n {:?}",
+                                    c.command.actf
+                                ));
                                 let down_command = DownCommand::from_command(c);
-                                enhanced_buffer::buffer_down_manager::buffer_down_schedule(&down_command);
+                                enhanced_buffer::buffer_down_manager::buffer_down_schedule(
+                                    &down_command,
+                                );
                                 {
                                     let react_actv = CLIENT_BUFFER_ACTIVATION_CONTROLLER.lock();
                                     react_actv.start();
                                 }
                                 index = index + 1;
                                 break;
-                            },
+                            }
                             CommandType::SpecialFunction => {
                                 if c.parity_id != "itisaspecialcase" {
                                     if c.command.actf == "C210".to_string() {
@@ -880,12 +978,12 @@ pub fn initialize_client(address: String) -> Option<String> {
 
                                 logger.debug(format!("Received a unknow special function"));
                                 break;
-                            },
+                            }
                         }
-                    },
+                    }
                     Response::None => {
                         break;
-                    },
+                    }
                 }
 
                 logger.debug(format!("Invalid command!"));

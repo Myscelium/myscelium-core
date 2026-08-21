@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use crate::common::enhanced_buffer::utilities::Command;
 use crate::common::structs::results_structs::ResultType;
 use serde_json::{json, Map, Value};
@@ -32,7 +35,7 @@ pub fn convert_to_resulttype_map(m: &HashMap<String, ResultType>) -> HashMap<Str
                     // Convert the inner map recursively
                     let inner_resulttype_map = convert_to_resulttype_map(inner_map);
                     Some((k.clone(), ResultType::Map(inner_resulttype_map)))
-                },
+                }
                 // Add other cases for different ResultType variants if needed
                 _ => None,
             }
@@ -72,9 +75,11 @@ pub fn value_to_resulttype(value: &Value) -> Result<ResultType, ConversionError>
             } else if n.is_f64() {
                 Ok(ResultType::Float(n.as_f64().unwrap()))
             } else {
-                Err(ConversionError::UnsuportedValueVariant("Number is neither i64 nor f64".to_string()))
+                Err(ConversionError::UnsuportedValueVariant(
+                    "Number is neither i64 nor f64".to_string(),
+                ))
             }
-        },
+        }
         Value::Bool(b) => Ok(ResultType::Bool(*b)),
         Value::Object(map) => {
             let mut result_map = HashMap::new();
@@ -82,11 +87,11 @@ pub fn value_to_resulttype(value: &Value) -> Result<ResultType, ConversionError>
                 result_map.insert(k.clone(), value_to_resulttype(v)?);
             }
             Ok(ResultType::Map(result_map))
-        },
+        }
         Value::Array(list) => {
             let results: Result<Vec<_>, _> = list.iter().map(value_to_resulttype).collect();
             results.map(ResultType::List)
-        },
+        }
         Value::Null => Ok(ResultType::Empty),
         // Handling of other Value variants if needed
         _ => Err(ConversionError::UnsuportedValueVariant("".to_string())),
@@ -110,8 +115,10 @@ pub fn resulttype_to_value(result: &ResultType) -> Value {
         ResultType::Int(i) => Value::Number(serde_json::Number::from(*i)),
         ResultType::Float(f) => {
             // Assuming that the f64 can be safely converted to a serde_json::Number
-            Value::Number(serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0)))
-        },
+            Value::Number(
+                serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0)),
+            )
+        }
         ResultType::Bool(b) => Value::Bool(*b),
         ResultType::Map(map) => {
             let mut result_obj = serde_json::Map::new();
@@ -119,11 +126,11 @@ pub fn resulttype_to_value(result: &ResultType) -> Value {
                 result_obj.insert(k.clone(), resulttype_to_value(v));
             }
             Value::Object(result_obj)
-        },
+        }
         ResultType::List(list) => {
             let values: Vec<Value> = list.iter().map(resulttype_to_value).collect();
             Value::Array(values)
-        },
+        }
         ResultType::Empty => Value::Null,
         ResultType::Error(err) => Value::String(format!("Error: {}", err)),
         // Add transformations for other ResultType variants if needed
@@ -143,7 +150,9 @@ pub fn resulttype_to_value(result: &ResultType) -> Value {
 ///
 /// * A `HashMap<String, Value>` with values converted into their `serde_json::Value` representations.
 pub fn convert_to_value_map(dict: &HashMap<String, ResultType>) -> HashMap<String, Value> {
-    dict.iter().map(|(k, v)| (k.clone(), resulttype_to_value(v))).collect()
+    dict.iter()
+        .map(|(k, v)| (k.clone(), resulttype_to_value(v)))
+        .collect()
 }
 
 /// Converts a `HashMap<String, ResultType>` into a `HashMap<String, Value>`.
@@ -158,7 +167,9 @@ pub fn convert_to_value_map(dict: &HashMap<String, ResultType>) -> HashMap<Strin
 /// # Returns
 ///
 /// * A `HashMap<String, Value>` with values converted into their `serde_json::Value` representations.
-pub fn convert_value_map_to_resulttype_map(map: &HashMap<String, Value>) -> Result<ResultType, ConversionError> {
+pub fn convert_value_map_to_resulttype_map(
+    map: &HashMap<String, Value>,
+) -> Result<ResultType, ConversionError> {
     let result_map: HashMap<String, ResultType> = map
         .iter()
         .map(|(k, v)| match value_to_resulttype(v) {
@@ -201,5 +212,8 @@ pub fn convert_value_map_to_resulttype_map(map: &HashMap<String, Value>) -> Resu
 /// Note: This function clones the data from the `serde_json::Map`, so changes to the returned `HashMap`
 /// will not affect the original `serde_json::Map`.
 pub fn convert_json_map_to_hash_map(json_map: &Map<String, Value>) -> HashMap<String, Value> {
-    json_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    json_map
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }

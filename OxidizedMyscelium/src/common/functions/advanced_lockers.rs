@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright © 2021-2026 Cristian Camargo Filho
+
 use rand::Rng;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -53,15 +56,16 @@ where
             Ok(mut guard) => {
                 f(&mut guard);
                 return;
-            },
+            }
             Err(_) => {
                 if start_time.elapsed() > timeout {
                     eprintln!("Failed to acquire lock after {:?}, giving up", timeout);
                     return;
                 }
-                let sleep_duration = Duration::from_millis(10) + Duration::from_millis(rng.gen_range(0..10));
+                let sleep_duration =
+                    Duration::from_millis(10) + Duration::from_millis(rng.gen_range(0..10));
                 thread::sleep(sleep_duration);
-            },
+            }
         }
     }
 }

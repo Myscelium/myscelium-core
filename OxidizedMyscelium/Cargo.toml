@@ -1,9 +1,11 @@
 [package]
 name = "OxidizedMyscelium"
 version = "1.3.1"
+authors = ["Cristian Camargo Filho <ccf@cdone.com.br>"]
 edition = "2021"
 description = "Core functionalities for the OxidizedMyscelium library."
-authors = ["Cristian Camargo Filho <ccf@cdone.com.br>"]
+license = "MPL-2.0"
+repository = "https://github.com/Myscelium/myscelium-core"
 
 [profile.release]
 opt-level = 3
